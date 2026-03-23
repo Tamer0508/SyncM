@@ -8,9 +8,13 @@ class FriendTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return ListTile(
-      leading: CircleAvatar(backgroundImage: NetworkImage(avatarUrl)),
-      title: Text(name),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      leading: CircleAvatar(radius: 22, backgroundImage: NetworkImage(avatarUrl), backgroundColor: Colors.grey[700]),
+      title: Text(name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+      subtitle: const Text('Online', style: TextStyle(color: Colors.greenAccent, fontSize: 12)),
+      trailing: Icon(Icons.more_horiz, color: theme.iconTheme.color),
     );
   }
 }

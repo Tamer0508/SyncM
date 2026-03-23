@@ -30,14 +30,16 @@ class AuthProvider with ChangeNotifier {
     _user = null;
     notifyListeners();
   }
-  // helper to build user from captured callback JSON
   User userFromMap(Map<String, dynamic> map) {
     return User.fromJson(map);
   }
 
-  // Set user (public) — use instead of accessing private field
   void setUser(User user) {
     _user = user;
     notifyListeners();
+  }
+
+  void setCookie(String cookie) {
+    api.setCookie(cookie);
   }
 }

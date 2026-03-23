@@ -17,16 +17,15 @@ class LoginScreen extends StatelessWidget {
           onPressed: () async {
             // Open WebView for OAuth flow
             final result = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _AuthWebView()));
-            if (result is Map<String, dynamic>) {
+            if (result is Map<String, dynamic> && result.containsKey('payload')) {
               final auth = Provider.of<AuthProvider>(context, listen: false);
               try {
-                // server returns { message, user } or user object
-                final payloadObj = result['user'] ?? result;
-                final Map<String, dynamic> payload = Map<String, dynamic>.from(payloadObj as Map);
+                final payload = Map<String, dynamic>.from(result['payload'] as Map);
                 final user = auth.userFromMap(payload);
                 auth.setUser(user);
+                final cookie = (result['cookie'] ?? '') as String;
+                if (cookie.isNotEmpty) auth.setCookie(cookie);
               } catch (e) {
-                // fallback: try fetch me from API
                 await Provider.of<AuthProvider>(context, listen: false).fetchMe();
               }
             } else {
@@ -85,9 +84,16 @@ class _AuthWebViewState extends State<_AuthWebView> {
                     text = text.substring(1, text.length - 1);
                   }
 
-                  final Map<String, dynamic> data = json.decode(text) as Map<String, dynamic>;
-                  // Return whatever server sent (either {user: {...}} or user object)
-                  Navigator.of(context).pop(data['user'] ?? data);
+                    final Map<String, dynamic> data = json.decode(text) as Map<String, dynamic>;
+                    // try to grab document.cookie too
+                    String cookie = '';
+                    try {
+                      final rawCookie = await _controller.runJavaScriptReturningResult("document.cookie");
+                      if (rawCookie is String) cookie = rawCookie;
+                      if (rawCookie is List && rawCookie.isNotEmpty) cookie = rawCookie.join();
+                    } catch (_) {}
+
+                    Navigator.of(context).pop({'payload': (data['user'] ?? data), 'cookie': cookie});
                 } catch (e) {
                   Navigator.of(context).pop();
                 }

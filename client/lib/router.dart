@@ -7,6 +7,8 @@ import 'screens/friends/search_users_screen.dart';
 import 'screens/session/create_session_screen.dart';
 import 'screens/session/session_screen.dart';
 import 'screens/profile/profile_screen.dart';
+import 'screens/player/now_playing.dart';
+
 
 Route<dynamic> generateRoute(RouteSettings settings) {
   switch (settings.name) {
@@ -26,6 +28,14 @@ Route<dynamic> generateRoute(RouteSettings settings) {
       return MaterialPageRoute(builder: (_) => const SessionScreen());
     case '/profile':
       return MaterialPageRoute(builder: (_) => const ProfileScreen());
+    case '/player':
+      final args = settings.arguments as Map<String, dynamic>?;
+      return MaterialPageRoute(
+          builder: (_) => NowPlayingScreen(
+                title: args?['title'] as String?,
+                artist: args?['artist'] as String?,
+                artworkUrl: args?['artworkUrl'] as String?,
+              ));
     default:
       return MaterialPageRoute(
         builder: (_) => const Scaffold(
