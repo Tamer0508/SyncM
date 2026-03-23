@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  spotifyId       String   @unique
+  displayName     String
+  email           String?
+  avatarUrl       String?
+  accessToken     String?
+  refreshToken    String?
+  createdAt       DateTime @default(now())
+
+  // Связи
+  sentRequests     Friendship[] @relation("sender")
+  receivedRequests Friendship[] @relation("receiver")
+  hostedSessions   Session[]    @relation("host")
+  sessionMembers   SessionMember[]
+  ratings          TrackRating[]
+}
+
+model Friendship {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  status     String   @default("pending") // pending | accepted | rejected
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("sender",   fields: [senderId],   references: [id])
+  receiver User @relation("receiver", fields: [receiverId], references: [id])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  hostId    String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  host    User            @relation("host", fields: [hostId], references: [id])
+  members SessionMember[]
+  tracks  SessionTrack[]
+}
+
+model SessionMember {
+  id        String   @id @default(uuid())
+  sessionId String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id])
+  user    User    @relation(fields: [userId],    references: [id])
+}
+
+model SessionTrack {
+  id         String   @id @default(uuid())
+  sessionId  String
+  spotifyUri String
+  trackName  String
+  artistName String
+  addedAt    DateTime @default(now())
+
+  session Session       @relation(fields: [sessionId], references: [id])
+  ratings TrackRating[]
+}
+
+model TrackRating {
+  id       String @id @default(uuid())
+  trackId  String
+  userId   String
+  rating   Int    // 1 = лайк, -1 = дизлайк
+
+  track SessionTrack @relation(fields: [trackId], references: [id])
+  user  User         @relation(fields: [userId],  references: [id])
+}
