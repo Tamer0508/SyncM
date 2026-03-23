@@ -4,6 +4,7 @@ const cors = require('cors');
 const session = require('express-session');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const friendsRoutes = require('./routes/friends'); 
 
 const authRoutes = require('./routes/auth');
 
@@ -27,6 +28,7 @@ app.use(session({
 }));
 
 app.use('/auth', authRoutes);
+app.use('/friends', friendsRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Mixtape server is running' });
