@@ -78,14 +78,19 @@ const callback = async (req, res) => {
     });
 
     // Сохраняем пользователя в сессию
-    req.session.userId = user.id;
-
-    res.json({ message: 'Авторизация успешна', user });
+      res.json({ 
+      message: 'Авторизация успешна', 
+      user: {
+        id: user.id,
+        displayName: user.displayName,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+      }
+    });
   } catch (error) {
     console.error('OAuth error:', error.response?.data || error.message);
     res.status(500).json({ error: 'Ошибка авторизации' });
-  }
-};
+  }};
 
 // Получить текущего пользователя
 const getMe = async (req, res) => {
