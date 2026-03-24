@@ -4,13 +4,27 @@ const cors = require('cors');
 const session = require('express-session');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const { Pool } = require('pg');
 
 const authRoutes = require('./routes/auth');
 const friendsRoutes = require('./routes/friends'); 
 const sessionRoutes = require('./routes/sessions'); 
 const setupSocket = require('./socket');
+const pgSession = require('connect-pg-simple')(session);
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+pool.query(`
+  CREATE TABLE IF NOT EXISTS "session" (
+    "sid" varchar NOT NULL COLLATE "default",
+    "sess" json NOT NULL,
+    "expire" timestamp(6) NOT NULL,
+    CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+  )
+`);
 
 const app = express();
+// доверяем прокси (Railway / Heroku и т.п.) чтобы корректно определять HTTPS
+app.set('trust proxy', 1);
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: '*' }
@@ -20,11 +34,16 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 app.use(session({
+  store: new pgSession({
+    conString: process.env.DATABASE_URL,
+  }),
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,
+    // в проде cookie должны быть secure; при тестировании в dev оставляем false
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000
   }
 }));

@@ -1,9 +1,13 @@
 import 'dart:convert';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
+
+
+// Импорт WebView только для мобильных
+import 'package:webview_flutter/webview_flutter.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -15,21 +19,29 @@ class LoginScreen extends StatelessWidget {
       body: Center(
         child: ElevatedButton(
           onPressed: () async {
-            // Open WebView for OAuth flow
-            final result = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _AuthWebView()));
-            if (result is Map<String, dynamic> && result.containsKey('payload')) {
-              final auth = Provider.of<AuthProvider>(context, listen: false);
-              try {
-                final payload = Map<String, dynamic>.from(result['payload'] as Map);
-                final user = auth.userFromMap(payload);
-                auth.setUser(user);
-                final cookie = (result['cookie'] ?? '') as String;
-                if (cookie.isNotEmpty) auth.setCookie(cookie);
-              } catch (e) {
-                await Provider.of<AuthProvider>(context, listen: false).fetchMe();
+            if (kIsWeb) {
+              // На вебе — открываем браузер
+              final url = Uri.parse('https://syncm-production.up.railway.app/auth/login');
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
               }
             } else {
-              await Provider.of<AuthProvider>(context, listen: false).fetchMe();
+              // На мобильном — WebView
+              final result = await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const _AuthWebView()),
+              );
+              if (result is Map<String, dynamic> && result.containsKey('payload')) {
+                final auth = Provider.of<AuthProvider>(context, listen: false);
+                try {
+                  final payload = Map<String, dynamic>.from(result['payload'] as Map);
+                  final user = auth.userFromMap(payload);
+                  auth.setUser(user);
+                  final cookie = (result['cookie'] ?? '') as String;
+                  if (cookie.isNotEmpty) auth.setCookie(cookie);
+                } catch (e) {
+                  await Provider.of<AuthProvider>(context, listen: false).fetchMe();
+                }
+              }
             }
           },
           child: const Text('Login with Spotify'),
@@ -52,12 +64,15 @@ class _AuthWebViewState extends State<_AuthWebView> {
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController()..setJavaScriptMode(JavaScriptMode.unrestricted);
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted);
   }
 
   @override
   Widget build(BuildContext context) {
-    final authUrl = Uri.parse('http://10.0.2.2:3000/auth/login');
+    final authUrl = Uri.parse(
+      'https://syncm-production.up.railway.app/auth/login',
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('Spotify Login')),
@@ -68,39 +83,28 @@ class _AuthWebViewState extends State<_AuthWebView> {
             onPageFinished: (url) async {
               if (url.contains('/auth/callback')) {
                 try {
-                  final raw = await _controller.runJavaScriptReturningResult('document.body.innerText');
-                  String text;
-                  if (raw is String) {
-                    text = raw;
-                  } else if (raw is List && raw.isNotEmpty) {
-                    text = raw.join();
-                  } else {
-                    text = raw.toString();
-                  }
-
-                  text = text.trim();
-                  // remove surrounding quotes if present
-                  if ((text.startsWith('\"') && text.endsWith('\"')) || (text.startsWith('\'') && text.endsWith('\''))) {
+                  final raw = await _controller
+                      .runJavaScriptReturningResult('document.body.innerText');
+                  String text = raw.toString().trim();
+                  if ((text.startsWith('"') && text.endsWith('"'))) {
                     text = text.substring(1, text.length - 1);
                   }
-
-                    final Map<String, dynamic> data = json.decode(text) as Map<String, dynamic>;
-                    // try to grab document.cookie too
-                    String cookie = '';
-                    try {
-                      final rawCookie = await _controller.runJavaScriptReturningResult("document.cookie");
-                      if (rawCookie is String) cookie = rawCookie;
-                      if (rawCookie is List && rawCookie.isNotEmpty) cookie = rawCookie.join();
-                    } catch (_) {}
-
-                    Navigator.of(context).pop({'payload': (data['user'] ?? data), 'cookie': cookie});
+                  final Map<String, dynamic> data =
+                      json.decode(text) as Map<String, dynamic>;
+                  String cookie = '';
+                  try {
+                    final rawCookie = await _controller
+                        .runJavaScriptReturningResult('document.cookie');
+                    cookie = rawCookie.toString();
+                  } catch (_) {}
+                  Navigator.of(context).pop({
+                    'payload': (data['user'] ?? data),
+                    'cookie': cookie,
+                  });
                 } catch (e) {
                   Navigator.of(context).pop();
                 }
               }
-            },
-            onNavigationRequest: (req) {
-              return NavigationDecision.navigate;
             },
           )),
       ),

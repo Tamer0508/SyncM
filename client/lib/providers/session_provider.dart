@@ -26,6 +26,10 @@ class SessionProvider with ChangeNotifier {
     }
   }
 
+  void syncCookie(String cookie) {
+    api.setCookie(cookie);
+  }
+
   Future<Map<String, dynamic>?> createSession(String name, String friendId) async {
     return await api.createSession(name, friendId);
   }

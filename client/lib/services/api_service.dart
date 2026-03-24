@@ -17,7 +17,7 @@ class ApiService {
   String? _cookie;
 
   ApiService({String? baseUrl, Duration? timeout})
-      : baseUrl = baseUrl ?? 'http://10.0.2.2:3000',
+      : baseUrl = baseUrl ?? 'https://syncm-production.up.railway.app',
         timeout = timeout ?? const Duration(seconds: 10);
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');

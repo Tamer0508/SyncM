@@ -19,11 +19,27 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => FriendsProvider()),
-        ChangeNotifierProvider(create: (_) => SessionProvider()),
-        ChangeNotifierProvider(create: (_) => PlaybackProvider()),
-      ],
+  ChangeNotifierProvider(create: (_) => AuthProvider()),
+  ChangeNotifierProxyProvider<AuthProvider, FriendsProvider>(
+    create: (_) => FriendsProvider(),
+    update: (_, auth, friends) {
+      if (auth.cookie != null) {
+        friends?.syncCookie(auth.cookie!);
+      }
+      return friends ?? FriendsProvider();
+    },
+  ),
+  ChangeNotifierProxyProvider<AuthProvider, SessionProvider>(
+    create: (_) => SessionProvider(),
+    update: (_, auth, session) {
+      if (auth.cookie != null) {
+        session?.syncCookie(auth.cookie!);
+      }
+      return session ?? SessionProvider();
+    },
+  ),
+  ChangeNotifierProvider(create: (_) => PlaybackProvider()),
+],
       child: MaterialApp(
         title: 'SyncM',
         theme: AppTheme.light,

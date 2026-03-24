@@ -78,14 +78,22 @@ const callback = async (req, res) => {
     });
 
     // Сохраняем пользователя в сессию
-      res.json({ 
-      message: 'Авторизация успешна', 
-      user: {
-        id: user.id,
-        displayName: user.displayName,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
+    req.session.userId = user.id;
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.status(500).json({ error: 'Ошибка сохранения сессии' });
       }
+
+      res.json({ 
+        message: 'Авторизация успешна', 
+        user: {
+          id: user.id,
+          displayName: user.displayName,
+          email: user.email,
+          avatarUrl: user.avatarUrl,
+        }
+      });
     });
   } catch (error) {
     console.error('OAuth error:', error.response?.data || error.message);
