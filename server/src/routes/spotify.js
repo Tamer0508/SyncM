@@ -85,7 +85,9 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
 
   try {
     let user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user?.accessToken) return res.status(401).json({ error: 'Нет токена Spotify' });
+    if (!user?.accessToken) {
+      return res.status(401).json({ error: 'Нет токена Spotify' });
+    }
 
     let accessToken = user.accessToken;
     let response;
@@ -103,24 +105,35 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
           { headers: { Authorization: `Bearer ${accessToken}` } }
         );
       } else {
+        console.error('SPOTIFY ERROR:', err.response?.data || err.message);
         throw err;
       }
     }
 
-    const tracks = response.data.items
-      .filter(item => item.track)
-      .map(item => ({
-        id: item.track.id,
-        name: item.track.name,
-        artist: item.track.artists.map(a => a.name).join(', '),
-        imageUrl: item.track.album.images?.[0]?.url || null,
-        uri: item.track.uri,
-        durationMs: item.track.duration_ms,
-      }));
+    const tracks = (response.data.items || [])
+      .map(item => {
+        const track = item?.track;
+        if (!track) return null;
+
+        return {
+          id: track.id ?? null,
+          name: track.name ?? 'Unknown',
+          artist: Array.isArray(track.artists)
+            ? track.artists.map(a => a?.name ?? '').join(', ')
+            : 'Unknown',
+          imageUrl:
+            track.album?.images && track.album.images.length > 0
+              ? track.album.images[0].url
+              : null,
+          uri: track.uri ?? null,
+          durationMs: track.duration_ms ?? 0,
+        };
+      })
+      .filter(Boolean);
 
     res.json(tracks);
   } catch (error) {
-    console.error('Tracks error:', error.response?.data || error.message);
+    console.error('TRACKS FULL ERROR:', error);
     res.status(500).json({ error: 'Ошибка получения треков' });
   }
 });
