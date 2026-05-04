@@ -8,24 +8,23 @@ datasource db {
 }
 
 model AppUser {
-  id           String   @id @default(uuid())
-  username     String
-  email        String   @unique
-  passwordHash String
-  isEmailVerified Boolean @default(false)
-  createdAt    DateTime @default(now())
-
-  spotifyUser      User?
-  sentRequests     Friendship[]    @relation("sender")
+  id               String          @id @default(uuid())
+  username         String
+  email            String          @unique
+  passwordHash     String
+  createdAt        DateTime        @default(now())
+  isEmailVerified  Boolean         @default(false)
   receivedRequests Friendship[]    @relation("receiver")
+  sentRequests     Friendship[]    @relation("sender")
   hostedSessions   Session[]       @relation("host")
   sessionMembers   SessionMember[]
   ratings          TrackRating[]
+  User             User?
 }
 
 model User {
   id           String   @id @default(uuid())
-  appUserId    String?  @unique @map("app_user_id")
+  appUserId    String?  @unique
   spotifyId    String   @unique
   displayName  String
   email        String?
@@ -33,8 +32,7 @@ model User {
   accessToken  String?
   refreshToken String?
   createdAt    DateTime @default(now())
-
-  appUser AppUser? @relation(fields: [appUserId], references: [id])
+  AppUser      AppUser? @relation(fields: [appUserId], references: [id])
 }
 
 model Friendship {
@@ -43,21 +41,19 @@ model Friendship {
   receiverId String
   status     String   @default("pending")
   createdAt  DateTime @default(now())
-
-  sender   AppUser @relation("sender", fields: [senderId], references: [id])
-  receiver AppUser @relation("receiver", fields: [receiverId], references: [id])
+  receiver   AppUser  @relation("receiver", fields: [receiverId], references: [id])
+  sender     AppUser  @relation("sender", fields: [senderId], references: [id])
 }
 
 model Session {
-  id        String   @id @default(uuid())
+  id        String          @id @default(uuid())
   hostId    String
   name      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-
-  host    AppUser         @relation("host", fields: [hostId], references: [id])
-  members SessionMember[]
-  tracks  SessionTrack[]
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  host      AppUser         @relation("host", fields: [hostId], references: [id])
+  members   SessionMember[]
+  tracks    SessionTrack[]
 }
 
 model SessionMember {
@@ -65,31 +61,28 @@ model SessionMember {
   sessionId String
   userId    String
   joinedAt  DateTime @default(now())
-
-  session Session @relation(fields: [sessionId], references: [id])
-  user    AppUser @relation(fields: [userId], references: [id])
+  session   Session  @relation(fields: [sessionId], references: [id])
+  user      AppUser  @relation(fields: [userId], references: [id])
 }
 
 model SessionTrack {
-  id         String   @id @default(uuid())
+  id         String        @id @default(uuid())
   sessionId  String
   spotifyUri String
   trackName  String
   artistName String
-  addedAt    DateTime @default(now())
-
-  session Session       @relation(fields: [sessionId], references: [id])
-  ratings TrackRating[]
+  addedAt    DateTime      @default(now())
+  session    Session       @relation(fields: [sessionId], references: [id])
+  ratings    TrackRating[]
 }
 
 model TrackRating {
-  id      String @id @default(uuid())
+  id      String       @id @default(uuid())
   trackId String
   userId  String
   rating  Int
-
-  track SessionTrack @relation(fields: [trackId], references: [id])
-  user  AppUser      @relation(fields: [userId], references: [id])
+  track   SessionTrack @relation(fields: [trackId], references: [id])
+  user    AppUser      @relation(fields: [userId], references: [id])
 }
 
 model EmailVerification {
@@ -98,4 +91,10 @@ model EmailVerification {
   code      String
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+model session {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
 }
