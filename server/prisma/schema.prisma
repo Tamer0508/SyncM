@@ -24,7 +24,7 @@ model AppUser {
 
 model User {
   id           String   @id @default(uuid())
-  appUserId    String?  @unique
+  app_user_id    String?  @unique
   spotifyId    String   @unique
   displayName  String
   email        String?
@@ -32,7 +32,7 @@ model User {
   accessToken  String?
   refreshToken String?
   createdAt    DateTime @default(now())
-  AppUser      AppUser? @relation(fields: [appUserId], references: [id])
+  AppUser      AppUser? @relation(fields: [app_user_id], references: [id])
 }
 
 model Friendship {

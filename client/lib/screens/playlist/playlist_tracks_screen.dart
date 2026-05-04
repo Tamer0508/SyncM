@@ -22,6 +22,7 @@ class PlaylistTracksScreen extends StatefulWidget {
 class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   List<dynamic> _tracks = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -31,14 +32,30 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
 
   Future<void> _loadTracks() async {
     try {
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      final api = auth.api;
+      final api = Provider.of<AuthProvider>(context, listen: false).api;
+
       final tracks = await api.getPlaylistTracks(widget.playlistId);
-      if (mounted) setState(() => _tracks = tracks);
-    } catch (e) {
+
+      if (mounted) {
+        setState(() {
+          _tracks = tracks;
+        });
+      }
+    } catch (e, stack) {
       print('Error loading tracks: $e');
+      print(stack);
+
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -53,86 +70,60 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
             pinned: true,
             backgroundColor: const Color(0xFF121212),
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                widget.playlistName,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              background: widget.imageUrl != null && widget.imageUrl!.isNotEmpty
-                  ? Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.network(widget.imageUrl!, fit: BoxFit.cover),
-                        Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [Colors.transparent, Color(0xFF121212)],
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  : Container(color: Colors.grey[900]),
+              title: Text(widget.playlistName),
+              background: widget.imageUrl != null
+                  ? Image.network(widget.imageUrl!, fit: BoxFit.cover)
+                  : Container(color: Colors.grey),
             ),
           ),
-          _loading
-              ? const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              : _tracks.isEmpty
-                  ? const SliverFillRemaining(
-                      child: Center(
-                        child: Text(
-                          'Нет треков',
-                          style: TextStyle(color: Colors.white54),
-                        ),
-                      ),
-                    )
-                  : SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, i) {
-                          final t = _tracks[i];
-                          final artist = t['artist'] as String? ?? '';
-                          final image = t['imageUrl'] as String?;
 
-                          return ListTile(
-                            leading: ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: image != null
-                                  ? Image.network(
-                                      image,
-                                      width: 48,
-                                      height: 48,
-                                      fit: BoxFit.cover,
-                                    )
-                                  : Container(
-                                      width: 48,
-                                      height: 48,
-                                      color: Colors.grey[800],
-                                      child: const Icon(
-                                        Icons.music_note,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                            ),
-                            title: Text(
-                              t['name'] ?? '',
-                              style: const TextStyle(color: Colors.white),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              artist,
-                              style: const TextStyle(color: Colors.white54),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        },
-                        childCount: _tracks.length,
-                      ),
+          if (_loading)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_error != null)
+            SliverFillRemaining(
+              child: Center(
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            )
+          else if (_tracks.isEmpty)
+            const SliverFillRemaining(
+              child: Center(
+                child: Text(
+                  'Нет треков',
+                  style: TextStyle(color: Colors.white54),
+                ),
+              ),
+            )
+          else
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  final t = _tracks[i];
+
+                  return ListTile(
+                    leading: t['imageUrl'] != null
+                        ? Image.network(t['imageUrl'], width: 50)
+                        : const Icon(Icons.music_note, color: Colors.white),
+
+                    title: Text(
+                      t['name'] ?? '',
+                      style: const TextStyle(color: Colors.white),
                     ),
+
+                    subtitle: Text(
+                      t['artist'] ?? '',
+                      style: const TextStyle(color: Colors.white54),
+                    ),
+                  );
+                },
+                childCount: _tracks.length,
+              ),
+            ),
         ],
       ),
     );
