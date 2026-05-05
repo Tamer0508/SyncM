@@ -7,7 +7,7 @@ class Friend {
   Friend({required this.id, required this.name, this.avatarUrl, this.friendshipId});
 
   factory Friend.fromJson(Map<String, dynamic> json) => Friend(
-        id: json['id'] as String,
+        id: json['id'] ?? json['friendId'] ?? '',
         name: json['displayName'] as String? ?? json['name'] as String? ?? '',
         avatarUrl: json['avatarUrl'] as String?,
         friendshipId: json['friendshipId'] as String?, 

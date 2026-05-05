@@ -24,6 +24,7 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => FriendsProvider()),
         ChangeNotifierProxyProvider<AuthProvider, FriendsProvider>(
           create: (_) => FriendsProvider(),
           update: (_, auth, friends) {

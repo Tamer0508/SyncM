@@ -40,33 +40,49 @@ const io = new Server(httpServer, {
   cors: { origin: '*' }
 });
 
+// ВАЖНО: CORS должен быть ПЕРЕД роутами!
 app.use(cors({
   origin: true,
   credentials: true,
   allowedHeaders: ['Content-Type', 'Cookie', 'Authorization'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
+
 app.use(express.json());
 
+// Настройка сессии
 app.use(session({
   store: new pgSession({
-    conString: process.env.DATABASE_URL,
+    pool: pool, 
+    tableName: 'session', 
+    createTableIfMissing: true
   }),
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 дней
   }
 }));
+
+// Логирование запросов для отладки
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+  console.log('Session ID:', req.sessionID);
+  console.log('Session:', req.session);
+  next();
+});
 
 // Роуты — после session middleware
 app.use('/auth', authRoutes);
 app.use('/friends', friendsRoutes);
 app.use('/sessions', sessionRoutes);
 app.use('/spotify', spotifyRoutes);
+
+// УБИРАЕМ дублирующий CORS middleware отсюда!
 
 app.get('/', (req, res) => {
   res.json({ message: 'SyncM server is running' });

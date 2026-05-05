@@ -152,6 +152,14 @@ class ApiService {
     throw ApiException('Failed to fetch tracks', res.statusCode);
   }
 
+  Future<Map<String, dynamic>> getSpotifyStatus() async {
+  final res = await http.get(_uri('/spotify/status'), headers: _headers).timeout(timeout);
+  if (res.statusCode == 200) {
+    return _decode(res.body) as Map<String, dynamic>;
+  }
+  throw ApiException('Failed to get Spotify status', res.statusCode);
+}
+
   void setCookie(String cookie) {
     _cookie = cookie;
   }
