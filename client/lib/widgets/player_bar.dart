@@ -14,37 +14,44 @@ class PlayerBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      height: 70,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      height: 80,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [
-          theme.cardColor,
-          theme.cardColor.withAlpha((0.9 * 255).round()),
-        ]),
-        border: Border(top: BorderSide(color: Colors.white10)),
+        color: theme.cardColor,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, -4)),
+        ],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Row(
         children: [
-          // thumbnail
           if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
-            ClipRRect(borderRadius: BorderRadius.circular(6), child: CachedNetworkImage(imageUrl: thumbnailUrl!, width: 48, height: 48, fit: BoxFit.cover))
+            ClipRRect(borderRadius: BorderRadius.circular(16), child: CachedNetworkImage(imageUrl: thumbnailUrl!, width: 52, height: 52, fit: BoxFit.cover))
           else
-            const Icon(Icons.queue_music, color: Colors.white70),
-          const SizedBox(width: 12),
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(Icons.queue_music, color: theme.colorScheme.primary),
+            ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(title, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700, color: Colors.white)),
+                Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(artist, style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70)),
+                Text(artist, style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7))),
               ],
             ),
           ),
           IconButton(
             onPressed: onPlayPause,
-            icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Theme.of(context).primaryColor, size: 36),
+            icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: theme.colorScheme.primary, size: 38),
           )
         ],
       ),

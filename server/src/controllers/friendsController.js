@@ -7,19 +7,31 @@ const getUserId = (req) => {
   return null;
 };
 
-// Поиск пользователей по имени
+// Поиск пользователей приложения по нику
 const searchUsers = async (req, res) => {
   const { query } = req.query;
   if (!query) return res.status(400).json({ error: 'Введите имя для поиска' });
   try {
-    const users = await prisma.user.findMany({
+    const users = await prisma.appUser.findMany({
       where: {
-        displayName: { contains: query, mode: 'insensitive' },
-        NOT: { id: getUserId(req) },
+        username: { contains: query, mode: 'insensitive' },
+        id: { not: getUserId(req) || undefined },
       },
-      select: { id: true, displayName: true, avatarUrl: true },
+      include: {
+        User: {
+          select: {
+            avatarUrl: true,
+          },
+        },
+      },
     });
-    res.json(users);
+    res.json(
+      users.map((u) => ({
+        id: u.id,
+        displayName: u.username,
+        avatarUrl: u.User?.avatarUrl || null,
+      }))
+    );
   } catch (error) {
     res.status(500).json({ error: 'Ошибка поиска' });
   }

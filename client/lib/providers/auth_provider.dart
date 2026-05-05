@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
+import '../utils/auth_storage.dart';
 
 class AuthProvider with ChangeNotifier {
   final ApiService api;
@@ -16,23 +17,33 @@ class AuthProvider with ChangeNotifier {
   String? get cookie => _cookie;
 
   Future<void> fetchMe() async {
-  _loading = true;
-  notifyListeners();
-  print('fetchMe called, cookie: ${api.getCookie()}');
-  try {
-    final u = await api.getMe();
-    print('fetchMe result: $u');
-    _user = u;
-  } finally {
-    _loading = false;
+    _loading = true;
     notifyListeners();
+    try {
+      final u = await api.getMe();
+      _user = u;
+      if (u == null) {
+        _cookie = null;
+        clearAuthToken();
+      }
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
   }
-}
+
+  void restoreSavedAuth() {
+    if (_cookie != null && _cookie!.isNotEmpty) return;
+    final token = readAuthToken();
+    if (token == null || token.isEmpty) return;
+    _cookie = token;
+    api.setCookie(token);
+  }
 
   void setCookie(String cookie) {
     _cookie = cookie;
     api.setCookie(cookie);
-    print('Cookie set: $cookie');
+    saveAuthToken(cookie);
     notifyListeners();
   }
 
@@ -44,6 +55,8 @@ class AuthProvider with ChangeNotifier {
   void logout() {
     _user = null;
     _cookie = null;
+    api.setCookie('');
+    clearAuthToken();
     notifyListeners();
   }
 

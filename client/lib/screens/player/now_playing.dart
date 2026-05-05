@@ -1,5 +1,5 @@
+﻿import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../../providers/playback_provider.dart';
 
@@ -15,8 +15,7 @@ class NowPlayingScreen extends StatefulWidget {
 }
 
 class _NowPlayingScreenState extends State<NowPlayingScreen> {
-  double _position = 0.2; // fraction
-  
+  double _position = 0.2;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +27,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         elevation: 0,
         iconTheme: theme.iconTheme,
         actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
+          IconButton(onPressed: () {}, icon: Icon(Icons.more_vert, color: theme.iconTheme.color)),
         ],
       ),
       extendBodyBehindAppBar: true,
@@ -36,23 +35,24 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         child: Column(
           children: [
             const SizedBox(height: 8),
-            // Artwork
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 24),
               height: MediaQuery.of(context).size.width - 48,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black.withAlpha(80), blurRadius: 20, offset: const Offset(0, 8))],
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 24, offset: const Offset(0, 12))],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
                 child: widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty
-                  ? CachedNetworkImage(imageUrl: widget.artworkUrl!, fit: BoxFit.cover, placeholder: (_, __) => Container(color: Colors.grey[800]), errorWidget: (_, __, ___) => Container(color: Colors.grey[800], child: const Icon(Icons.music_note, size: 96, color: Colors.white60)))
-                  : Container(color: Colors.grey[800], child: const Icon(Icons.music_note, size: 96, color: Colors.white60)),
+                    ? CachedNetworkImage(imageUrl: widget.artworkUrl!, fit: BoxFit.cover, placeholder: (_, __) => Container(color: theme.colorScheme.surfaceVariant), errorWidget: (_, __, ___) => Container(color: theme.colorScheme.surfaceVariant, child: const Icon(Icons.music_note, size: 96, color: Colors.white60)))
+                    : Container(
+                        color: theme.colorScheme.surfaceVariant,
+                        child: Icon(Icons.music_note, size: 96, color: theme.colorScheme.primary),
+                      ),
               ),
             ),
-            const SizedBox(height: 18),
-            // Title / Artist
+            const SizedBox(height: 20),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
@@ -62,29 +62,33 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   const SizedBox(height: 6),
                   Text(
                     widget.artist ?? 'Unknown Artist',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.textTheme.bodyMedium?.color == null ? null : theme.textTheme.bodyMedium!.color!.withAlpha(200),
-                    ),
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.75)),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 18),
-            // Slider
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
                 children: [
-                  Slider(value: _position, onChanged: (v) => setState(() => _position = v)),
+                  Slider(
+                    activeColor: theme.colorScheme.primary,
+                    inactiveColor: theme.colorScheme.surfaceVariant,
+                    value: _position,
+                    onChanged: (v) => setState(() => _position = v),
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [Text('0:42', style: TextStyle(color: Colors.white54)), Text('-1:13', style: TextStyle(color: Colors.white54))],
+                    children: [
+                      Text('0:42', style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7))),
+                      Text('-1:13', style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7))),
+                    ],
                   ),
                 ],
               ),
             ),
             const Spacer(),
-            // Controls
             Consumer<PlaybackProvider>(builder: (ctx, pb, _) {
               final playing = pb.isPlaying;
               return Padding(
@@ -92,23 +96,22 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    IconButton(onPressed: () {}, icon: const Icon(Icons.shuffle, color: Colors.white70)),
-                    IconButton(onPressed: () {}, icon: const Icon(Icons.skip_previous, color: Colors.white70, size: 36)),
+                    IconButton(onPressed: () {}, icon: Icon(Icons.shuffle, color: theme.iconTheme.color)),
+                    IconButton(onPressed: () {}, icon: Icon(Icons.skip_previous, color: theme.iconTheme.color, size: 36)),
                     GestureDetector(
                       onTap: () => pb.togglePlay(),
                       child: Container(
-                        decoration: BoxDecoration(color: Theme.of(context).primaryColor, shape: BoxShape.circle),
-                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
+                        padding: const EdgeInsets.all(12),
                         child: Icon(playing ? Icons.pause : Icons.play_arrow, color: Colors.white, size: 36),
                       ),
                     ),
-                    IconButton(onPressed: () {}, icon: const Icon(Icons.skip_next, color: Colors.white70, size: 36)),
-                    IconButton(onPressed: () {}, icon: const Icon(Icons.repeat, color: Colors.white70)),
+                    IconButton(onPressed: () {}, icon: Icon(Icons.skip_next, color: theme.iconTheme.color, size: 36)),
+                    IconButton(onPressed: () {}, icon: Icon(Icons.repeat, color: theme.iconTheme.color)),
                   ],
                 ),
               );
             }),
-            const SizedBox(height: 18),
           ],
         ),
       ),

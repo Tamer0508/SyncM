@@ -19,36 +19,48 @@ class TrackCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 14, offset: const Offset(0, 8)),
+        ],
       ),
       child: ListTile(
         onTap: onPlay,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         leading: artworkUrl != null && artworkUrl!.isNotEmpty
             ? ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(16),
                 child: CachedNetworkImage(
                   imageUrl: artworkUrl!,
-                  width: 56,
-                  height: 56,
+                  width: 58,
+                  height: 58,
                   fit: BoxFit.cover,
-                  placeholder: (_, __) => Container(color: Colors.grey[700], width: 56, height: 56),
-                  errorWidget: (_, __, ___) => Container(color: Colors.grey[700], width: 56, height: 56, child: const Icon(Icons.music_note, color: Colors.white)),
+                  placeholder: (_, __) => Container(color: theme.colorScheme.surfaceVariant, width: 58, height: 58),
+                  errorWidget: (_, __, ___) => Container(
+                    color: theme.colorScheme.surfaceVariant,
+                    width: 58,
+                    height: 58,
+                    child: Icon(Icons.music_note, color: theme.colorScheme.primary),
+                  ),
                 ),
               )
-            : Container(width: 56, height: 56, decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.music_note, color: Colors.white)),
-        title: Text(title, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+            : Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(Icons.music_note, color: theme.colorScheme.primary),
+              ),
+        title: Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
         subtitle: Text(
           artist,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.textTheme.bodySmall?.color == null
-                ? null
-                : theme.textTheme.bodySmall!.color!.withAlpha((0.8 * 255).round()),
-          ),
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.75)),
         ),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           IconButton(
-            icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? Theme.of(context).primaryColor : theme.iconTheme.color),
+            icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? theme.colorScheme.primary : theme.iconTheme.color),
             onPressed: onLike,
           ),
           IconButton(icon: Icon(Icons.more_vert, color: theme.iconTheme.color), onPressed: () {}),

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/api_service.dart';
 import '../../providers/auth_provider.dart';
@@ -33,9 +33,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   Future<void> _loadTracks() async {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
-
       final tracks = await api.getPlaylistTracks(widget.playlistId);
-
       if (mounted) {
         setState(() {
           _tracks = tracks;
@@ -44,7 +42,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     } catch (e, stack) {
       print('Error loading tracks: $e');
       print(stack);
-
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -61,67 +58,69 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: theme.colorScheme.background,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
-            expandedHeight: 240,
+            expandedHeight: 260,
             pinned: true,
-            backgroundColor: const Color(0xFF121212),
+            backgroundColor: theme.colorScheme.surface,
+            foregroundColor: theme.colorScheme.onSurface,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(widget.playlistName),
+              title: Text(widget.playlistName, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
               background: widget.imageUrl != null
                   ? Image.network(widget.imageUrl!, fit: BoxFit.cover)
-                  : Container(color: Colors.grey),
+                  : Container(color: theme.colorScheme.primary.withOpacity(0.3)),
             ),
           ),
-
           if (_loading)
-            const SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator()),
+            SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator(color: theme.colorScheme.primary)),
             )
           else if (_error != null)
             SliverFillRemaining(
               child: Center(
-                child: Text(
-                  _error!,
-                  style: const TextStyle(color: Colors.red),
-                ),
+                child: Text(_error!, style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.error)),
               ),
             )
           else if (_tracks.isEmpty)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               child: Center(
-                child: Text(
-                  'Нет треков',
-                  style: TextStyle(color: Colors.white54),
-                ),
+                child: Text('Нет треков', style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.75))),
               ),
             )
           else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) {
-                  final t = _tracks[i];
-
-                  return ListTile(
-                    leading: t['imageUrl'] != null
-                        ? Image.network(t['imageUrl'], width: 50)
-                        : const Icon(Icons.music_note, color: Colors.white),
-
-                    title: Text(
-                      t['name'] ?? '',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-
-                    subtitle: Text(
-                      t['artist'] ?? '',
-                      style: const TextStyle(color: Colors.white54),
-                    ),
-                  );
-                },
-                childCount: _tracks.length,
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    final t = _tracks[i];
+                    return Card(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                      margin: const EdgeInsets.only(bottom: 14),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        leading: t['imageUrl'] != null
+                            ? Image.network(t['imageUrl'], width: 56, height: 56, fit: BoxFit.cover)
+                            : Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceVariant,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Icon(Icons.music_note, color: theme.colorScheme.primary),
+                              ),
+                        title: Text(t['name'] ?? '', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                        subtitle: Text(t['artist'] ?? '', style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.78))),
+                      ),
+                    );
+                  },
+                  childCount: _tracks.length,
+                ),
               ),
             ),
         ],

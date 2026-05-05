@@ -1,14 +1,11 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../utils/web_redirect.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -27,42 +24,24 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Email: ${auth.user?.email ?? ''}'),
             const SizedBox(height: 16),
-            if (auth.isLoggedIn) ...[
+            if (auth.isLoggedIn && (auth.user?.spotifyConnected ?? false)) ...[
+              ListTile(
+                leading: const Icon(Icons.music_note),
+                title: const Text('Spotify подключен'),
+                subtitle: const Text('Ваш аккаунт уже авторизован'),
+                trailing: Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary),
+              ),
+            ] else if (auth.isLoggedIn) ...[
               ElevatedButton(
                 onPressed: () async {
                   final api = ApiService();
-
                   if (kIsWeb) {
-                    final url = '${api.baseUrl}/auth/login?returnTo=${Uri.base.toString()}';
+                    final url = '${api.baseUrl}/auth/login?returnTo=${Uri.encodeComponent(Uri.base.toString())}';
                     redirectTo(url);
-                  } else {
-                    final completer = Completer<Map<String, dynamic>?>();
-                    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8080);
-
-                    final url = Uri.parse('${api.baseUrl}/auth/login?returnTo=http://localhost:8080/callback');
-                    await launchUrl(url, mode: LaunchMode.externalApplication);
-
-                    server.listen((request) async {
-                      final response = request.response;
-                      response.headers.set('Content-Type', 'text/html');
-                      response.write('<html><body><h2>Spotify подключён! Можно закрыть вкладку.</h2></body></html>');
-                      await response.close();
-                      await server.close();
-                      completer.complete({'done': true});
-                    });
-
-                    final result = await completer.future.timeout(
-                      const Duration(minutes: 2),
-                      onTimeout: () {
-                        server.close();
-                        return null;
-                      },
-                    );
-
-                    if (result != null) {
-                      await auth.fetchMe();
-                    }
+                    return;
                   }
+                  final uri = Uri.parse('${api.baseUrl}/auth/login');
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
                 },
                 child: const Text('Connect to Spotify'),
               ),

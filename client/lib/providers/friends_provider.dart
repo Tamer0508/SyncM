@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/friend.dart';
-import 'auth_provider.dart';
 
 class FriendsProvider with ChangeNotifier {
   final ApiService api;

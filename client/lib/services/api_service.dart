@@ -26,12 +26,16 @@ class ApiService {
 
   Map<String, String> get _jsonHeaders => {'Content-Type': 'application/json'};
   Map<String, String> get _headers {
-  final h = Map<String, String>.from(_jsonHeaders);
-  if (_cookie != null && _cookie!.isNotEmpty) {
-    h['Authorization'] = 'Bearer $_cookie';
+    final h = Map<String, String>.from(_jsonHeaders);
+    if (_cookie != null && _cookie!.isNotEmpty) {
+      if (_cookie!.startsWith('connect.sid=')) {
+        h['Cookie'] = _cookie!;
+      } else {
+        h['Authorization'] = 'Bearer $_cookie';
+      }
+    }
+    return h;
   }
-  return h;
-}
 
   dynamic _decode(String body) {
     try {
@@ -135,33 +139,18 @@ class ApiService {
   }
 
   Future<List<dynamic>> getPlaylists() async {
-  final userId = _cookie;
-  final uri = userId != null 
-    ? _uri('/spotify/playlists?userId=$userId')
-    : _uri('/spotify/playlists');
-  final res = await http.get(uri, headers: _jsonHeaders).timeout(timeout);
-  if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
-  throw ApiException('Failed to fetch playlists', res.statusCode);
-}
-
-  Future<List<dynamic>> getPlaylistTracks(String playlistId) async {
-  final userId = _cookie;
-
-  final uri = userId != null
-      ? _uri('/spotify/playlists/$playlistId/tracks?userId=$userId')
-      : _uri('/spotify/playlists/$playlistId/tracks');
-
-  final res = await http.get(uri, headers: _jsonHeaders).timeout(timeout);
-
-  print('TRACKS STATUS: ${res.statusCode}');
-  print('TRACKS BODY: ${res.body}');
-
-  if (res.statusCode == 200) {
-    return _decode(res.body) as List<dynamic>;
+    final res = await http.get(_uri('/spotify/playlists'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+    throw ApiException('Failed to fetch playlists', res.statusCode);
   }
 
-  throw ApiException('Failed to fetch tracks', res.statusCode);
-} 
+  Future<List<dynamic>> getPlaylistTracks(String playlistId) async {
+    final res = await http.get(_uri('/spotify/playlists/$playlistId/tracks'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) {
+      return _decode(res.body) as List<dynamic>;
+    }
+    throw ApiException('Failed to fetch tracks', res.statusCode);
+  }
 
   void setCookie(String cookie) {
     _cookie = cookie;

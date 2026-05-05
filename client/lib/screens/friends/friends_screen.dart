@@ -3,8 +3,21 @@ import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../widgets/friend_tile.dart';
 
-class FriendsScreen extends StatelessWidget {
+class FriendsScreen extends StatefulWidget {
   const FriendsScreen({Key? key}) : super(key: key);
+
+  @override
+  State<FriendsScreen> createState() => _FriendsScreenState();
+}
+
+class _FriendsScreenState extends State<FriendsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<FriendsProvider>(context, listen: false).fetchFriends();
+    });
+  }
 
   Future<bool> _confirmRemove(BuildContext context, String name) async {
     final result = await showDialog<bool>(
@@ -35,7 +48,11 @@ class FriendsScreen extends StatelessWidget {
         title: const Text('Друзья'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications),
+            icon: const Icon(Icons.person_add_alt_1),
+            onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications_none),
             onPressed: () => Navigator.of(context).pushNamed('/friends/requests'),
           ),
           IconButton(
@@ -47,9 +64,29 @@ class FriendsScreen extends StatelessWidget {
         ],
       ),
       body: prov.friends.isEmpty
-          ? const Center(child: Text('Нет друзей. Нажмите обновить.'))
-          : ListView.builder(
+          ? Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('У вас пока нет друзей', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 10),
+                    Text('Нажмите на кнопку ниже, чтобы найти людей и начать общение.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.78))),
+                    const SizedBox(height: 18),
+                    ElevatedButton.icon(
+                      onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+                      icon: const Icon(Icons.person_add),
+                      label: const Text('Найти друзей'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.symmetric(vertical: 12),
               itemCount: prov.friends.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (_, i) {
                 final f = prov.friends[i];
                 return FriendTile(
@@ -86,16 +123,8 @@ class FriendsScreen extends StatelessWidget {
                       return;
                     }
 
-                    // Показать индикатор прогресса
-                    showDialog<void>(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-                    );
-
                     try {
                       final success = await prov.removeFriend(friendshipId);
-                      Navigator.of(context).pop(); // закрыть индикатор
 
                       if (success) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -107,7 +136,6 @@ class FriendsScreen extends StatelessWidget {
                         );
                       }
                     } catch (e) {
-                      Navigator.of(context).pop();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Ошибка удаления: $e')),
                       );

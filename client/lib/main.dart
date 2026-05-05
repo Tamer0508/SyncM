@@ -6,6 +6,7 @@ import 'providers/auth_provider.dart';
 import 'providers/friends_provider.dart';
 import 'providers/session_provider.dart';
 import 'providers/playback_provider.dart';
+import 'providers/theme_provider.dart';
 import 'widgets/player_bar.dart';
 import 'theme.dart';
 import 'screens/login/login_screen.dart';
@@ -42,34 +43,37 @@ class MyApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(create: (_) => PlaybackProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: 'SyncM',
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: ThemeMode.system,
-        home: const _AuthGate(),
-        onGenerateRoute: generateRoute,
-        builder: (context, child) {
-          return Scaffold(
-            body: SafeArea(child: child ?? const SizedBox.shrink()),
-            bottomNavigationBar: Consumer<PlaybackProvider>(
-              builder: (ctx, pb, _) {
-                if (pb.currentTrack == null) return const SizedBox.shrink();
-                final track = pb.currentTrack!;
-                return SizedBox(
-                  height: 76,
-                  child: PlayerBar(
-                    title: track['title'] ?? '',
-                    artist: track['artist'] ?? '',
-                    isPlaying: pb.isPlaying,
-                    onPlayPause: () => pb.togglePlay(),
-                  ),
-                );
-              },
-            ),
-          );
-        },
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) => MaterialApp(
+          title: 'SyncM',
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: themeProvider.themeMode,
+          home: const _AuthGate(),
+          onGenerateRoute: generateRoute,
+          builder: (context, child) {
+            return Scaffold(
+              body: SafeArea(child: child ?? const SizedBox.shrink()),
+              bottomNavigationBar: Consumer<PlaybackProvider>(
+                builder: (ctx, pb, _) {
+                  if (pb.currentTrack == null) return const SizedBox.shrink();
+                  final track = pb.currentTrack!;
+                  return SizedBox(
+                    height: 76,
+                    child: PlayerBar(
+                      title: track['title'] ?? '',
+                      artist: track['artist'] ?? '',
+                      isPlaying: pb.isPlaying,
+                      onPlayPause: () => pb.togglePlay(),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -88,6 +92,7 @@ void initState() {
   super.initState();
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
+    auth.restoreSavedAuth();
 
     if (kIsWeb) {
       final uri = Uri.base;

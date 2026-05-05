@@ -17,28 +17,30 @@ class FriendTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      tileColor: theme.cardColor,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       leading: CircleAvatar(
-        radius: 22,
+        radius: 24,
         backgroundImage: friend.avatarUrl != null && friend.avatarUrl!.isNotEmpty
             ? NetworkImage(friend.avatarUrl!)
             : null,
-        backgroundColor: Colors.grey[700],
+        backgroundColor: theme.colorScheme.surfaceVariant,
         child: friend.avatarUrl == null || friend.avatarUrl!.isEmpty
-            ? const Icon(Icons.person, color: Colors.white)
+            ? Icon(Icons.person, color: theme.colorScheme.primary)
             : null,
       ),
       title: Text(
         friend.name,
-        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
       ),
-      subtitle: const Text(
+      subtitle: Text(
         'Online',
-        style: TextStyle(color: Colors.greenAccent, fontSize: 12),
+        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
       ),
       trailing: PopupMenuButton<String>(
         tooltip: '',
-        elevation: 2,
+        elevation: 4,
         icon: Icon(Icons.more_vert, color: theme.iconTheme.color),
         onSelected: (value) {
           if (value == 'profile') {
