@@ -21,12 +21,10 @@ const refreshAccessToken = async (user) => {
   );
 
   const newAccessToken = response.data.access_token;
-
   await prisma.user.update({
     where: { id: user.id },
     data: { accessToken: newAccessToken },
   });
-
   return newAccessToken;
 };
 
@@ -38,12 +36,24 @@ const getUserId = (req) => {
   return null;
 };
 
+const getSpotifyUser = async (userId) => {
+  let user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    const appUser = await prisma.appUser.findUnique({
+      where: { id: userId },
+      include: { User: true },
+    });
+    user = appUser?.User || null;
+  }
+  return user;
+};
+
 router.get('/playlists', async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
-    let user = await prisma.user.findUnique({ where: { id: userId } });
+    let user = await getSpotifyUser(userId);
     if (!user?.accessToken) return res.status(401).json({ error: 'Нет токена Spotify' });
 
     let accessToken = user.accessToken;
@@ -84,7 +94,7 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
-    let user = await prisma.user.findUnique({ where: { id: userId } });
+    let user = await getSpotifyUser(userId);
     if (!user?.accessToken) return res.status(401).json({ error: 'Нет токена Spotify' });
 
     let accessToken = user.accessToken;

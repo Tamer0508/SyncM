@@ -175,7 +175,6 @@ const getMe = async (req, res) => {
     return res.status(401).json({ error: 'Не авторизован' });
   }
 
-  // Исправлено: User вместо spotifyUser в include
   const appUser = await prisma.appUser.findUnique({
   where: { id: userId },
   include: { User: true }, // было spotifyUser
