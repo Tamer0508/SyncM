@@ -191,7 +191,7 @@ const getMe = async (req, res) => {
 
   const appUser = await prisma.appUser.findUnique({
     where: { id: userId },
-    include: { spotifyUser: true } // в схеме если че связь называется spotifyUser
+    include: {User: true}
   });
   if (appUser) {
     return res.json({
