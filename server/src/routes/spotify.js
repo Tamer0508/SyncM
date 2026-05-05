@@ -208,4 +208,29 @@ router.get('/status', async (req, res) => {
   }
 });
 
+router.post('/disconnect', async (req, res) => {
+  const userId = getUserId(req);
+  
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const user = await getSpotifyUser(userId);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Spotify не подключен' });
+    }
+
+    // Отвязываем Spotify от AppUser
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { appUserId: null }
+    });
+
+    res.json({ message: 'Spotify успешно отключен' });
+  } catch (error) {
+    console.error('Disconnect error:', error);
+    res.status(500).json({ error: 'Ошибка отключения Spotify' });
+  }
+});
+
 module.exports = router;

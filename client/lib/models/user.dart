@@ -4,6 +4,7 @@ class User {
   final String? email;
   final String? avatarUrl;
   final bool spotifyConnected;
+  final String? spotifyId;
 
   User({
     required this.id,
@@ -11,6 +12,7 @@ class User {
     this.email,
     this.avatarUrl,
     this.spotifyConnected = false,
+    this.spotifyId,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -23,6 +25,7 @@ class User {
           (json['spotifyConnected'] == true) ||
           (json['spotifyLinked'] == true) ||
           ((json['spotifyId'] as String?)?.isNotEmpty ?? false),
+      spotifyId: json['spotifyId'] as String?,
     );
   }
 
@@ -32,5 +35,6 @@ class User {
         'email': email,
         'avatarUrl': avatarUrl,
         'spotifyConnected': spotifyConnected,
+        'spotifyId': spotifyId,
       };
 }

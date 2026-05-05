@@ -164,6 +164,16 @@ class ApiService {
     _cookie = cookie;
   }
 
+  Future<bool> disconnectSpotify() async {
+  final res = await http.post(
+    _uri('/spotify/disconnect'),
+    headers: _headers,
+  ).timeout(timeout);
+  
+  if (res.statusCode == 200) return true;
+  throw ApiException('Failed to disconnect Spotify', res.statusCode);
+}
+
   Future<Map<String, dynamic>> googleLogin(String idToken) async {
   final res = await http.post(
     _uri('/auth/google'),
