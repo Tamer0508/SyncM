@@ -24,19 +24,15 @@ const login = async (req, res) => {
     try {
       const decoded = Buffer.from(req.query.state, 'base64').toString('utf8');
       stateObj = JSON.parse(decoded);
-    } catch (e) {
-      // старый формат или просто строка — игнорируем
-    }
+    } catch (e) {}
   }
 
-  // Если пришёл userId, сохраним его в сессии временно
   if (stateObj.userId) {
     req.session.pendingLinkUserId = stateObj.userId;
     await req.session.save();
   }
 
   const returnTo = stateObj.returnTo || req.query.returnTo || '';
-  // Для Spotify передаём returnTo в state (base64 JSON)
   const stateForSpotify = Buffer.from(JSON.stringify({ returnTo })).toString('base64');
 
   const url = `https://accounts.spotify.com/authorize` +
@@ -53,7 +49,6 @@ const callback = async (req, res) => {
   const { code } = req.query;
 
   try {
-    // Получаем токены
     const tokenResponse = await axios.post(
       'https://accounts.spotify.com/api/token',
       new URLSearchParams({
@@ -71,14 +66,12 @@ const callback = async (req, res) => {
 
     const { access_token, refresh_token } = tokenResponse.data;
 
-    // Получаем данные пользователя из Spotify
     const profileResponse = await axios.get('https://api.spotify.com/v1/me', {
       headers: { Authorization: `Bearer ${access_token}` },
     });
 
     const profile = profileResponse.data;
 
-    // Получаем userId, который нужно привязать (из временного поля сессии)
     const pendingLinkUserId = req.session.pendingLinkUserId;
     delete req.session.pendingLinkUserId;
 
@@ -88,18 +81,16 @@ const callback = async (req, res) => {
       if (sessionAppUser) appUserId = sessionAppUser.id;
     }
 
-    // Проверяем, есть ли уже такой Spotify-пользователь
+    // Исправлено: AppUser вместо appUser
     const existingUser = await prisma.user.findUnique({
       where: { spotifyId: profile.id },
-      include: { appUser: true },
+      include: { AppUser: true },
     });
 
-    // Если у существующего пользователя уже есть appUserId, используем его
     if (existingUser?.appUserId) {
       appUserId = existingUser.appUserId;
     }
 
-    // Сохраняем или обновляем пользователя в БД
     const user = await prisma.user.upsert({
       where: { spotifyId: profile.id },
       update: {
@@ -121,7 +112,6 @@ const callback = async (req, res) => {
       },
     });
 
-    // Если appUserId был определён, но по какой-то причине не записался, обновляем
     if (appUserId && !user.appUserId) {
       await prisma.user.update({
         where: { id: user.id },
@@ -129,19 +119,15 @@ const callback = async (req, res) => {
       });
     }
 
-    // Обновляем сессию: userId должен быть appUserId (если есть) или spotify user id
     req.session.userId = appUserId || user.id;
 
-    // Получаем returnTo из state, который вернул Spotify
     let returnTo = null;
     if (req.query.state) {
       try {
         const decoded = Buffer.from(req.query.state, 'base64').toString('utf8');
         const parsed = JSON.parse(decoded);
         returnTo = parsed?.returnTo ?? null;
-      } catch (_) {
-        // игнорируем
-      }
+      } catch (_) {}
     }
 
     await req.session.save();
@@ -189,9 +175,10 @@ const getMe = async (req, res) => {
     return res.status(401).json({ error: 'Не авторизован' });
   }
 
+  // Исправлено: User вместо spotifyUser в include
   const appUser = await prisma.appUser.findUnique({
     where: { id: userId },
-    include: {User: true}
+    include: { spotifyUser: true },
   });
   if (appUser) {
     return res.json({
@@ -203,9 +190,10 @@ const getMe = async (req, res) => {
     });
   }
 
+  // Исправлено: AppUser вместо appUser в include
   const spotifyUser = await prisma.user.findUnique({
     where: { id: userId },
-    include: { appUser: true }
+    include: { AppUser: true },
   });
   if (spotifyUser) {
     return res.json({
