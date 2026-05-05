@@ -177,18 +177,19 @@ const getMe = async (req, res) => {
 
   // Исправлено: User вместо spotifyUser в include
   const appUser = await prisma.appUser.findUnique({
-    where: { id: userId },
-    include: { spotifyUser: true },
+  where: { id: userId },
+  include: { User: true }, // было spotifyUser
+});
+
+if (appUser) {
+  return res.json({
+    id: appUser.id,
+    displayName: appUser.username,
+    email: appUser.email,
+    avatarUrl: appUser.User?.avatarUrl || null, // было spotifyUser
+    spotifyConnected: !!appUser.User, // было spotifyUser
   });
-  if (appUser) {
-    return res.json({
-      id: appUser.id,
-      displayName: appUser.username,
-      email: appUser.email,
-      avatarUrl: appUser.spotifyUser?.avatarUrl || null,
-      spotifyConnected: !!appUser.spotifyUser,
-    });
-  }
+}
 
   // Исправлено: AppUser вместо appUser в include
   const spotifyUser = await prisma.user.findUnique({
