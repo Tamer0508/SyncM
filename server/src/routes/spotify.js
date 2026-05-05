@@ -37,15 +37,13 @@ const getUserId = (req) => {
 };
 
 const getSpotifyUser = async (userId) => {
+  // Сначала проверяем — может userId уже является Spotify User
   let user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
-    const appUser = await prisma.appUser.findUnique({
-      where: { id: userId },
-      include: { User: true },
-    });
-    user = appUser?.User || null;
-  }
-  return user;
+  if (user) return user;
+
+  // Иначе ищем AppUser и через него — связанный Spotify User
+  user = await prisma.user.findUnique({ where: { app_user_id: userId } });
+  return user; // может быть null если Spotify не подключён
 };
 
 router.get('/playlists', async (req, res) => {
@@ -90,6 +88,7 @@ router.get('/playlists', async (req, res) => {
 });
 
 router.get('/playlists/:playlistId/tracks', async (req, res) => {
+  console.log('Fetching tracks for playlistId:', req.params.playlistId);
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
