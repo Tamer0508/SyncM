@@ -72,23 +72,19 @@ const callback = async (req, res) => {
 
     const profile = profileResponse.data;
 
-    // Получаем ID пользователя из сессии или pendingLinkUserId
     const pendingLinkUserId = req.session.pendingLinkUserId;
     delete req.session.pendingLinkUserId;
 
     let appUserId = pendingLinkUserId || req.session?.userId;
-    
-    // Проверяем существующего Spotify пользователя
+
     const existingSpotifyUser = await prisma.user.findUnique({
       where: { spotifyId: profile.id }
     });
 
-    // Если Spotify пользователь уже привязан к AppUser, используем этот appUserId
-    if (existingSpotifyUser?.appUserId) {
-      appUserId = existingSpotifyUser.appUserId;
+    if (existingSpotifyUser?.app_user_id) {
+      appUserId = existingSpotifyUser.app_user_id;
     }
 
-    // Обновляем или создаем Spotify пользователя
     const user = await prisma.user.upsert({
       where: { spotifyId: profile.id },
       update: {
@@ -97,7 +93,7 @@ const callback = async (req, res) => {
         avatarUrl: profile.images?.[0]?.url || null,
         accessToken: access_token,
         refreshToken: refresh_token,
-        ...(appUserId ? { appUserId } : {}), // Привязываем к AppUser если есть
+        ...(appUserId ? { app_user_id: appUserId } : {}),
       },
       create: {
         spotifyId: profile.id,
@@ -106,13 +102,12 @@ const callback = async (req, res) => {
         avatarUrl: profile.images?.[0]?.url || null,
         accessToken: access_token,
         refreshToken: refresh_token,
-        ...(appUserId ? { appUserId } : {}),
+        ...(appUserId ? { app_user_id: appUserId } : {}),
       },
     });
 
-    // Сохраняем в сессии ID AppUser
     req.session.userId = appUserId || user.id;
-    
+
     let returnTo = null;
     if (req.query.state) {
       try {
@@ -123,7 +118,6 @@ const callback = async (req, res) => {
     }
 
     await req.session.save();
-
     const cookie = `connect.sid=${req.sessionID}`;
 
     if (returnTo) {
@@ -132,7 +126,6 @@ const callback = async (req, res) => {
           `${returnTo}?token=${encodeURIComponent(appUserId || user.id)}&cookie=${encodeURIComponent(cookie)}`
         );
       }
-
       const joiner = returnTo.includes('?') ? '&' : '?';
       return res.redirect(
         `${returnTo}${joiner}auth_done=1&token=${encodeURIComponent(appUserId || user.id)}&cookie=${encodeURIComponent(cookie)}`
@@ -164,14 +157,12 @@ const getMe = async (req, res) => {
       userId = auth.replace('Bearer ', '');
     }
   }
-  if (!userId) {
-    return res.status(401).json({ error: 'Не авторизован' });
-  }
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  // Сначала ищем AppUser (основной пользователь через Google)
+  // Ищем AppUser с привязанным Spotify (поле User согласно схеме Prisma)
   const appUser = await prisma.appUser.findUnique({
     where: { id: userId },
-    include: { spotifyUser: true }, // Правильное название связи
+    include: { User: true },
   });
 
   if (appUser) {
@@ -179,23 +170,23 @@ const getMe = async (req, res) => {
       id: appUser.id,
       displayName: appUser.username,
       email: appUser.email,
-      avatarUrl: appUser.spotifyUser?.avatarUrl || null,
-      spotifyConnected: !!appUser.spotifyUser,
-      spotifyId: appUser.spotifyUser?.spotifyId || null,
+      avatarUrl: appUser.User?.avatarUrl || null,
+      spotifyConnected: !!appUser.User,
+      spotifyId: appUser.User?.spotifyId || null,
     });
   }
 
-  // Если не нашли AppUser, ищем Spotify пользователя
+  // Если userId — это ID Spotify User (старая сессия без AppUser)
   const spotifyUser = await prisma.user.findUnique({
     where: { id: userId },
-    include: { appUser: true },
+    include: { AppUser: true },
   });
-  
+
   if (spotifyUser) {
     return res.json({
-      id: spotifyUser.appUserId || spotifyUser.id,
-      displayName: spotifyUser.displayName,
-      email: spotifyUser.email,
+      id: spotifyUser.app_user_id || spotifyUser.id,
+      displayName: spotifyUser.AppUser?.username || spotifyUser.displayName,
+      email: spotifyUser.AppUser?.email || spotifyUser.email,
       avatarUrl: spotifyUser.avatarUrl,
       spotifyConnected: true,
       spotifyId: spotifyUser.spotifyId,
@@ -207,9 +198,7 @@ const getMe = async (req, res) => {
 
 const googleAuth = async (req, res) => {
   const { idToken } = req.body;
-  if (!idToken) {
-    return res.status(400).json({ error: 'Missing idToken' });
-  }
+  if (!idToken) return res.status(400).json({ error: 'Missing idToken' });
 
   try {
     const ticket = await googleClient.verifyIdToken({
@@ -224,11 +213,7 @@ const googleAuth = async (req, res) => {
 
     if (!appUser) {
       appUser = await prisma.appUser.create({
-        data: {
-          username: name,
-          email: email,
-          passwordHash: '',
-        },
+        data: { username: name, email, passwordHash: '' },
       });
     }
 
@@ -238,12 +223,10 @@ const googleAuth = async (req, res) => {
         console.error('Session save error:', err);
         return res.status(500).json({ error: 'Ошибка сохранения сессии' });
       }
-      
-      // Отправляем ID AppUser как основной идентификатор
       res.json({
         message: 'Logged in with Google',
         user: {
-          id: appUser.id, // Это ID AppUser
+          id: appUser.id,
           displayName: appUser.username,
           email: appUser.email,
           avatarUrl: null,

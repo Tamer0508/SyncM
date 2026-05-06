@@ -1,8 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/api_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -21,7 +21,6 @@ class ProfileScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 20),
-              // Аватар и имя
               Center(
                 child: Column(
                   children: [
@@ -38,9 +37,7 @@ class ProfileScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     Text(
                       user?.displayName ?? 'Пользователь',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -53,8 +50,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 40),
-              
-              // Информация о профиле
+
               Card(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 child: Padding(
@@ -62,12 +58,7 @@ class ProfileScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Информация',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                      Text('Информация', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 16),
                       _buildInfoRow(theme, 'Имя', user?.displayName ?? 'Не указано'),
                       const Divider(height: 24),
@@ -77,8 +68,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              
-              // Статус Spotify
+
               Card(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 child: Padding(
@@ -89,21 +79,13 @@ class ProfileScreen extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            user?.spotifyConnected == true 
-                                ? Icons.check_circle 
-                                : Icons.cancel,
-                            color: user?.spotifyConnected == true 
-                                ? Colors.green 
-                                : Colors.grey,
+                            user?.spotifyConnected == true ? Icons.check_circle : Icons.cancel,
+                            color: user?.spotifyConnected == true ? Colors.green : Colors.grey,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            user?.spotifyConnected == true 
-                                ? 'Spotify подключен' 
-                                : 'Spotify не подключен',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                            user?.spotifyConnected == true ? 'Spotify подключен' : 'Spotify не подключен',
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ],
                       ),
@@ -117,7 +99,6 @@ class ProfileScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      // Кнопки Spotify
                       if (user?.spotifyConnected == true)
                         OutlinedButton.icon(
                           onPressed: () => _disconnectSpotify(context),
@@ -126,9 +107,7 @@ class ProfileScreen extends StatelessWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red,
                             side: const BorderSide(color: Colors.red),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
                         )
                       else
@@ -139,9 +118,7 @@ class ProfileScreen extends StatelessWidget {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF1DB954),
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
                         ),
                     ],
@@ -149,8 +126,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              
-              // Кнопка выхода из аккаунта Google
+
               ElevatedButton.icon(
                 onPressed: () => _logout(context),
                 icon: const Icon(Icons.logout),
@@ -159,14 +135,11 @@ class ProfileScreen extends StatelessWidget {
                   backgroundColor: theme.colorScheme.error,
                   foregroundColor: Colors.white,
                   minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
               ),
               const SizedBox(height: 12),
-              
-              // Кнопка выхода из Spotify (если подключен)
+
               if (user?.spotifyConnected == true)
                 OutlinedButton.icon(
                   onPressed: () => _disconnectSpotify(context),
@@ -176,9 +149,7 @@ class ProfileScreen extends StatelessWidget {
                     foregroundColor: theme.colorScheme.error,
                     side: BorderSide(color: theme.colorScheme.error.withOpacity(0.5)),
                     minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                 ),
             ],
@@ -192,19 +163,82 @@ class ProfileScreen extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-          ),
-        ),
-        Text(
-          value,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7))),
+        Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
       ],
+    );
+  }
+
+  String _encodeState(Map<String, String> data) {
+    return base64Url.encode(utf8.encode(jsonEncode(data)));
+  }
+
+  void _connectSpotify(BuildContext context) async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final api = auth.api;
+    final userId = auth.user?.id ?? '';
+
+    final state = _encodeState({'returnTo': 'myapp://callback', 'userId': userId});
+    final authUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}';
+
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (_) => _SpotifyWebView(authUrl: authUrl)),
+    );
+
+    if (result != null) {
+      final cookie = result['cookie'] as String?;
+      final token = result['token'] as String?;
+      if (token != null && token.isNotEmpty) {
+        auth.setCookie(token);
+      } else if (cookie != null && cookie.isNotEmpty) {
+        auth.setCookie(cookie);
+      }
+      await auth.fetchMe();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Spotify успешно подключён!')),
+        );
+      }
+    }
+  }
+
+  void _disconnectSpotify(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Отключить Spotify'),
+        content: const Text('Вы уверены, что хотите отключить Spotify аккаунт?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                final api = Provider.of<AuthProvider>(context, listen: false).api;
+                await api.disconnectSpotify();
+                final auth = Provider.of<AuthProvider>(context, listen: false);
+                await auth.fetchMe();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Spotify отключен')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Ошибка: $e')),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            child: const Text('Отключить'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -226,115 +260,52 @@ class ProfileScreen extends StatelessWidget {
               auth.logout();
               Navigator.of(context).pushReplacementNamed('/');
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
             child: const Text('Выйти'),
           ),
         ],
       ),
     );
   }
+}
 
-    void _connectSpotify(BuildContext context) {
-    final api = Provider.of<AuthProvider>(context, listen: false).api;
-    final authUrl = '${api.baseUrl}/auth/login';
-    
-    // Открываем страницу авторизации Spotify
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          appBar: AppBar(
-            title: const Text('Подключение Spotify'),
-          ),
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.music_note,
-                  size: 64,
-                  color: Color(0xFF1DB954),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Подключите Spotify\nдля доступа к плейлистам',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18),
-                ),
-                const SizedBox(height: 32),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    try {
-                      // Используем url_launcher для открытия в браузере
-                      final uri = Uri.parse(authUrl);
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Ошибка: $e')),
-                        );
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.link),
-                  label: const Text('Авторизоваться в Spotify'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1DB954),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+class _SpotifyWebView extends StatefulWidget {
+  final String authUrl;
+  const _SpotifyWebView({required this.authUrl});
+
+  @override
+  State<_SpotifyWebView> createState() => _SpotifyWebViewState();
+}
+
+class _SpotifyWebViewState extends State<_SpotifyWebView> {
+  late final WebViewController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (request) {
+          if (request.url.startsWith('myapp://callback')) {
+            final uri = Uri.parse(request.url);
+            Navigator.of(context).pop({
+              'cookie': uri.queryParameters['cookie'] ?? '',
+              'token': uri.queryParameters['token'] ?? '',
+            });
+            return NavigationDecision.prevent;
+          }
+          return NavigationDecision.navigate;
+        },
+      ))
+      ..loadRequest(Uri.parse(widget.authUrl));
   }
-  void _disconnectSpotify(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Отключить Spotify'),
-        content: const Text('Вы уверены, что хотите отключить Spotify аккаунт?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              try {
-                final api = Provider.of<AuthProvider>(context, listen: false).api;
-                await api.disconnectSpotify();
-                // Обновляем данные пользователя
-                final auth = Provider.of<AuthProvider>(context, listen: false);
-                await auth.fetchMe();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Spotify отключен')),
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Ошибка: $e')),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('Отключить'),
-          ),
-        ],
-      ),
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Подключение Spotify')),
+      body: WebViewWidget(controller: _controller),
     );
   }
 }

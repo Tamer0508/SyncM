@@ -52,14 +52,10 @@ const getSpotifyUser = async (userId) => {
   // Сначала проверяем — может userId уже является Spotify User
   let user = await prisma.user.findUnique({ where: { id: userId } });
   if (user) return user;
-
-  // Иначе ищем AppUser и через него — связанный Spotify User
-  const appUser = await prisma.appUser.findUnique({
-    where: { id: userId },
-    include: { spotifyUser: true }
-  });
-  
-  return appUser?.spotifyUser || null;
+ 
+  // Иначе ищем через AppUser → User по полю app_user_id
+  user = await prisma.user.findUnique({ where: { app_user_id: userId } });
+  return user;
 };
 
 router.get('/playlists', async (req, res) => {
