@@ -2,10 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
-
-// WebView импортируем только для мобильных
 import 'spotify_webview_screen.dart'
     if (dart.library.html) 'spotify_webview_stub.dart';
 
@@ -189,16 +186,19 @@ class ProfileScreen extends StatelessWidget {
     final api = auth.api;
     final userId = auth.user?.id ?? '';
 
-    final state = _encodeState({'returnTo': 'myapp://callback', 'userId': userId});
-    final authUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}';
-
     if (kIsWeb) {
-      // На вебе — открываем в той же вкладке, бэкенд редиректнет обратно с auth_done=1
-      final webState = _encodeState({'returnTo': Uri.base.origin, 'userId': userId});
+      // Редирект в той же вкладке
+      final webState = _encodeState({
+        'returnTo': Uri.base.origin,
+        'userId': userId,
+      });
       final webUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(webState)}';
-      await launchUrl(Uri.parse(webUrl), mode: LaunchMode.platformDefault);
+      redirectToUrl(webUrl); // из spotify_webview_stub.dart
     } else {
       // На мобильных — WebView
+      final state = _encodeState({'returnTo': 'myapp://callback', 'userId': userId});
+      final authUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}';
+
       final result = await Navigator.of(context).push<Map<String, dynamic>>(
         MaterialPageRoute(builder: (_) => buildSpotifyWebView(authUrl)),
       );

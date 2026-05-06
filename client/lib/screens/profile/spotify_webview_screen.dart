@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
- 
-// Возвращает виджет WebView для мобильных платформ
+
 Widget buildSpotifyWebView(String authUrl) {
   return _SpotifyWebView(authUrl: authUrl);
 }
- 
+
+// Заглушка для мобильных — редирект не используется
+void redirectToUrl(String url) {}
+
 class _SpotifyWebView extends StatefulWidget {
   final String authUrl;
   const _SpotifyWebView({required this.authUrl});
- 
+
   @override
   State<_SpotifyWebView> createState() => _SpotifyWebViewState();
 }
- 
+
 class _SpotifyWebViewState extends State<_SpotifyWebView> {
   late final WebViewController _controller;
- 
+
   @override
   void initState() {
     super.initState();
@@ -37,7 +39,7 @@ class _SpotifyWebViewState extends State<_SpotifyWebView> {
       ))
       ..loadRequest(Uri.parse(widget.authUrl));
   }
- 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
