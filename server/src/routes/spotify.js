@@ -42,6 +42,8 @@ const refreshAccessToken = async (user) => {
 };
 
 const getUserId = (req) => {
+  console.log('Auth header:', req.headers.authorization);
+  console.log('Session userId:', req.session?.userId);
   if (req.session?.userId) return req.session.userId;
   const auth = req.headers.authorization;
   if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');

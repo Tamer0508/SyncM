@@ -145,6 +145,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> getPlaylistTracks(String playlistId) async {
+    print('Cookie value: $_cookie');
     final res = await http.get(_uri('/spotify/playlists/$playlistId/tracks'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) {
       return _decode(res.body) as List<dynamic>;
