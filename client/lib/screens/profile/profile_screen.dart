@@ -1,8 +1,13 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
+
+// WebView импортируем только для мобильных
+import 'spotify_webview_screen.dart'
+    if (dart.library.html) 'spotify_webview_stub.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -58,7 +63,8 @@ class ProfileScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Информация', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      Text('Информация',
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 16),
                       _buildInfoRow(theme, 'Имя', user?.displayName ?? 'Не указано'),
                       const Divider(height: 24),
@@ -84,7 +90,9 @@ class ProfileScreen extends StatelessWidget {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            user?.spotifyConnected == true ? 'Spotify подключен' : 'Spotify не подключен',
+                            user?.spotifyConnected == true
+                                ? 'Spotify подключен'
+                                : 'Spotify не подключен',
                             style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ],
@@ -163,8 +171,11 @@ class ProfileScreen extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7))),
-        Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+        Text(label,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7))),
+        Text(value,
+            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -181,23 +192,31 @@ class ProfileScreen extends StatelessWidget {
     final state = _encodeState({'returnTo': 'myapp://callback', 'userId': userId});
     final authUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}';
 
-    final result = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(builder: (_) => _SpotifyWebView(authUrl: authUrl)),
-    );
+    if (kIsWeb) {
+      // На вебе — открываем в той же вкладке, бэкенд редиректнет обратно с auth_done=1
+      final webState = _encodeState({'returnTo': Uri.base.origin, 'userId': userId});
+      final webUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(webState)}';
+      await launchUrl(Uri.parse(webUrl), mode: LaunchMode.platformDefault);
+    } else {
+      // На мобильных — WebView
+      final result = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute(builder: (_) => buildSpotifyWebView(authUrl)),
+      );
 
-    if (result != null) {
-      final cookie = result['cookie'] as String?;
-      final token = result['token'] as String?;
-      if (token != null && token.isNotEmpty) {
-        auth.setCookie(token);
-      } else if (cookie != null && cookie.isNotEmpty) {
-        auth.setCookie(cookie);
-      }
-      await auth.fetchMe();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Spotify успешно подключён!')),
-        );
+      if (result != null) {
+        final token = result['token'] as String?;
+        final cookie = result['cookie'] as String?;
+        if (token != null && token.isNotEmpty) {
+          auth.setCookie(token);
+        } else if (cookie != null && cookie.isNotEmpty) {
+          auth.setCookie(cookie);
+        }
+        await auth.fetchMe();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Spotify успешно подключён!')),
+          );
+        }
       }
     }
   }
@@ -234,7 +253,8 @@ class ProfileScreen extends StatelessWidget {
                 }
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error),
             child: const Text('Отключить'),
           ),
         ],
@@ -260,52 +280,12 @@ class ProfileScreen extends StatelessWidget {
               auth.logout();
               Navigator.of(context).pushReplacementNamed('/');
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error),
             child: const Text('Выйти'),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _SpotifyWebView extends StatefulWidget {
-  final String authUrl;
-  const _SpotifyWebView({required this.authUrl});
-
-  @override
-  State<_SpotifyWebView> createState() => _SpotifyWebViewState();
-}
-
-class _SpotifyWebViewState extends State<_SpotifyWebView> {
-  late final WebViewController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (request) {
-          if (request.url.startsWith('myapp://callback')) {
-            final uri = Uri.parse(request.url);
-            Navigator.of(context).pop({
-              'cookie': uri.queryParameters['cookie'] ?? '',
-              'token': uri.queryParameters['token'] ?? '',
-            });
-            return NavigationDecision.prevent;
-          }
-          return NavigationDecision.navigate;
-        },
-      ))
-      ..loadRequest(Uri.parse(widget.authUrl));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Подключение Spotify')),
-      body: WebViewWidget(controller: _controller),
     );
   }
 }
