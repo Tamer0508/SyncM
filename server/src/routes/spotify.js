@@ -91,10 +91,15 @@ router.get('/playlists', async (req, res) => {
       });
     } catch (err) {
       if (err.response?.status === 401) {
-        console.log('Token expired, refreshing...');
         accessToken = await refreshAccessToken(user);
-        response = await axios.get('https://api.spotify.com/v1/me/playlists?limit=20', {
-          headers: { Authorization: `Bearer ${accessToken}` },
+        response = await axios.get(
+          `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+      } else if (err.response?.status === 403) {
+        return res.status(403).json({ 
+          error: 'Нет доступа к плейлисту',
+          details: 'Плейлист приватный или требует других прав доступа'
         });
       } else {
         throw err;

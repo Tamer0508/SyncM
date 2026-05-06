@@ -10,14 +10,16 @@ const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
 
 const login = async (req, res) => {
   const scopes = [
-    'user-read-private',
-    'user-read-email',
-    'playlist-read-private',
-    'playlist-read-collaborative',
-    'streaming',
-    'user-modify-playback-state',
-    'user-read-playback-state',
-  ].join('%20');
+  'user-read-private',
+  'user-read-email',
+  'playlist-read-private',
+  'playlist-read-collaborative',
+  'playlist-modify-public',
+  'playlist-modify-private',
+  'streaming',
+  'user-modify-playback-state',
+  'user-read-playback-state',
+].join('%20');
 
   let stateObj = {};
   if (req.query.state) {
