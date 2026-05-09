@@ -47,6 +47,7 @@ const getUserId = (req) => {
   if (req.session?.userId) return req.session.userId;
   const auth = req.headers.authorization;
   if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
+  if (req.query.userId) return req.query.userId; // добавьте эту строку
   return null;
 };
 
