@@ -42,7 +42,7 @@ const login = async (req, res) => {
   `&client_id=${CLIENT_ID}` +
   `&scope=${scopes}` +
   `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-  `&state=${encodeURIComponent(state)}` +
+  `&state=${encodeURIComponent(stateForSpotify)}` +
   `&show_dialog=true`;
 
   res.redirect(url);
