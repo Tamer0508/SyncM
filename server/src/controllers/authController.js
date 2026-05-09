@@ -38,11 +38,12 @@ const login = async (req, res) => {
   const stateForSpotify = Buffer.from(JSON.stringify({ returnTo })).toString('base64');
 
   const url = `https://accounts.spotify.com/authorize` +
-    `?response_type=code` +
-    `&client_id=${CLIENT_ID}` +
-    `&scope=${scopes}` +
-    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-    `&state=${encodeURIComponent(stateForSpotify)}`;
+  `?response_type=code` +
+  `&client_id=${CLIENT_ID}` +
+  `&scope=${scopes}` +
+  `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+  `&state=${encodeURIComponent(state)}` +
+  `&show_dialog=true`;
 
   res.redirect(url);
 };
