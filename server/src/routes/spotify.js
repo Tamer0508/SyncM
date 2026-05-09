@@ -233,7 +233,7 @@ router.post('/disconnect', async (req, res) => {
 });
 
 router.get('/token-info', async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.query.userId || getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
@@ -251,7 +251,6 @@ router.get('/token-info', async (req, res) => {
   } catch (error) {
     res.json({ 
       error: error.response?.data || error.message,
-      tokenPreview: 'unknown'
     });
   }
 });
