@@ -132,36 +132,21 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
 
   try {
     let user = await getSpotifyUser(userId);
-    if (!user) {
-      return res.status(401).json({ 
-        error: 'Spotify не подключен',
-        message: 'Пожалуйста, подключите Spotify аккаунт'
-      });
-    }
-    
-    if (!user?.accessToken) {
-      return res.status(401).json({ error: 'Нет токена Spotify' });
-    }
+    if (!user) return res.status(401).json({ error: 'Spotify не подключен' });
+    if (!user?.accessToken) return res.status(401).json({ error: 'Нет токена Spotify' });
 
-    let accessToken = user.accessToken;
-    let response;
-
+    // Всегда обновляем токен перед запросом треков
+    let accessToken;
     try {
-      response = await axios.get(
-  `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50&market=from_token`,
-  { headers: { Authorization: `Bearer ${accessToken}` } }
-);
-    } catch (err) {
-      if (err.response?.status === 401) {
-        accessToken = await refreshAccessToken(user);
-        response = await axios.get(
-  `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50&market=from_token`,
-  { headers: { Authorization: `Bearer ${accessToken}` } }
-);
-      } else {
-        throw err;
-      }
+      accessToken = await refreshAccessToken(user);
+    } catch (e) {
+      accessToken = user.accessToken;
     }
+
+    const response = await axios.get(
+      `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50&market=from_token`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
 
     const tracks = response.data.items
       .filter(item => item.track)
