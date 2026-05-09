@@ -232,4 +232,28 @@ router.post('/disconnect', async (req, res) => {
   }
 });
 
+router.get('/token-info', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const user = await getSpotifyUser(userId);
+    if (!user) return res.status(401).json({ error: 'Spotify не подключен' });
+
+    const response = await axios.get('https://api.spotify.com/v1/me', {
+      headers: { Authorization: `Bearer ${user.accessToken}` }
+    });
+
+    res.json({
+      spotifyUser: response.data,
+      tokenPreview: user.accessToken.substring(0, 20) + '...',
+    });
+  } catch (error) {
+    res.json({ 
+      error: error.response?.data || error.message,
+      tokenPreview: 'unknown'
+    });
+  }
+});
+
 module.exports = router;
