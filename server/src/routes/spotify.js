@@ -85,26 +85,22 @@ router.get('/playlists', async (req, res) => {
     let response;
 
     try {
-      console.log('Fetching playlists with token');
-      response = await axios.get('https://api.spotify.com/v1/me/playlists?limit=20', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-    } catch (err) {
-      if (err.response?.status === 401) {
-        accessToken = await refreshAccessToken(user);
-        response = await axios.get(
-          `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-      } else if (err.response?.status === 403) {
-        return res.status(403).json({ 
-          error: 'Нет доступа к плейлисту',
-          details: 'Плейлист приватный или требует других прав доступа'
-        });
-      } else {
-        throw err;
-      }
-    }
+  console.log('Fetching playlists with token');
+  response = await axios.get(
+    'https://api.spotify.com/v1/me/playlists?limit=20',
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+} catch (err) {
+  if (err.response?.status === 401) {
+    accessToken = await refreshAccessToken(user);
+    response = await axios.get(
+      'https://api.spotify.com/v1/me/playlists?limit=20',
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+  } else {
+    throw err;
+  }
+}
 
     const playlists = response.data.items.map(p => ({
       id: p.id,
@@ -151,16 +147,16 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
 
     try {
       response = await axios.get(
-        `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
+  `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50&market=from_token`,
+  { headers: { Authorization: `Bearer ${accessToken}` } }
+);
     } catch (err) {
       if (err.response?.status === 401) {
         accessToken = await refreshAccessToken(user);
         response = await axios.get(
-          `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
+  `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50&market=from_token`,
+  { headers: { Authorization: `Bearer ${accessToken}` } }
+);
       } else {
         throw err;
       }
