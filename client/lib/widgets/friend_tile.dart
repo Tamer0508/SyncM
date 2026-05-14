@@ -20,6 +20,7 @@ class FriendTile extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       tileColor: theme.cardColor,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      onTap: onViewProfile,
       leading: CircleAvatar(
         radius: 24,
         backgroundImage: friend.avatarUrl != null && friend.avatarUrl!.isNotEmpty

@@ -1,12 +1,56 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../widgets/playlist_card.dart';
+import '../../widgets/interactive_card.dart';
 import '../../providers/session_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/playback_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../friends/friends_screen.dart';
 import '../profile/profile_screen.dart';
 import '../playlist/playlist_tracks_screen.dart';
+
+class _RailIconWidget extends StatefulWidget {
+  final IconData icon;
+  final bool selected;
+
+  const _RailIconWidget({Key? key, required this.icon, required this.selected}) : super(key: key);
+
+  @override
+  State<_RailIconWidget> createState() => _RailIconWidgetState();
+}
+
+class _RailIconWidgetState extends State<_RailIconWidget> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+
+    final bgColor = widget.selected ? primary : (_hover ? primary.withOpacity(0.12) : Colors.transparent);
+    final iconColor = widget.selected ? Colors.white : theme.iconTheme.color;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 56,
+        height: 56,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: widget.selected
+              ? [BoxShadow(color: primary.withOpacity(0.16), blurRadius: 10, offset: const Offset(0, 4))]
+              : null,
+        ),
+        child: Icon(widget.icon, color: iconColor, size: 22),
+      ),
+    );
+  }
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -17,6 +61,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  bool _railExpanded = false;
   List<dynamic> _playlists = [];
   bool _loadingPlaylists = false;
 
@@ -46,41 +91,39 @@ class _HomeScreenState extends State<HomeScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Card(
+        InteractiveCard(
           margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Добро пожаловать в SyncM', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 12),
-                Text(
-                  'Обновлённый интерфейс для музыки и общения. Найдите друзей, создайте сессии и синхронизируйте любимый звук.',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.78), height: 1.5),
-                ),
-                const SizedBox(height: 18),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.add),
-                      label: const Text('Новая сессия'),
-                      onPressed: () => Navigator.of(context).pushNamed('/session/create'),
-                      style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
-                    ),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.person_search),
-                      label: const Text('Поиск друзей'),
-                      onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
-                      style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          borderRadius: 26,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Добро пожаловать в SyncM', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              Text(
+                'Обновлённый интерфейс для музыки и общения. Найдите друзей, создайте сессии и синхронизируйте любимый звук.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.78), height: 1.5),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Новая сессия'),
+                    onPressed: () => Navigator.of(context).pushNamed('/session/create'),
+                    style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.person_search),
+                    label: const Text('Поиск друзей'),
+                    onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+                    style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 20),
@@ -177,54 +220,281 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildRightPanel() {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Панель', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          InteractiveCard(
+            borderRadius: 16,
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Быстрые действия', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Новая сессия'),
+                  onPressed: () => Navigator.of(context).pushNamed('/session/create'),
+                  style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.person_search),
+                  label: const Text('Найти друзей'),
+                  onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Consumer<PlaybackProvider>(builder: (_, pb, __) {
+            if (pb.currentTrack == null) {
+              return InteractiveCard(
+                borderRadius: 16,
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Сейчас играет', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    Text('Плейлист пуст', style: theme.textTheme.bodyMedium),
+                  ],
+                ),
+              );
+            }
+            final t = pb.currentTrack!;
+            return InteractiveCard(
+              borderRadius: 16,
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Сейчас играет', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Text(t['title'] ?? '', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(t['artist'] ?? '', style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        icon: Icon(pb.isPlaying ? Icons.pause : Icons.play_arrow),
+                        label: Text(pb.isPlaying ? 'Пауза' : 'Воспроизвести'),
+                        onPressed: () => pb.togglePlay(),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: () {},
+                        child: const Icon(Icons.queue_music),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 16),
+          Expanded(child: Container()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopHeader() {
+    final theme = Theme.of(context);
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        border: Border(bottom: BorderSide(color: theme.dividerColor.withOpacity(0.06))),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: Text(
+                ['Главная', 'Друзья', 'Профиль'][_currentIndex],
+                key: ValueKey(_currentIndex),
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              if (_currentIndex == 1)
+                IconButton(
+                  icon: const Icon(Icons.person_search),
+                  onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+                ),
+              if (_currentIndex == 0)
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () => Navigator.of(context).pushNamed('/session/create'),
+                ),
+              IconButton(
+                icon: Icon(themeProvider.isDark ? Icons.dark_mode : Icons.light_mode),
+                onPressed: () => themeProvider.toggleTheme(),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final width = MediaQuery.of(context).size.width;
+    const desktopBreakpoint = 900;
+    final isDesktop = width >= desktopBreakpoint;
+
     final tabs = [
       _buildHomeTab(),
-      const FriendsScreen(),
-      const ProfileScreen(),
+      FriendsScreen(embedded: isDesktop),
+      ProfileScreen(embedded: isDesktop),
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(['Главная', 'Друзья', 'Профиль'][_currentIndex]),
-        actions: [
-          IconButton(
-            icon: Icon(themeProvider.isDark ? Icons.dark_mode : Icons.light_mode),
-            onPressed: () => themeProvider.toggleTheme(),
-          ),
-          if (_currentIndex == 1)
-            IconButton(
-              icon: const Icon(Icons.person_search),
-              onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+      appBar: isDesktop
+          ? null
+          : AppBar(
+              title: Text(['Главная', 'Друзья', 'Профиль'][_currentIndex]),
+              actions: [
+                IconButton(
+                  icon: Icon(themeProvider.isDark ? Icons.dark_mode : Icons.light_mode),
+                  onPressed: () => themeProvider.toggleTheme(),
+                ),
+                if (_currentIndex == 1)
+                  IconButton(
+                    icon: const Icon(Icons.person_search),
+                    onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+                  ),
+                if (_currentIndex == 0)
+                  IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: () => Navigator.of(context).pushNamed('/session/create'),
+                  ),
+              ],
             ),
-          if (_currentIndex == 0)
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: () => Navigator.of(context).pushNamed('/session/create'),
+      body: isDesktop
+          ? Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  width: _railExpanded ? 220 : 92,
+                  child: MouseRegion(
+                    onEnter: (_) => setState(() => _railExpanded = true),
+                    onExit: (_) => setState(() => _railExpanded = false),
+                    child: NavigationRail(
+                      labelType: _railExpanded 
+                        ? NavigationRailLabelType.all
+                        : NavigationRailLabelType.none,
+                      // extended: _railExpanded,
+                      leading: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 18.0),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text('SyncM', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                            ),
+                            const SizedBox(height: 14),
+                          ],
+                        ),
+                      ),
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            icon: Icon(themeProvider.isDark ? Icons.dark_mode : Icons.light_mode),
+                            onPressed: () => themeProvider.toggleTheme(),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                      selectedIndex: _currentIndex,
+                      onDestinationSelected: (i) => setState(() => _currentIndex = i),
+                      // labelType: NavigationRailLabelType.all,
+                      destinations: [
+                        NavigationRailDestination(
+                          icon: _RailIconWidget(icon: Icons.home, selected: _currentIndex == 0),
+                          selectedIcon: _RailIconWidget(icon: Icons.home, selected: _currentIndex == 0),
+                          label: const Text('Главная'),
+                        ),
+                        NavigationRailDestination(
+                          icon: _RailIconWidget(icon: Icons.people, selected: _currentIndex == 1),
+                          selectedIcon: _RailIconWidget(icon: Icons.people, selected: _currentIndex == 1),
+                          label: const Text('Друзья'),
+                        ),
+                        NavigationRailDestination(
+                          icon: _RailIconWidget(icon: Icons.person, selected: _currentIndex == 2),
+                          selectedIcon: _RailIconWidget(icon: Icons.person, selected: _currentIndex == 2),
+                          label: const Text('Профиль'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: Column(
+                    children: [
+                      _buildDesktopHeader(),
+                      Expanded(
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1100),
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 280),
+                              child: tabs[_currentIndex],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: _buildRightPanel(),
+                ),
+              ],
+            )
+          : tabs[_currentIndex],
+      bottomNavigationBar: isDesktop
+          ? null
+          : BottomNavigationBar(
+              currentIndex: _currentIndex,
+              onTap: (i) => setState(() => _currentIndex = i),
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home),
+                  label: 'Главная',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.people),
+                  label: 'Друзья',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.person),
+                  label: 'Профиль',
+                ),
+              ],
             ),
-        ],
-      ),
-      body: tabs[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Главная',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: 'Друзья',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Профиль',
-          ),
-        ],
-      ),
     );
   }
 }

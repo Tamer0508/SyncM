@@ -66,10 +66,10 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       if (!mounted) return;
       
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Заявка отправлена!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: const Text('Заявка отправлена!'),
+          backgroundColor: Theme.of(context).colorScheme.secondary,
+          duration: const Duration(seconds: 2),
         )
       );
       
@@ -90,7 +90,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(errorMessage),
-          backgroundColor: Colors.red,
+          backgroundColor: Theme.of(context).colorScheme.error,
         )
       );
     }
@@ -226,7 +226,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                                                 borderRadius: BorderRadius.circular(18)
                                               ),
                                               backgroundColor: isPending 
-                                                  ? Colors.grey 
+                                                  ? theme.disabledColor 
                                                   : theme.colorScheme.primary,
                                             ),
                                             child: Text(
@@ -234,8 +234,8 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                                               style: TextStyle(
                                                 fontSize: 13,
                                                 color: isPending 
-                                                    ? Colors.white70 
-                                                    : Colors.white,
+                                                    ? theme.colorScheme.onSurface.withOpacity(0.7)
+                                                    : theme.colorScheme.onPrimary,
                                               ),
                                             ),
                                           ),

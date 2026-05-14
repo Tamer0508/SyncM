@@ -3,11 +3,13 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../theme.dart';
 import 'spotify_webview_screen.dart'
     if (dart.library.html) 'spotify_webview_stub.dart';
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({Key? key}) : super(key: key);
+  final bool embedded;
+  const ProfileScreen({Key? key, this.embedded = false}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -15,153 +17,155 @@ class ProfileScreen extends StatelessWidget {
     final user = auth.user;
     final theme = Theme.of(context);
 
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 20),
-              Center(
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
-                      backgroundImage: user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty
-                          ? NetworkImage(user.avatarUrl!)
-                          : null,
-                      child: user?.avatarUrl == null || user!.avatarUrl!.isEmpty
-                          ? Icon(Icons.person, size: 50, color: theme.colorScheme.primary)
-                          : null,
+    final content = SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 20),
+            Center(
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+                    backgroundImage: user?.avatarUrl != null && user!.avatarUrl!.isNotEmpty
+                        ? NetworkImage(user.avatarUrl!)
+                        : null,
+                    child: user?.avatarUrl == null || user!.avatarUrl!.isEmpty
+                        ? Icon(Icons.person, size: 50, color: theme.colorScheme.primary)
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    user?.displayName ?? 'Пользователь',
+                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    user?.email ?? '',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
                     ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Информация',
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 16),
-                    Text(
-                      user?.displayName ?? 'Пользователь',
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                    _buildInfoRow(theme, 'Имя', user?.displayName ?? 'Не указано'),
+                    const Divider(height: 24),
+                    _buildInfoRow(theme, 'Email', user?.email ?? 'Не указан'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          user?.spotifyConnected == true ? Icons.check_circle : Icons.cancel,
+                          color: user?.spotifyConnected == true ? AppTheme.spotifyGreen : theme.iconTheme.color,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          user?.spotifyConnected == true
+                              ? 'Spotify подключен'
+                              : 'Spotify не подключен',
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      user?.email ?? '',
+                      user?.spotifyConnected == true
+                          ? 'Ваш аккаунт уже авторизован'
+                          : 'Подключите Spotify для доступа к плейлистам',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    if (user?.spotifyConnected == true)
+                      OutlinedButton.icon(
+                        onPressed: () => _disconnectSpotify(context),
+                        icon: const Icon(Icons.link_off),
+                        label: const Text('Отключить Spotify'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.error,
+                          side: BorderSide(color: theme.colorScheme.error),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        onPressed: () => _connectSpotify(context),
+                        icon: const Icon(Icons.link),
+                        label: const Text('Подключить Spotify'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.spotifyGreen,
+                          foregroundColor: theme.colorScheme.onPrimary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
                   ],
                 ),
               ),
-              const SizedBox(height: 40),
+            ),
+            const SizedBox(height: 20),
 
-              Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Информация',
-                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 16),
-                      _buildInfoRow(theme, 'Имя', user?.displayName ?? 'Не указано'),
-                      const Divider(height: 24),
-                      _buildInfoRow(theme, 'Email', user?.email ?? 'Не указан'),
-                    ],
-                  ),
-                ),
+            ElevatedButton.icon(
+              onPressed: () => _logout(context),
+              icon: const Icon(Icons.logout),
+              label: const Text('Выйти из аккаунта'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.error,
+                foregroundColor: theme.colorScheme.onPrimary,
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              const SizedBox(height: 20),
+            ),
+            const SizedBox(height: 12),
 
-              Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            user?.spotifyConnected == true ? Icons.check_circle : Icons.cancel,
-                            color: user?.spotifyConnected == true ? Colors.green : Colors.grey,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            user?.spotifyConnected == true
-                                ? 'Spotify подключен'
-                                : 'Spotify не подключен',
-                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        user?.spotifyConnected == true
-                            ? 'Ваш аккаунт уже авторизован'
-                            : 'Подключите Spotify для доступа к плейлистам',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      if (user?.spotifyConnected == true)
-                        OutlinedButton.icon(
-                          onPressed: () => _disconnectSpotify(context),
-                          icon: const Icon(Icons.link_off),
-                          label: const Text('Отключить Spotify'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                        )
-                      else
-                        ElevatedButton.icon(
-                          onPressed: () => _connectSpotify(context),
-                          icon: const Icon(Icons.link),
-                          label: const Text('Подключить Spotify'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1DB954),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              ElevatedButton.icon(
-                onPressed: () => _logout(context),
-                icon: const Icon(Icons.logout),
-                label: const Text('Выйти из аккаунта'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.error,
-                  foregroundColor: Colors.white,
+            if (user?.spotifyConnected == true)
+              OutlinedButton.icon(
+                onPressed: () => _disconnectSpotify(context),
+                icon: const Icon(Icons.music_off),
+                label: const Text('Выйти из Spotify'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: theme.colorScheme.error,
+                  side: BorderSide(color: theme.colorScheme.error.withOpacity(0.5)),
                   minimumSize: const Size.fromHeight(52),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
               ),
-              const SizedBox(height: 12),
-
-              if (user?.spotifyConnected == true)
-                OutlinedButton.icon(
-                  onPressed: () => _disconnectSpotify(context),
-                  icon: const Icon(Icons.music_off),
-                  label: const Text('Выйти из Spotify'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: theme.colorScheme.error,
-                    side: BorderSide(color: theme.colorScheme.error.withOpacity(0.5)),
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );
+
+    if (embedded) return content;
+
+    return Scaffold(body: content);
   }
 
   Widget _buildInfoRow(ThemeData theme, String label, String value) {

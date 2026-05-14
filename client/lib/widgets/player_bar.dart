@@ -13,20 +13,32 @@ class PlayerBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeInOut,
       height: 80,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: theme.cardColor,
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, -4)),
+          BoxShadow(color: theme.shadowColor.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, -4)),
         ],
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Row(
         children: [
           if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
-            ClipRRect(borderRadius: BorderRadius.circular(16), child: CachedNetworkImage(imageUrl: thumbnailUrl!, width: 52, height: 52, fit: BoxFit.cover))
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onPlayPause,
+                  borderRadius: BorderRadius.circular(16),
+                  child: CachedNetworkImage(imageUrl: thumbnailUrl!, width: 52, height: 52, fit: BoxFit.cover),
+                ),
+              ),
+            )
           else
             Container(
               width: 52,
@@ -51,7 +63,12 @@ class PlayerBar extends StatelessWidget {
           ),
           IconButton(
             onPressed: onPlayPause,
-            icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: theme.colorScheme.primary, size: 38),
+            icon: AnimatedScale(
+              scale: isPlaying ? 1.08 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: theme.colorScheme.primary, size: 38),
+            ),
           )
         ],
       ),

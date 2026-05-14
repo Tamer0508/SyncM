@@ -11,6 +11,7 @@ class GoogleSignInButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     if (kIsWeb) {
       // На вебе рендерим специальную кнопку Google
       return web.renderButton();
@@ -19,7 +20,7 @@ class GoogleSignInButton extends StatelessWidget {
       return ElevatedButton(
         style: ElevatedButton.styleFrom(
           minimumSize: const Size.fromHeight(48),
-          backgroundColor: Colors.blue,
+          backgroundColor: theme.colorScheme.primary,
         ),
         onPressed: _handleSignIn,
         child: const Text('Войти через Google'),

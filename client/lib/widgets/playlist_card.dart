@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'interactive_card.dart';
 
 class PlaylistCard extends StatelessWidget {
   final String name;
@@ -16,11 +17,13 @@ class PlaylistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InteractiveCard(
       onTap: onTap,
-      child: Container(
+      borderRadius: 12,
+      margin: const EdgeInsets.only(right: 8),
+      padding: EdgeInsets.zero,
+      child: SizedBox(
         width: 110,
-        margin: const EdgeInsets.only(right: 8),
         child: Column(
           children: [
             ClipRRect(
@@ -30,8 +33,8 @@ class PlaylistCard extends StatelessWidget {
                   : Container(
                       width: 100,
                       height: 100,
-                      color: Colors.grey[800],
-                      child: const Icon(Icons.music_note, color: Colors.white),
+                      color: Theme.of(context).colorScheme.surface,
+                      child: Icon(Icons.music_note, color: Theme.of(context).colorScheme.onSurface),
                     ),
             ),
             const SizedBox(height: 4),

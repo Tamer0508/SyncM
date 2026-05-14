@@ -40,12 +40,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               height: MediaQuery.of(context).size.width - 48,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 24, offset: const Offset(0, 12))],
+                boxShadow: [BoxShadow(color: theme.shadowColor.withOpacity(0.15), blurRadius: 24, offset: const Offset(0, 12))],
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty
-                    ? CachedNetworkImage(imageUrl: widget.artworkUrl!, fit: BoxFit.cover, placeholder: (_, __) => Container(color: theme.colorScheme.surfaceVariant), errorWidget: (_, __, ___) => Container(color: theme.colorScheme.surfaceVariant, child: const Icon(Icons.music_note, size: 96, color: Colors.white60)))
+                    ? CachedNetworkImage(imageUrl: widget.artworkUrl!, fit: BoxFit.cover, placeholder: (_, __) => Container(color: theme.colorScheme.surfaceVariant), errorWidget: (_, __, ___) => Container(color: theme.colorScheme.surfaceVariant, child: Icon(Icons.music_note, size: 96, color: theme.colorScheme.onSurface.withOpacity(0.6))))
                     : Container(
                         color: theme.colorScheme.surfaceVariant,
                         child: Icon(Icons.music_note, size: 96, color: theme.colorScheme.primary),
@@ -103,7 +103,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       child: Container(
                         decoration: BoxDecoration(color: theme.colorScheme.primary, shape: BoxShape.circle),
                         padding: const EdgeInsets.all(12),
-                        child: Icon(playing ? Icons.pause : Icons.play_arrow, color: Colors.white, size: 36),
+                        child: AnimatedScale(
+                          scale: playing ? 1.08 : 1.0,
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeInOut,
+                          child: Icon(playing ? Icons.pause : Icons.play_arrow, color: theme.colorScheme.onPrimary, size: 36),
+                        ),
                       ),
                     ),
                     IconButton(onPressed: () {}, icon: Icon(Icons.skip_next, color: theme.iconTheme.color, size: 36)),

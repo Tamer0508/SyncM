@@ -21,7 +21,7 @@ class TrackCard extends StatelessWidget {
         color: theme.cardColor,
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 14, offset: const Offset(0, 8)),
+          BoxShadow(color: theme.shadowColor.withOpacity(0.04), blurRadius: 14, offset: const Offset(0, 8)),
         ],
       ),
       child: ListTile(
@@ -59,9 +59,14 @@ class TrackCard extends StatelessWidget {
           style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.75)),
         ),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(
-            icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? theme.colorScheme.primary : theme.iconTheme.color),
-            onPressed: onLike,
+          GestureDetector(
+            onTap: onLike,
+            child: AnimatedScale(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutBack,
+              scale: isLiked ? 1.12 : 1.0,
+              child: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? theme.colorScheme.primary : theme.iconTheme.color),
+            ),
           ),
           IconButton(icon: Icon(Icons.more_vert, color: theme.iconTheme.color), onPressed: () {}),
         ]),
