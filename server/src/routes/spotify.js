@@ -124,6 +124,36 @@ router.get('/playlists', async (req, res) => {
   }
 });
 
+router.get('/debug-tracks/:playlistId', async (req, res) => {
+  const userId = req.query.userId || getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    let user = await getSpotifyUser(userId);
+    if (!user) return res.status(401).json({ error: 'Spotify не подключен' });
+
+    // Обновляем токен
+    const accessToken = await refreshAccessToken(user);
+
+    // Пробуем получить треки
+    const response = await axios.get(
+      `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=5`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    res.json({ 
+      success: true, 
+      tracksCount: response.data.items.length,
+      firstTrack: response.data.items[0]?.track?.name 
+    });
+  } catch (error) {
+    res.json({ 
+      error: error.response?.data || error.message,
+      status: error.response?.status
+    });
+  }
+});
+
 router.get('/playlists/:playlistId/tracks', async (req, res) => {
   console.log('Fetching tracks for playlistId:', req.params.playlistId);
   const userId = getUserId(req);
