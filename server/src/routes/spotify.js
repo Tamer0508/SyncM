@@ -51,7 +51,7 @@ const getUserId = (req) => {
 const getSpotifyUser = async (userId) => {
   let user = await prisma.user.findUnique({ where: { id: userId } });
   if (user) return user;
-  user = await prisma.user.findUnique({ where: { appUserId: userId } });
+  user = await prisma.user.findUnique({ where: { app_user_id: userId } });
   return user;
 };
 
