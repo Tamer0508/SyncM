@@ -22,18 +22,17 @@ const refreshAccessToken = async (user) => {
     );
 
     const newAccessToken = response.data.access_token;
-    
-    // Сохраняем новый токен и refresh_token если он обновился
+
     await prisma.user.update({
       where: { id: user.id },
-      data: { 
+      data: {
         accessToken: newAccessToken,
-        ...(response.data.refresh_token && { 
-          refreshToken: response.data.refresh_token 
-        })
+        ...(response.data.refresh_token && {
+          refreshToken: response.data.refresh_token,
+        }),
       },
     });
-    
+
     return newAccessToken;
   } catch (error) {
     console.error('Refresh token error:', error.response?.data || error.message);
@@ -42,21 +41,16 @@ const refreshAccessToken = async (user) => {
 };
 
 const getUserId = (req) => {
-  console.log('Auth header:', req.headers.authorization);
-  console.log('Session userId:', req.session?.userId);
   if (req.session?.userId) return req.session.userId;
   const auth = req.headers.authorization;
   if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
-  if (req.query.userId) return req.query.userId; // добавьте эту строку
+  if (req.query.userId) return req.query.userId;
   return null;
 };
 
 const getSpotifyUser = async (userId) => {
-  // Сначала проверяем — может userId уже является Spotify User
   let user = await prisma.user.findUnique({ where: { id: userId } });
   if (user) return user;
- 
-  // Иначе ищем через AppUser → User по полю app_user_id
   user = await prisma.user.findUnique({ where: { app_user_id: userId } });
   return user;
 };
@@ -64,20 +58,20 @@ const getSpotifyUser = async (userId) => {
 router.get('/playlists', async (req, res) => {
   const userId = getUserId(req);
   console.log('Playlists request - userId:', userId);
-  
+
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
     let user = await getSpotifyUser(userId);
     console.log('Spotify user found:', !!user);
-    
+
     if (!user) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: 'Spotify не подключен',
-        message: 'Пожалуйста, подключите Spotify аккаунт в настройках профиля'
+        message: 'Пожалуйста, подключите Spotify аккаунт в настройках профиля',
       });
     }
-    
+
     if (!user.accessToken) {
       return res.status(401).json({ error: 'Нет токена Spotify' });
     }
@@ -86,70 +80,38 @@ router.get('/playlists', async (req, res) => {
     let response;
 
     try {
-  console.log('Fetching playlists with token');
-  response = await axios.get(
-    'https://api.spotify.com/v1/me/playlists?limit=20',
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-} catch (err) {
-  if (err.response?.status === 401) {
-    accessToken = await refreshAccessToken(user);
-    response = await axios.get(
-      'https://api.spotify.com/v1/me/playlists?limit=20',
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-  } else {
-    throw err;
-  }
-}
+      console.log('Fetching playlists with token');
+      response = await axios.get('https://api.spotify.com/v1/me/playlists?limit=20', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    } catch (err) {
+      if (err.response?.status === 401) {
+        accessToken = await refreshAccessToken(user);
+        response = await axios.get('https://api.spotify.com/v1/me/playlists?limit=20', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } else {
+        throw err;
+      }
+    }
 
-    const playlists = response.data.items.map(p => ({
+    const playlists = response.data.items.map((p) => ({
       id: p.id,
       name: p.name,
       description: p.description,
       imageUrl: p.images?.[0]?.url || null,
       trackCount: p.tracks?.total ?? 0,
       owner: p.owner?.display_name,
-      isPublic: p.public
+      isPublic: p.public,
     }));
 
     console.log(`Found ${playlists.length} playlists`);
     res.json(playlists);
   } catch (error) {
     console.error('Spotify playlists error:', error.response?.data || error.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Ошибка получения плейлистов',
-      details: error.response?.data || error.message 
-    });
-  }
-});
-
-router.get('/debug-tracks/:playlistId', async (req, res) => {
-  const userId = req.query.userId || getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-
-  try {
-    let user = await getSpotifyUser(userId);
-    if (!user) return res.status(401).json({ error: 'Spotify не подключен' });
-
-    // Обновляем токен
-    const accessToken = await refreshAccessToken(user);
-
-    // Пробуем получить треки
-    const response = await axios.get(
-      `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=5`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-
-    res.json({ 
-      success: true, 
-      tracksCount: response.data.items.length,
-      firstTrack: response.data.items[0]?.track?.name 
-    });
-  } catch (error) {
-    res.json({ 
-      error: error.response?.data || error.message,
-      status: error.response?.status
+      details: error.response?.data || error.message,
     });
   }
 });
@@ -157,15 +119,14 @@ router.get('/debug-tracks/:playlistId', async (req, res) => {
 router.get('/playlists/:playlistId/tracks', async (req, res) => {
   console.log('Fetching tracks for playlistId:', req.params.playlistId);
   const userId = getUserId(req);
-  
+
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
     let user = await getSpotifyUser(userId);
     if (!user) return res.status(401).json({ error: 'Spotify не подключен' });
-    if (!user?.accessToken) return res.status(401).json({ error: 'Нет токена Spotify' });
+    if (!user.accessToken) return res.status(401).json({ error: 'Нет токена Spotify' });
 
-    // Всегда обновляем токен перед запросом треков
     let accessToken;
     try {
       accessToken = await refreshAccessToken(user);
@@ -173,49 +134,59 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
       accessToken = user.accessToken;
     }
 
-    const response = await axios.get(
-      `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50&market=from_token`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    let response;
+    try {
+      response = await axios.get(
+        `https://api.spotify.com/v1/playlists/${req.params.playlistId}/items?limit=50&market=from_token`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+    } catch (err) {
+      if (err.response?.status === 401) {
+        accessToken = await refreshAccessToken(user);
+        response = await axios.get(
+          `https://api.spotify.com/v1/playlists/${req.params.playlistId}/items?limit=50&market=from_token`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+      } else {
+        throw err;
+      }
+    }
 
     const tracks = response.data.items
-      .filter(item => item.track)
-      .map(item => ({
+      .filter((item) => item.track)
+      .map((item) => ({
         id: item.track.id,
         name: item.track.name,
-        artist: item.track.artists.map(a => a.name).join(', '),
+        artist: item.track.artists.map((a) => a.name).join(', '),
         imageUrl: item.track.album.images?.[0]?.url || null,
         uri: item.track.uri,
         durationMs: item.track.duration_ms,
         album: item.track.album.name,
-        previewUrl: item.track.preview_url
+        previewUrl: item.track.preview_url,
       }));
 
     console.log(`Found ${tracks.length} tracks`);
     res.json(tracks);
   } catch (error) {
     console.error('Tracks error:', error.response?.data || error.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Ошибка получения треков',
-      details: error.response?.data || error.message 
+      details: error.response?.data || error.message,
     });
   }
 });
 
-// Добавим эндпоинт для проверки статуса подключения Spotify
 router.get('/status', async (req, res) => {
   const userId = getUserId(req);
-  
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
     const user = await getSpotifyUser(userId);
-    
     res.json({
       connected: !!user,
       spotifyId: user?.spotifyId || null,
       displayName: user?.displayName || null,
-      avatarUrl: user?.avatarUrl || null
+      avatarUrl: user?.avatarUrl || null,
     });
   } catch (error) {
     console.error('Status error:', error);
@@ -225,20 +196,15 @@ router.get('/status', async (req, res) => {
 
 router.post('/disconnect', async (req, res) => {
   const userId = getUserId(req);
-  
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
     const user = await getSpotifyUser(userId);
-    
-    if (!user) {
-      return res.status(404).json({ error: 'Spotify не подключен' });
-    }
+    if (!user) return res.status(404).json({ error: 'Spotify не подключен' });
 
-    // Отвязываем Spotify от AppUser
     await prisma.user.update({
       where: { id: user.id },
-      data: { AppUser: { disconnect: true } }
+      data: { AppUser: { disconnect: true } },
     });
 
     res.json({ message: 'Spotify успешно отключен' });
@@ -257,19 +223,17 @@ router.get('/token-info', async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Spotify не подключен' });
 
     let accessToken = user.accessToken;
-    
-    // Пробуем текущий токен
+
     try {
       const response = await axios.get('https://api.spotify.com/v1/me', {
-        headers: { Authorization: `Bearer ${accessToken}` }
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       return res.json({ spotifyUser: response.data, tokenPreview: accessToken.substring(0, 20) + '...' });
     } catch (err) {
       if (err.response?.status === 401) {
-        // Обновляем токен
         accessToken = await refreshAccessToken(user);
         const response = await axios.get('https://api.spotify.com/v1/me', {
-          headers: { Authorization: `Bearer ${accessToken}` }
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
         return res.json({ spotifyUser: response.data, tokenPreview: accessToken.substring(0, 20) + '...', refreshed: true });
       }
