@@ -51,8 +51,13 @@ const getUserId = (req) => {
 const getSpotifyUser = async (userId) => {
   let user = await prisma.user.findUnique({ where: { id: userId } });
   if (user) return user;
-  user = await prisma.user.findUnique({ where: { app_user_id: userId } });
+  user = await prisma.user.findUnique({ where: { appUserId: userId } });
   return user;
+};
+
+const extractTrack = (item) => {
+  // Новый формат API — item.item, старый — item.track
+  return item.item || item.track || null;
 };
 
 router.get('/playlists', async (req, res) => {
@@ -141,7 +146,6 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       console.log('Spotify response items count:', response.data.items?.length);
-      console.log('First item:', JSON.stringify(response.data.items?.[0], null, 2));
     } catch (err) {
       if (err.response?.status === 401) {
         accessToken = await refreshAccessToken(user);
@@ -155,16 +159,17 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
     }
 
     const tracks = response.data.items
-      .filter((item) => item.track)
-      .map((item) => ({
-        id: item.track.id,
-        name: item.track.name,
-        artist: item.track.artists.map((a) => a.name).join(', '),
-        imageUrl: item.track.album.images?.[0]?.url || null,
-        uri: item.track.uri,
-        durationMs: item.track.duration_ms,
-        album: item.track.album.name,
-        previewUrl: item.track.preview_url,
+      .map((item) => extractTrack(item))
+      .filter((track) => track && track.type === 'track')
+      .map((track) => ({
+        id: track.id,
+        name: track.name,
+        artist: track.artists.map((a) => a.name).join(', '),
+        imageUrl: track.album.images?.[0]?.url || null,
+        uri: track.uri,
+        durationMs: track.duration_ms,
+        album: track.album.name,
+        previewUrl: track.preview_url,
       }));
 
     console.log(`Found ${tracks.length} tracks`);
@@ -206,7 +211,7 @@ router.post('/disconnect', async (req, res) => {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { AppUser: { disconnect: true } },
+      data: { appUserId: null },
     });
 
     res.json({ message: 'Spotify успешно отключен' });
@@ -230,14 +235,21 @@ router.get('/token-info', async (req, res) => {
       const response = await axios.get('https://api.spotify.com/v1/me', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      return res.json({ spotifyUser: response.data, tokenPreview: accessToken.substring(0, 20) + '...' });
+      return res.json({
+        spotifyUser: response.data,
+        tokenPreview: accessToken.substring(0, 20) + '...',
+      });
     } catch (err) {
       if (err.response?.status === 401) {
         accessToken = await refreshAccessToken(user);
         const response = await axios.get('https://api.spotify.com/v1/me', {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-        return res.json({ spotifyUser: response.data, tokenPreview: accessToken.substring(0, 20) + '...', refreshed: true });
+        return res.json({
+          spotifyUser: response.data,
+          tokenPreview: accessToken.substring(0, 20) + '...',
+          refreshed: true,
+        });
       }
       throw err;
     }
