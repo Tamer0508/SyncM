@@ -140,6 +140,8 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
         `https://api.spotify.com/v1/playlists/${req.params.playlistId}/items?limit=50&market=from_token`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
+      console.log('Spotify response items count:', response.data.items?.length);
+      console.log('First item:', JSON.stringify(response.data.items?.[0], null, 2));
     } catch (err) {
       if (err.response?.status === 401) {
         accessToken = await refreshAccessToken(user);
