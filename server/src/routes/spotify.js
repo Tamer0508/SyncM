@@ -211,7 +211,7 @@ router.post('/disconnect', async (req, res) => {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { appUserId: null },
+      data: { app_user_id: null },
     });
 
     res.json({ message: 'Spotify успешно отключен' });
