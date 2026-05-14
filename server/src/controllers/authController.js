@@ -16,6 +16,7 @@ const login = async (req, res) => {
   'playlist-read-collaborative',
   'playlist-modify-public',
   'playlist-modify-private',
+  'user-library-read',
   'streaming',
   'user-modify-playback-state',
   'user-read-playback-state',
