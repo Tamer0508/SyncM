@@ -159,18 +159,18 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
     }
 
     const tracks = response.data.items
-      .map((item) => extractTrack(item))
-      .filter((track) => track && track.type === 'track')
-      .map((track) => ({
-        id: track.id,
-        name: track.name,
-        artist: track.artists.map((a) => a.name).join(', '),
-        imageUrl: track.album.images?.[0]?.url || null,
-        uri: track.uri,
-        durationMs: track.duration_ms,
-        album: track.album.name,
-        previewUrl: track.preview_url,
-      }));
+  .map((item) => extractTrack(item))
+  .filter((track) => track !== null && track !== undefined)
+  .map((track) => ({
+    id: track.id,
+    name: track.name,
+    artist: track.artists?.map((a) => a.name).join(', ') ?? '',
+    imageUrl: track.album?.images?.[0]?.url || null,
+    uri: track.uri,
+    durationMs: track.duration_ms,
+    album: track.album?.name ?? '',
+    previewUrl: track.preview_url,
+  }));
 
     console.log(`Found ${tracks.length} tracks`);
     res.json(tracks);
