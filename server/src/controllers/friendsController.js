@@ -42,25 +42,41 @@ const searchUsers = async (req, res) => {
 
 const sendRequest = async (req, res) => {
   const { receiverId } = req.body;
-  const senderId = getUserId(req);
+  const senderId = req.session?.userId;
+
+  console.log('sendRequest - senderId:', senderId, 'receiverId:', receiverId);
 
   if (!senderId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!receiverId) return res.status(400).json({ error: 'receiverId обязателен' });
   if (senderId === receiverId) return res.status(400).json({ error: 'Нельзя добавить себя' });
 
   try {
+    const receiver = await prisma.appUser.findUnique({
+      where: { id: receiverId }
+    });
+
+    if (!receiver) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
     const existing = await prisma.friendship.findFirst({
       where: {
         OR: [
           { senderId, receiverId },
           { senderId: receiverId, receiverId: senderId }
         ]
-      },
+      }
     });
 
-    if (existing) return res.status(400).json({ error: 'Заявка уже существует' });
+    if (existing) {
+      return res.status(400).json({ error: 'Заявка уже существует' });
+    }
 
     const friendship = await prisma.friendship.create({
-      data: { senderId, receiverId },
+      data: {
+        senderId,
+        receiverId
+      },
       include: {
         receiver: {
           select: {
@@ -69,7 +85,7 @@ const sendRequest = async (req, res) => {
             User: { select: { avatarUrl: true } }
           }
         }
-      },
+      }
     });
 
     res.json({
@@ -82,9 +98,10 @@ const sendRequest = async (req, res) => {
       status: friendship.status,
       createdAt: friendship.createdAt
     });
+
   } catch (error) {
-    console.error('Send request error:', error);
-    res.status(500).json({ error: 'Ошибка отправки заявки', details: error.message });
+    console.error(error);
+    res.status(500).json({ error: 'Ошибка отправки заявки' });
   }
 };
 
