@@ -1,12 +1,11 @@
 const prisma = require('../db/prisma');
 
 const getUserId = (req) => {
+  console.log('getUserId - auth header:', req.headers.authorization);
+  console.log('getUserId - session userId:', req.session?.userId);
   if (req.session?.userId) return req.session.userId;
   const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) {
-    const token = auth.replace('Bearer ', '');
-    return token;
-  }
+  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
   return null;
 };
 
