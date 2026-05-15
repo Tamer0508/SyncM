@@ -44,7 +44,7 @@ const searchUsers = async (req, res) => {
 
 const sendRequest = async (req, res) => {
   const { receiverId } = req.body;
-  const senderId = req.session?.userId;
+  const senderId = getUserId(req);
 
   console.log('sendRequest - senderId:', senderId, 'receiverId:', receiverId);
 
