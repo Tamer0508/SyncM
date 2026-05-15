@@ -102,8 +102,8 @@ const sendRequest = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Ошибка отправки заявки' });
+    console.error('Send request full error:', error.message, error.code);
+    res.status(500).json({ error: 'Ошибка отправки заявки', details: error.message });
   }
 };
 
