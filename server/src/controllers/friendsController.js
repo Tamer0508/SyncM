@@ -52,15 +52,20 @@ const sendRequest = async (req, res) => {
   if (!receiverId) return res.status(400).json({ error: 'receiverId обязателен' });
   if (senderId === receiverId) return res.status(400).json({ error: 'Нельзя добавить себя' });
 
+  console.log('Before try block');
+  
   try {
+    console.log('Inside try - finding receiver');
     const receiver = await prisma.appUser.findUnique({
       where: { id: receiverId }
     });
+    console.log('Receiver found:', !!receiver);
 
     if (!receiver) {
       return res.status(404).json({ error: 'Пользователь не найден' });
     }
 
+    console.log('Checking existing friendship');
     const existing = await prisma.friendship.findFirst({
       where: {
         OR: [
@@ -69,16 +74,15 @@ const sendRequest = async (req, res) => {
         ]
       }
     });
+    console.log('Existing friendship:', !!existing);
 
     if (existing) {
       return res.status(400).json({ error: 'Заявка уже существует' });
     }
 
+    console.log('Creating friendship');
     const friendship = await prisma.friendship.create({
-      data: {
-        senderId,
-        receiverId
-      },
+      data: { senderId, receiverId },
       include: {
         receiver: {
           select: {
@@ -90,6 +94,7 @@ const sendRequest = async (req, res) => {
       }
     });
 
+    console.log('Friendship created:', friendship.id);
     res.json({
       id: friendship.id,
       receiver: {
@@ -100,7 +105,6 @@ const sendRequest = async (req, res) => {
       status: friendship.status,
       createdAt: friendship.createdAt
     });
-
   } catch (error) {
     console.error('Send request full error:', error.message, error.code);
     res.status(500).json({ error: 'Ошибка отправки заявки', details: error.message });
