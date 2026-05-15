@@ -26,13 +26,12 @@ class ApiService {
 
   Map<String, String> get _jsonHeaders => {'Content-Type': 'application/json'};
   Map<String, String> get _headers {
-    final h = Map<String, String>.from(_jsonHeaders);
+  final h = Map<String, String>.from(_jsonHeaders);
     if (_cookie != null && _cookie!.isNotEmpty) {
-      if (_cookie!.startsWith('connect.sid=')) {
-        h['Cookie'] = _cookie!;
-      } else {
-        h['Authorization'] = 'Bearer $_cookie';
-      }
+      final token = _cookie!.startsWith('connect.sid=')
+          ? _cookie!.replaceFirst('connect.sid=', '')
+          : _cookie!;
+      h['Authorization'] = 'Bearer $token';
     }
     return h;
   }
@@ -62,6 +61,7 @@ class ApiService {
   }
 
   Future<bool> sendFriendRequest(String receiverId) async {
+    print('sendFriendRequest - cookie: $_cookie');
     final res = await http.post(_uri('/friends/request'), headers: _headers, body: json.encode({'receiverId': receiverId})).timeout(timeout);
     if (res.statusCode == 200 || res.statusCode == 201) return true;
     throw ApiException('Failed to send friend request', res.statusCode);
