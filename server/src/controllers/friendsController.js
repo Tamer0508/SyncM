@@ -47,10 +47,10 @@ const searchUsers = async (req, res) => {
         friendshipStatus = 'received';
       }
       return {
-      id: u.id,
-      displayName: u.username,
-      avatarUrl: u.User?.avatarUrl || null, 
-      friendshipStatus
+        id: u.id,
+        displayName: u.username,
+        avatarUrl: u.User?.avatarUrl || null,
+        friendshipStatus
       };
     }));
   } catch (error) {
@@ -110,37 +110,45 @@ const acceptRequest = async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
-    const [updated] = await prisma.$transaction([
-      prisma.friendship.update({
-        where: { id: friendshipId, receiverId: userId, status: 'pending' },
-        data: { status: 'accepted' },
+    const updated = await prisma.$transaction(async (tx) => {
+      const friendship = await tx.friendship.findUnique({
+        where: { id: friendshipId },
         include: {
-          sender: {
-            select: {
-              id: true,
-              username: true,
-              User: { select: { avatarUrl: true } }
-            }
-          }
+          sender: { select: { id: true, username: true, User: { select: { avatarUrl: true } } } },
+          receiver: { select: { id: true } }
         }
-      }),
+      });
 
-    prisma.appUser.updateMany({
-      where: {
-        id: { in: []}
-      },
-      data: { friendsCount: { increment: 1 } }
-    
-    })
-    ]);
+      if (!friendship) {
+        const err = new Error('Заявка не найдена');
+        err.status = 404;
+        throw err;
+      }
 
-    if (!updated) {
-      return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
-    }
+      if (friendship.receiverId !== userId) {
+        const err = new Error('Нет доступа');
+        err.status = 403;
+        throw err;
+      }
 
-    await prisma.appUser.updateMany({
-      where: { id: { in: [updated.senderId, updated.receiverId] }},
-      data: { friendsCount: { increment: 1 } }
+      if (friendship.status !== 'pending') {
+        const err = new Error('Заявка уже обработана');
+        err.status = 400;
+        throw err;
+      }
+
+      const updatedFriendship = await tx.friendship.update({
+        where: { id: friendshipId },
+        data: { status: 'accepted' },
+        include: { sender: { select: { id: true, username: true, User: { select: { avatarUrl: true } } } } }
+      });
+
+      await tx.appUser.updateMany({
+        where: { id: { in: [friendship.senderId, friendship.receiverId] } },
+        data: { friendsCount: { increment: 1 } }
+      });
+
+      return updatedFriendship;
     });
 
     res.json({
@@ -153,6 +161,9 @@ const acceptRequest = async (req, res) => {
       status: updated.status
     });
   } catch (error) {
+    if (error && error.status) {
+      return res.status(error.status).json({ error: error.message });
+    }
     console.error('Accept request error:', error);
     res.status(500).json({ error: 'Ошибка принятия заявки', details: error.message });
   }
@@ -263,11 +274,11 @@ const getFriends = async (req, res) => {
       };
     });
 
-    const nextCursor = friends.length === Number(limit)
+    const nextCursor = friendships.length === Number(limit)
       ? friendships[friendships.length - 1].id
       : null;
 
-    res.json(friends, nextCursor);
+    res.json({ items: friends, nextCursor });
   } catch (error) {
     console.error('Get friends error:', error);
     res.status(500).json({ error: 'Ошибка получения друзей', details: error.message });
@@ -302,7 +313,7 @@ const getIncomingRequests = async (req, res) => {
       ? requests[requests.length - 1].id
       : null;
 
-    res.json({requests: requests.map(r => ({
+    const items = requests.map(r => ({
       id: r.id,
       sender: {
         id: r.sender.id,
@@ -311,8 +322,9 @@ const getIncomingRequests = async (req, res) => {
       },
       status: r.status,
       createdAt: r.createdAt
-    }))
-    , nextCursor});
+    }));
+
+    res.json({ items, nextCursor });
   } catch (error) {
     console.error('Get incoming requests error:', error);
     res.status(500).json({ error: 'Ошибка получения заявок', details: error.message });

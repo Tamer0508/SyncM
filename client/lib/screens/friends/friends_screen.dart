@@ -16,7 +16,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<FriendsProvider>(context, listen: false).fetchFriends();
+      Provider.of<FriendsProvider>(context, listen: false).fetchFriends(refresh: true);
     });
   }
 
@@ -67,9 +67,20 @@ class _FriendsScreenState extends State<FriendsScreen> {
           )
         : ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 12),
-            itemCount: prov.friends.length,
+            itemCount: prov.friends.length + (prov.hasMoreFriends ? 1 : 0),
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (_, i) {
+              if (i >= prov.friends.length) {
+                if (prov.friendsLoading) {
+                  return Center(child: CircularProgressIndicator());
+                }
+                return Center(
+                  child: TextButton(
+                    onPressed: () => prov.fetchFriends(),
+                    child: const Text('Загрузить ещё'),
+                  ),
+                );
+              }
               final f = prov.friends[i];
               return FriendTile(
                 friend: f,
@@ -87,7 +98,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   String? friendshipId = f.friendshipId;
                   if (friendshipId == null) {
                     try {
-                      await prov.fetchFriends();
+                      await prov.fetchFriends(refresh: true);
                       final matches = prov.friends.where((x) => x.id == f.id).toList();
                       if (matches.isNotEmpty) friendshipId = matches.first.friendshipId;
                     } catch (e) {
@@ -145,7 +156,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ),
           IconButton(
             onPressed: () async {
-              await prov.fetchFriends();
+              await prov.fetchFriends(refresh: true);
             },
             icon: const Icon(Icons.refresh),
           ),

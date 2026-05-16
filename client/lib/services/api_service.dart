@@ -85,20 +85,56 @@ class ApiService {
     throw ApiException('Failed to delete friend by user id', res.statusCode);
   }
 
-  Future<List<Friend>> getFriends() async {
-    final res = await http.get(_uri('/friends'), headers: _headers).timeout(timeout);
+  Future<Map<String, dynamic>> getFriends({String? cursor, int? limit}) async {
+    final query = <String, String>{};
+    if (limit != null) query['limit'] = '$limit';
+    if (cursor != null) query['cursor'] = cursor;
+    final uri = Uri.parse('$baseUrl/friends').replace(queryParameters: query);
+
+    final res = await http.get(uri, headers: _headers).timeout(timeout);
     if (res.statusCode == 200) {
-      final data = _decode(res.body) as List<dynamic>;
-      return data.map((e) => Friend.fromJson(e as Map<String, dynamic>)).toList();
+      final decoded = _decode(res.body);
+      List<dynamic> itemsRaw;
+      String? nextCursor;
+      if (decoded is Map) {
+        itemsRaw = decoded['items'] is List ? decoded['items'] as List<dynamic> : [];
+        nextCursor = decoded['nextCursor']?.toString();
+      } else if (decoded is List) {
+        itemsRaw = decoded as List<dynamic>;
+        nextCursor = null;
+      } else {
+        itemsRaw = [];
+        nextCursor = null;
+      }
+
+      final items = itemsRaw.map((e) => Friend.fromJson(e as Map<String, dynamic>)).toList();
+      return {'items': items, 'nextCursor': nextCursor};
     }
     throw ApiException('Failed to fetch friends', res.statusCode);
   }
 
-  Future<List<Map<String, dynamic>>> getIncomingRequests() async {
-    final res = await http.get(_uri('/friends/requests'), headers: _headers).timeout(timeout);
+  Future<Map<String, dynamic>> getIncomingRequests({String? cursor, int? limit}) async {
+    final query = <String, String>{};
+    if (limit != null) query['limit'] = '$limit';
+    if (cursor != null) query['cursor'] = cursor;
+    final uri = Uri.parse('$baseUrl/friends/requests').replace(queryParameters: query);
+
+    final res = await http.get(uri, headers: _headers).timeout(timeout);
     if (res.statusCode == 200) {
-      final data = _decode(res.body) as List<dynamic>;
-      return data.cast<Map<String, dynamic>>();
+      final decoded = _decode(res.body);
+      List<dynamic> itemsRaw;
+      String? nextCursor;
+      if (decoded is Map) {
+        itemsRaw = decoded['items'] is List ? decoded['items'] as List<dynamic> : [];
+        nextCursor = decoded['nextCursor']?.toString();
+      } else if (decoded is List) {
+        itemsRaw = decoded as List<dynamic>;
+        nextCursor = null;
+      } else {
+        itemsRaw = [];
+        nextCursor = null;
+      }
+      return {'items': itemsRaw.cast<Map<String, dynamic>>(), 'nextCursor': nextCursor};
     }
     throw ApiException('Failed to fetch incoming requests', res.statusCode);
   }

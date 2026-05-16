@@ -16,9 +16,37 @@ class FriendsProvider with ChangeNotifier {
   List<Friend> _friends = [];
   List<Friend> get friends => _friends;
 
-  Future<void> fetchFriends() async {
-    _friends = await api.getFriends();
+  String? _friendsNextCursor;
+  bool _friendsHasMore = true;
+  bool _friendsLoading = false;
+
+  bool get friendsLoading => _friendsLoading;
+  bool get hasMoreFriends => _friendsHasMore;
+
+  Future<void> fetchFriends({bool refresh = false, int limit = 20}) async {
+    if (_friendsLoading) return;
+    if (refresh) {
+      _friends = [];
+      _friendsNextCursor = null;
+      _friendsHasMore = true;
+    }
+    if (!_friendsHasMore) return;
+
+    _friendsLoading = true;
     notifyListeners();
+
+    try {
+      final res = await api.getFriends(cursor: _friendsNextCursor, limit: limit);
+      final items = res['items'] as List<Friend>;
+      final nextCursor = res['nextCursor'] as String?;
+
+      _friends.addAll(items);
+      _friendsNextCursor = nextCursor;
+      _friendsHasMore = nextCursor != null;
+    } finally {
+      _friendsLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<List<Friend>> search(String q) => api.searchUsers(q);
@@ -28,8 +56,42 @@ class FriendsProvider with ChangeNotifier {
     return true;
   }
 
-  Future<List<Map<String, dynamic>>> getIncomingRequests() =>
-      api.getIncomingRequests();
+  // Incoming requests pagination
+  List<Map<String, dynamic>> _incomingRequests = [];
+  List<Map<String, dynamic>> get incomingRequests => _incomingRequests;
+
+  String? _incomingNextCursor;
+  bool _incomingHasMore = true;
+  bool _incomingLoading = false;
+
+  bool get incomingLoading => _incomingLoading;
+  bool get hasMoreIncoming => _incomingHasMore;
+
+  Future<void> fetchIncomingRequests({bool refresh = false, int limit = 20}) async {
+    if (_incomingLoading) return;
+    if (refresh) {
+      _incomingRequests = [];
+      _incomingNextCursor = null;
+      _incomingHasMore = true;
+    }
+    if (!_incomingHasMore) return;
+
+    _incomingLoading = true;
+    notifyListeners();
+
+    try {
+      final res = await api.getIncomingRequests(cursor: _incomingNextCursor, limit: limit);
+      final items = (res['items'] as List<dynamic>).cast<Map<String, dynamic>>();
+      final nextCursor = res['nextCursor'] as String?;
+
+      _incomingRequests.addAll(items);
+      _incomingNextCursor = nextCursor;
+      _incomingHasMore = nextCursor != null;
+    } finally {
+      _incomingLoading = false;
+      notifyListeners();
+    }
+  }
 
   Future<bool> removeFriend(String friendshipId) async {
     final ok = await api.deleteRequest(friendshipId);
