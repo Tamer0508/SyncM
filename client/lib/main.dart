@@ -61,13 +61,16 @@ class MyApp extends StatelessWidget {
                 builder: (ctx, pb, _) {
                   if (pb.currentTrack == null) return const SizedBox.shrink();
                   final track = pb.currentTrack!;
-                  return SizedBox(
-                    height: 76,
-                    child: PlayerBar(
-                      title: track['title'] ?? '',
-                      artist: track['artist'] ?? '',
-                      isPlaying: pb.isPlaying,
-                      onPlayPause: () => pb.togglePlay(),
+                  return SafeArea(
+                    top: false,
+                    child: SizedBox(
+                      height: 76,
+                      child: PlayerBar(
+                        title: track['title'] ?? '',
+                        artist: track['artist'] ?? '',
+                        isPlaying: pb.isPlaying,
+                        onPlayPause: () => pb.togglePlay(),
+                      ),
                     ),
                   );
                 },

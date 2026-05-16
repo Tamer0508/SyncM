@@ -1,11 +1,14 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import '../../widgets/playlist_card.dart';
+import '../../widgets/scrollable_playlist_row.dart';
 import '../../widgets/interactive_card.dart';
 import '../../providers/session_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/friends_provider.dart';
 import '../friends/friends_screen.dart';
 import '../profile/profile_screen.dart';
 import '../playlist/playlist_tracks_screen.dart';
@@ -143,10 +146,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     )
-                  : ListView.separated(
-                      scrollDirection: Axis.horizontal,
+                  : ScrollablePlaylistRow(
                       itemCount: _playlists.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 12),
                       itemBuilder: (_, i) {
                         final p = _playlists[i];
                         return PlaylistCard(
@@ -330,16 +331,27 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Row(
             children: [
-              if (_currentIndex == 1)
+              if (_currentIndex == 1) ...[
                 IconButton(
-                  icon: const Icon(Icons.person_search),
+                  icon: const Icon(Icons.person_add_alt_1),
                   onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
                 ),
-              if (_currentIndex == 0)
+                IconButton(
+                  icon: const Icon(Icons.notifications_none),
+                  onPressed: () => Navigator.of(context).pushNamed('/friends/requests'),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () async {
+                    await Provider.of<FriendsProvider>(context, listen: false).fetchFriends();
+                  },
+                ),
+              ] else if (_currentIndex == 0) ...[
                 IconButton(
                   icon: const Icon(Icons.add),
                   onPressed: () => Navigator.of(context).pushNamed('/session/create'),
                 ),
+              ],
               IconButton(
                 icon: Icon(themeProvider.isDark ? Icons.dark_mode : Icons.light_mode),
                 onPressed: () => themeProvider.toggleTheme(),
@@ -360,8 +372,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final tabs = [
       _buildHomeTab(),
-      FriendsScreen(embedded: isDesktop),
-      ProfileScreen(embedded: isDesktop),
+      FriendsScreen(embedded: true),
+      ProfileScreen(embedded: true),
     ];
 
     return Scaffold(
@@ -374,16 +386,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icon(themeProvider.isDark ? Icons.dark_mode : Icons.light_mode),
                   onPressed: () => themeProvider.toggleTheme(),
                 ),
-                if (_currentIndex == 1)
+                if (_currentIndex == 1) ...[
                   IconButton(
-                    icon: const Icon(Icons.person_search),
+                    icon: const Icon(Icons.person_add_alt_1),
                     onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
                   ),
-                if (_currentIndex == 0)
+                  IconButton(
+                    icon: const Icon(Icons.notifications_none),
+                    onPressed: () => Navigator.of(context).pushNamed('/friends/requests'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: () async {
+                      await Provider.of<FriendsProvider>(context, listen: false).fetchFriends();
+                    },
+                  ),
+                ] else if (_currentIndex == 0) ...[
                   IconButton(
                     icon: const Icon(Icons.add),
                     onPressed: () => Navigator.of(context).pushNamed('/session/create'),
                   ),
+                ],
               ],
             ),
       body: isDesktop
@@ -477,23 +500,46 @@ class _HomeScreenState extends State<HomeScreen> {
           : tabs[_currentIndex],
       bottomNavigationBar: isDesktop
           ? null
-          : BottomNavigationBar(
-              currentIndex: _currentIndex,
-              onTap: (i) => setState(() => _currentIndex = i),
-              items: const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.home),
-                  label: 'Главная',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.people),
-                  label: 'Друзья',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.person),
-                  label: 'Профиль',
-                ),
-              ],
+          : SafeArea(
+              top: false,
+              child: Theme.of(context).platform == TargetPlatform.iOS
+                  ? CupertinoTabBar(
+                      currentIndex: _currentIndex,
+                      onTap: (i) => setState(() => _currentIndex = i),
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      items: const [
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.home),
+                          label: 'Главная',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.people),
+                          label: 'Друзья',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.person),
+                          label: 'Профиль',
+                        ),
+                      ],
+                    )
+                  : BottomNavigationBar(
+                      currentIndex: _currentIndex,
+                      onTap: (i) => setState(() => _currentIndex = i),
+                      items: const [
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.home),
+                          label: 'Главная',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.people),
+                          label: 'Друзья',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.person),
+                          label: 'Профиль',
+                        ),
+                      ],
+                    ),
             ),
     );
   }
