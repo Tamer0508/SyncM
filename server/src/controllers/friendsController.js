@@ -28,14 +28,35 @@ const searchUsers = async (req, res) => {
         User: {
           select: { avatarUrl: true }
         }
+      },
+      sentRequests: {
+        where: { receiverId: userId },
+        select: { id: true, status: true }
+        },
+      receivedRequests: {
+        where: { senderId: userId },
+        select: { id: true, status: true }
       }
     });
 
-    res.json(users.map((u) => ({
+    res.json(users.map((u) => {
+      const sent = u.sentRequests[0];
+      const received = u.receivedRequests[0];
+      let friendshipStatus = 'none';
+      if (sent?.status === 'accepted' || received?.status === 'accepted') {
+        friendshipStatus = 'friends';
+      } else if (sent?.status === 'pending') {
+        friendshipStatus = 'sent';
+      } else if (received?.status === 'pending') {
+        friendshipStatus = 'received';
+      }
+      return {
       id: u.id,
       displayName: u.username,
-      avatarUrl: u.User?.avatarUrl || null
-    })));
+      avatarUrl: u.User?.avatarUrl || null, 
+      friendshipStatus
+      };
+    }));
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ error: 'Ошибка поиска', details: error.message });
@@ -46,41 +67,11 @@ const sendRequest = async (req, res) => {
   const { receiverId } = req.body;
   const senderId = getUserId(req);
 
-  console.log('sendRequest - senderId:', senderId, 'receiverId:', receiverId);
-
   if (!senderId) return res.status(401).json({ error: 'Не авторизован' });
   if (!receiverId) return res.status(400).json({ error: 'receiverId обязателен' });
   if (senderId === receiverId) return res.status(400).json({ error: 'Нельзя добавить себя' });
-
-  console.log('Before try block');
   
   try {
-    console.log('Inside try - finding receiver');
-    const receiver = await prisma.appUser.findUnique({
-      where: { id: receiverId }
-    });
-    console.log('Receiver found:', !!receiver);
-
-    if (!receiver) {
-      return res.status(404).json({ error: 'Пользователь не найден' });
-    }
-
-    console.log('Checking existing friendship');
-    const existing = await prisma.friendship.findFirst({
-      where: {
-        OR: [
-          { senderId, receiverId },
-          { senderId: receiverId, receiverId: senderId }
-        ]
-      }
-    });
-    console.log('Existing friendship:', !!existing);
-
-    if (existing) {
-      return res.status(400).json({ error: 'Заявка уже существует' });
-    }
-
-    console.log('Creating friendship');
     const friendship = await prisma.friendship.create({
       data: { senderId, receiverId },
       include: {
@@ -94,8 +85,7 @@ const sendRequest = async (req, res) => {
       }
     });
 
-    console.log('Friendship created:', friendship.id);
-    res.json({
+    res.status(201).json({
       id: friendship.id,
       receiver: {
         id: friendship.receiver.id,
@@ -106,7 +96,13 @@ const sendRequest = async (req, res) => {
       createdAt: friendship.createdAt
     });
   } catch (error) {
-    console.error('Send request full error:', error.message, error.code);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: 'Заявка уже существует' });
+    }
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+    console.error('Send request error:', error);
     res.status(500).json({ error: 'Ошибка отправки заявки', details: error.message });
   }
 };
@@ -118,6 +114,62 @@ const acceptRequest = async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
+    const [updated] = await prisma.$transaction([
+      prisma.friendship.update({
+        where: { id: friendshipId, receiverId: userId, status: 'pending' },
+        data: { status: 'accepted' },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              username: true,
+              User: { select: { avatarUrl: true } }
+            }
+          }
+        }
+      }),
+
+    prisma.appUser.updateMany({
+      where: {
+        id: { in: []}
+      },
+      data: { friendsCount: { increment: 1 } }
+    
+    })
+    ]);
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Заявка не найдена или уже обработана' });
+    }
+
+    await prisma.appUser.updateMany({
+      where: { id: { in: [updated.senderId, updated.receiverId] }},
+      data: { friendsCount: { increment: 1 } }
+    });
+
+    res.json({
+      id: updated.id,
+      sender: {
+        id: updated.sender.id,
+        displayName: updated.sender.username,
+        avatarUrl: updated.sender.User?.avatarUrl || null
+      },
+      status: updated.status
+    });
+  } catch (error) {
+    console.error('Accept request error:', error);
+    res.status(500).json({ error: 'Ошибка принятия заявки', details: error.message });
+  }
+};
+
+const deleteRequest = async (req, res) => {
+  const { friendshipId } = req.params;
+  const userId = getUserId(req);
+
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+
     const friendship = await prisma.friendship.findUnique({
       where: { id: friendshipId }
     });
@@ -198,8 +250,14 @@ const deleteFriendByUserId = async (req, res) => {
 
     if (!friendship) return res.status(404).json({ error: 'Дружба не найдена' });
 
-    await prisma.friendship.delete({ where: { id: friendship.id } });
-    res.json({ message: 'Удалено' });
+    await prisma.$transaction([
+      prisma.friendship.delete({ where: { id: friendship.id } }),
+      prisma.appUser.updateMany({
+        where: { id: { in: [friendship.senderId, friendship.receiverId] } },
+        data: { friendsCount: { decrement: 1 } }
+      })
+    ]);
+    res.json({ message: 'Друг удален' });
   } catch (error) {
     console.error('Delete friend error:', error);
     res.status(500).json({ error: 'Ошибка удаления', details: error.message });
@@ -208,33 +266,38 @@ const deleteFriendByUserId = async (req, res) => {
 
 const getFriends = async (req, res) => {
   const userId = getUserId(req);
+  const { cursor, limit = 20 } = req.query;
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
     const friendships = await prisma.friendship.findMany({
       where: {
+        status: 'accepted',
         OR: [
-          { senderId: userId, status: 'accepted' },
-          { receiverId: userId, status: 'accepted' }
-        ]
+          { senderId: userId },
+          { receiverId: userId }
+        ],
+        ...(cursor && { id: { lt: cursor } })
       },
       include: {
         sender: {
           select: {
             id: true,
             username: true,
-            User: { select: { avatarUrl: true } }
+            User: { select: { avatarUrl: true, displayName: true } }
           }
         },
         receiver: {
           select: {
             id: true,
             username: true,
-            User: { select: { avatarUrl: true } }
+            User: { select: { avatarUrl: true, displayName: true } }
           }
-        },
+        }
       },
+      orderBy: { id: 'desc' },
+      take: Number(limit)
     });
 
     const friends = friendships.map(f => {
@@ -242,12 +305,17 @@ const getFriends = async (req, res) => {
       return {
         id: friendData.id,
         displayName: friendData.username,
+        spotifyDisplayName: friendData.User?.displayName || null,
         avatarUrl: friendData.User?.avatarUrl || null,
         friendshipId: f.id,
       };
     });
 
-    res.json(friends);
+    const nextCursor = friends.length === Number(limit)
+      ? friendships[friendships.length - 1].id
+      : null;
+
+    res.json(friends, nextCursor);
   } catch (error) {
     console.error('Get friends error:', error);
     res.status(500).json({ error: 'Ошибка получения друзей', details: error.message });
@@ -256,12 +324,15 @@ const getFriends = async (req, res) => {
 
 const getIncomingRequests = async (req, res) => {
   const userId = getUserId(req);
+  const { cursor, limit = 20 } = req.query;
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
     const requests = await prisma.friendship.findMany({
-      where: { receiverId: userId, status: 'pending' },
+      where: { receiverId: userId, status: 'pending',
+        ...(cursor && { id: { lt: cursor } })
+       },
       include: {
         sender: {
           select: {
@@ -271,9 +342,15 @@ const getIncomingRequests = async (req, res) => {
           }
         }
       },
+      orderBy: { id: 'desc' },
+      take: Number(limit)
     });
 
-    res.json(requests.map(r => ({
+    const nextCursor = requests.length === Number(limit)
+      ? requests[requests.length - 1].id
+      : null;
+
+    res.json({requests: requests.map(r => ({
       id: r.id,
       sender: {
         id: r.sender.id,
@@ -282,7 +359,8 @@ const getIncomingRequests = async (req, res) => {
       },
       status: r.status,
       createdAt: r.createdAt
-    })));
+    }))
+    , nextCursor});
   } catch (error) {
     console.error('Get incoming requests error:', error);
     res.status(500).json({ error: 'Ошибка получения заявок', details: error.message });
