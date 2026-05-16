@@ -22,20 +22,16 @@ const searchUsers = async (req, res) => {
         username: { contains: query, mode: 'insensitive' },
         id: { not: userId }
       },
-      select: {
-        id: true,
-        username: true,
-        User: {
-          select: { avatarUrl: true }
-        }
-      },
-      sentRequests: {
-        where: { receiverId: userId },
-        select: { id: true, status: true }
+      include: {
+        User: { select: { avatarUrl: true } },
+        sentRequests: {
+          where: { receiverId: userId },
+          select: { id: true, status: true }
         },
-      receivedRequests: {
-        where: { senderId: userId },
-        select: { id: true, status: true }
+        receivedRequests: {
+          where: { senderId: userId },
+          select: { id: true, status: true }
+        }
       }
     });
 

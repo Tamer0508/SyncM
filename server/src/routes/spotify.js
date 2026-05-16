@@ -142,7 +142,7 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
     let response;
     try {
       response = await axios.get(
-        `https://api.spotify.com/v1/playlists/${req.params.playlistId}/items?limit=50&market=from_token`,
+        `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50&market=from_token`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       console.log('Spotify response items count:', response.data.items?.length);
@@ -150,7 +150,7 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
       if (err.response?.status === 401) {
         accessToken = await refreshAccessToken(user);
         response = await axios.get(
-          `https://api.spotify.com/v1/playlists/${req.params.playlistId}/items?limit=50&market=from_token`,
+          `https://api.spotify.com/v1/playlists/${req.params.playlistId}/tracks?limit=50&market=from_token`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
         );
       } else {
