@@ -6,33 +6,44 @@ const createSession = async (req, res) => {
   const userId = req.session.userId;
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!friendId) return res.status(400).json({ error: 'friendId обязателен' });
 
   try {
-    const session = await prisma.session.create({
-      data: {
-        name,
-        hostId: userId,
-        members: {
-          create: [
-            { userId }, // хост
-            { userId: friendId }, // друг
-          ],
+    const created = await prisma.$transaction(async (tx) => {
+      const session = await tx.session.create({
+        data: {
+          name,
+          hostId: userId,
+          members: {
+            create: [
+              { userId }, // хост
+              { userId: friendId }, // друг
+            ],
+          },
         },
-      },
-      include: {
-        members: {
-          include: {
-            user: {
-              select: { id: true, displayName: true, avatarUrl: true },
+        include: {
+          members: {
+            include: {
+              user: {
+                select: { id: true, displayName: true, avatarUrl: true },
+              },
             },
           },
         },
-      },
+      });
+
+      await tx.appUser.updateMany({
+        where: { id: { in: [userId, friendId] } },
+        data: { sessionsCount: { increment: 1 } }
+      });
+
+      return session;
     });
 
-    res.json(session);
+    res.json(created);
   } catch (error) {
-    res.status(500).json({ error: 'Ошибка создания сессии' });
+    console.error('Create session error:', error);
+    res.status(500).json({ error: 'Ошибка создания сессии', details: error.message });
   }
 };
 
