@@ -169,50 +169,6 @@ const deleteRequest = async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
-
-    const friendship = await prisma.friendship.findUnique({
-      where: { id: friendshipId }
-    });
-
-    if (!friendship) return res.status(404).json({ error: 'Заявка не найдена' });
-    if (friendship.receiverId !== userId) return res.status(403).json({ error: 'Нет доступа' });
-
-    const updated = await prisma.friendship.update({
-      where: { id: friendshipId },
-      data: { status: 'accepted' },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            username: true,
-            User: { select: { avatarUrl: true } }
-          }
-        }
-      },
-    });
-
-    res.json({
-      id: updated.id,
-      sender: {
-        id: updated.sender.id,
-        displayName: updated.sender.username,
-        avatarUrl: updated.sender.User?.avatarUrl || null
-      },
-      status: updated.status
-    });
-  } catch (error) {
-    console.error('Accept request error:', error);
-    res.status(500).json({ error: 'Ошибка принятия заявки', details: error.message });
-  }
-};
-
-const deleteRequest = async (req, res) => {
-  const { friendshipId } = req.params;
-  const userId = getUserId(req);
-
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-
-  try {
     const friendship = await prisma.friendship.findUnique({
       where: { id: friendshipId }
     });
