@@ -213,13 +213,16 @@ const googleAuth = async (req, res) => {
     const email = payload.email;
     const name = payload.name;
 
-    let appUser = await prisma.appUser.findUnique({ where: { email } });
-
-    if (!appUser) {
-      appUser = await prisma.appUser.create({
-        data: { username: name, email, passwordHash: '' },
-      });
-    }
+    // upsert вместо findUnique + create — избегаем race condition и дублей
+    const appUser = await prisma.appUser.upsert({
+      where: { email },
+      update: { username: name }, // обновляем имя если изменилось
+      create: {
+        username: name,
+        email,
+        passwordHash: '',
+      },
+    });
 
     req.session.userId = appUser.id;
     req.session.save((err) => {
