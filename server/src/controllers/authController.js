@@ -243,7 +243,20 @@ const googleAuth = async (req, res) => {
       });
     });
   } catch (error) {
-    console.error('Google auth error:', error);
+    try {
+      const errInfo = {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        responseData: error?.response?.data ?? null,
+        responseStatus: error?.response?.status ?? null,
+        errors: error?.errors ?? null,
+      };
+      console.error('Google auth error (detailed):', errInfo);
+    } catch (logErr) {
+      console.error('Error while logging Google auth error:', logErr, 'original error:', error);
+    }
+    // Return a concise error to the client, full details are in server logs
     res.status(401).json({ error: 'Invalid token' });
   }
 };

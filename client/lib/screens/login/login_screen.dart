@@ -303,6 +303,7 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         }
       } catch (e) {
+        print('onGoogleSignInSuccess error: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Google Sign-In error: $e')),
@@ -318,6 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (googleUser == null) return;
       await _onGoogleSignInSuccess(googleUser);
     } catch (e) {
+      print('_signInWithGoogle error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Google Sign-In error: $e')),
