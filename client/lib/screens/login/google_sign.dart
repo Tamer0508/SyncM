@@ -39,11 +39,21 @@ class GoogleSignInButton extends StatelessWidget {
 
   Future<void> _handleSignIn(BuildContext context) async {
     try {
+      // Clear any previous state to avoid reauth issues on Android
+      try {
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {}
+
       await GoogleSignIn.instance.initialize(
         serverClientId: '874254630560-14r27kn6ken47fk2g4tffmf8s22co6eh.apps.googleusercontent.com',
       );
 
-      final account = await GoogleSignIn.instance.authenticate();
+      GoogleSignInAccount? account;
+      try {
+        account = await GoogleSignIn.instance.authenticate();
+      } catch (_) {
+        account = null;
+      }
       if (account == null) return;
 
       final googleAuth = await account.authentication;
