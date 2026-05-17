@@ -1,7 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../services/api_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/playback_provider.dart';
+import '../player/now_playing.dart';
 
 class PlaylistTracksScreen extends StatefulWidget {
   final String playlistId;
@@ -34,31 +35,54 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
       final tracks = await api.getPlaylistTracks(widget.playlistId);
-      if (mounted) {
-        setState(() {
-          _tracks = tracks;
-        });
-      }
-    } catch (e, stack) {
-      print('Error loading tracks: $e');
-      print(stack);
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-        });
-      }
+      if (mounted) setState(() => _tracks = tracks);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _onTrackTap(Map<String, dynamic> track, int index) async {
+    final pb = Provider.of<PlaybackProvider>(context, listen: false);
+
+    if (!pb.isConnected) {
+      final connected = await pb.connect();
+      if (!connected && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось подключиться к Spotify')),
+        );
+        return;
       }
+    }
+
+    await pb.playTrack(
+      {
+        'title': track['name'],
+        'artist': track['artist'],
+        'imageUrl': track['imageUrl'],
+        'uri': track['uri'],
+        'index': index,
+      },
+      playlistId: widget.playlistId,
+    );
+
+    if (mounted) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => NowPlayingScreen(
+          title: track['name'] as String?,
+          artist: track['artist'] as String?,
+          artworkUrl: track['imageUrl'] as String?,
+        ),
+      ));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final pb = Provider.of<PlaybackProvider>(context);
+
     return Scaffold(
       backgroundColor: theme.colorScheme.background,
       body: CustomScrollView(
@@ -69,7 +93,10 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
             backgroundColor: theme.colorScheme.surface,
             foregroundColor: theme.colorScheme.onSurface,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(widget.playlistName, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              title: Text(
+                widget.playlistName,
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
               background: widget.imageUrl != null
                   ? Image.network(widget.imageUrl!, fit: BoxFit.cover)
                   : Container(color: theme.colorScheme.primary.withOpacity(0.3)),
@@ -88,7 +115,10 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
           else if (_tracks.isEmpty)
             SliverFillRemaining(
               child: Center(
-                child: Text('Нет треков', style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.75))),
+                child: Text('Нет треков',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.75),
+                    )),
               ),
             )
           else
@@ -98,24 +128,57 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
                     final t = _tracks[i];
+                    final isCurrentTrack = pb.currentTrack?['uri'] == t['uri'];
+                    final isPlaying = isCurrentTrack && pb.isPlaying;
+
                     return Card(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                       margin: const EdgeInsets.only(bottom: 14),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        leading: t['imageUrl'] != null
-                            ? Image.network(t['imageUrl'], width: 56, height: 56, fit: BoxFit.cover)
-                            : Container(
+                        onTap: () => _onTrackTap(Map<String, dynamic>.from(t), i),
+                        leading: Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: t['imageUrl'] != null
+                                  ? Image.network(t['imageUrl'], width: 56, height: 56, fit: BoxFit.cover)
+                                  : Container(
+                                      width: 56,
+                                      height: 56,
+                                      color: theme.colorScheme.surfaceVariant,
+                                      child: Icon(Icons.music_note, color: theme.colorScheme.primary),
+                                    ),
+                            ),
+                            if (isPlaying)
+                              Container(
                                 width: 56,
                                 height: 56,
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.surfaceVariant,
-                                  borderRadius: BorderRadius.circular(16),
+                                  color: Colors.black45,
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Icon(Icons.music_note, color: theme.colorScheme.primary),
+                                child: const Icon(Icons.equalizer, color: Colors.white, size: 24),
                               ),
-                        title: Text(t['name'] ?? '', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                        subtitle: Text(t['artist'] ?? '', style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.78))),
+                          ],
+                        ),
+                        title: Text(
+                          t['name'] ?? '',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: isCurrentTrack ? theme.colorScheme.primary : null,
+                          ),
+                        ),
+                        subtitle: Text(
+                          t['artist'] ?? '',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.textTheme.bodySmall?.color?.withOpacity(0.78),
+                          ),
+                        ),
+                        trailing: isPlaying
+                            ? Icon(Icons.volume_up_rounded, color: theme.colorScheme.primary)
+                            : Icon(Icons.play_arrow_rounded,
+                                color: theme.colorScheme.onSurface.withOpacity(0.4)),
                       ),
                     );
                   },

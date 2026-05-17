@@ -7,10 +7,12 @@ import 'providers/friends_provider.dart';
 import 'providers/session_provider.dart';
 import 'providers/playback_provider.dart';
 import 'providers/theme_provider.dart';
-import 'widgets/player_bar.dart';
 import 'theme.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'widgets/mini_player.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   runApp(const MyApp());
@@ -52,29 +54,13 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: themeProvider.themeMode,
+          navigatorKey: navigatorKey,
           home: const _AuthGate(),
           onGenerateRoute: generateRoute,
           builder: (context, child) {
             return Scaffold(
               body: SafeArea(child: child ?? const SizedBox.shrink()),
-              bottomNavigationBar: Consumer<PlaybackProvider>(
-                builder: (ctx, pb, _) {
-                  if (pb.currentTrack == null) return const SizedBox.shrink();
-                  final track = pb.currentTrack!;
-                  return SafeArea(
-                    top: false,
-                    child: SizedBox(
-                      height: 76,
-                      child: PlayerBar(
-                        title: track['title'] ?? '',
-                        artist: track['artist'] ?? '',
-                        isPlaying: pb.isPlaying,
-                        onPlayPause: () => pb.togglePlay(),
-                      ),
-                    ),
-                  );
-                },
-              ),
+              bottomNavigationBar: const MiniPlayer(),
             );
           },
         ),
@@ -92,32 +78,30 @@ class _AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<_AuthGate> {
   @override
-void initState() {
-  super.initState();
-  WidgetsBinding.instance.addPostFrameCallback((_) async {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    auth.restoreSavedAuth();
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      auth.restoreSavedAuth();
 
-    if (kIsWeb) {
-      final uri = Uri.base;
-      final cookie = uri.queryParameters['cookie'];
-      final token = uri.queryParameters['token'];
-      final authDone = uri.queryParameters['auth_done'];
+      if (kIsWeb) {
+        final uri = Uri.base;
+        final cookie = uri.queryParameters['cookie'];
+        final token = uri.queryParameters['token'];
+        final authDone = uri.queryParameters['auth_done'];
 
-      if (authDone != null) {
-        if (token != null && token.isNotEmpty) {
-          // userId передан напрямую
-          auth.setCookie(Uri.decodeComponent(token));
-        } else if (cookie != null && cookie.isNotEmpty) {
-          // передан cookie — используем как есть для сессии
-          auth.setCookie(Uri.decodeComponent(cookie));
+        if (authDone != null) {
+          if (token != null && token.isNotEmpty) {
+            auth.setCookie(Uri.decodeComponent(token));
+          } else if (cookie != null && cookie.isNotEmpty) {
+            auth.setCookie(Uri.decodeComponent(cookie));
+          }
         }
       }
-    }
 
-    await auth.fetchMe();
-  });
-}
+      await auth.fetchMe();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
