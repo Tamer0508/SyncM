@@ -212,23 +212,14 @@ class ApiService {
 }
 
   Future<Map<String, dynamic>> googleLogin(String idToken) async {
-  try {
-    print('googleLogin - sending idToken length: ${idToken.length}');
-    final res = await http.post(
-      _uri('/auth/google'),
-      headers: _jsonHeaders,
-      body: json.encode({'idToken': idToken}),
-    ).timeout(timeout);
-
-    print('googleLogin - response status: ${res.statusCode}, body: ${res.body}');
-
-    if (res.statusCode == 200) {
-      return _decode(res.body) as Map<String, dynamic>;
-    }
-    throw ApiException('Failed to login with Google', res.statusCode);
-  } catch (e, st) {
-    print('googleLogin error: $e\n$st');
-    rethrow;
+  final res = await http.post(
+    _uri('/auth/google'),
+    headers: _jsonHeaders,
+    body: json.encode({'idToken': idToken}),
+  ).timeout(timeout);
+  if (res.statusCode == 200) {
+    return _decode(res.body) as Map<String, dynamic>;
   }
+  throw ApiException('Failed to login with Google', res.statusCode);
   }
 }
