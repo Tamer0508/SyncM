@@ -7,7 +7,7 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:874254528c167363bcbc7ed1a1a93a09",
+        "mobilesdk_app_id": "1:874254630560:android:08f158645fea1f29ee93c5",
         "android_client_info": {
           "package_name": "com.android.syncm"
         }
@@ -42,14 +42,6 @@
         }
       },
       "oauth_client": [
-        {
-          "client_id": "874254630560-j1plpa0merh7k4la6co0538c0irilmv5.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.example.syncm",
-            "certificate_hash": "17b4779897dac0e6fa78ccf1ba299bbfba018442"
-          }
-        },
         {
           "client_id": "874254630560-14r27kn6ken47fk2g4tffmf8s22co6eh.apps.googleusercontent.com",
           "client_type": 3

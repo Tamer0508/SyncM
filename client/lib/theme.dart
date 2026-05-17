@@ -24,7 +24,7 @@ class AppTheme {
     final base = ThemeData.light(useMaterial3: true);
     final colorScheme = ColorScheme.light(
       primary: lightPrimary,
-      secondary: darkPrimary, // use purple as secondary accent
+      secondary: const Color(0xFF9D3ED5), // use purple as secondary accent
       background: lightBackground,
       surface: surfaceLight,
       onPrimary: Colors.white,
