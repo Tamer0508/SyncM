@@ -39,9 +39,15 @@ class GoogleSignInButton extends StatelessWidget {
 
   Future<void> _handleSignIn(BuildContext context) async {
     try {
-      await GoogleSignIn.instance.initialize(
-        serverClientId: '874254630560-14r27kn6ken47fk2g4tffmf8s22co6eh.apps.googleusercontent.com',
-      );
+      try {
+        await GoogleSignIn.instance.initialize();
+      } catch (initErr) {
+        if (initErr.toString().contains('init() has already been called')) {
+          // ignore duplicate initialization
+        } else {
+          rethrow;
+        }
+      }
 
       final account = await GoogleSignIn.instance.authenticate();
       if (account == null) return;
