@@ -8,6 +8,8 @@ import '../../services/api_service.dart';
 import 'google_sign_stub.dart'
     if (dart.library.html) 'google_sign_web.dart';
 
+const String _googleServerClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
+
 class GoogleSignInButton extends StatelessWidget {
   final VoidCallback onSignInSuccess;
 
@@ -40,7 +42,9 @@ class GoogleSignInButton extends StatelessWidget {
   Future<void> _handleSignIn(BuildContext context) async {
     try {
       try {
-        await GoogleSignIn.instance.initialize();
+        await GoogleSignIn.instance.initialize(
+          serverClientId: _googleServerClientId.isNotEmpty ? _googleServerClientId : null,
+        );
       } catch (initErr) {
         if (initErr.toString().contains('init() has already been called')) {
           // ignore duplicate initialization
