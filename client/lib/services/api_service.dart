@@ -7,9 +7,14 @@ import '../models/friend.dart';
 class ApiException implements Exception {
   final String message;
   final int? statusCode;
-  ApiException(this.message, [this.statusCode]);
+  final String? serverMessage;
+
+  ApiException(this.message, [this.statusCode, this.serverMessage]);
+
+  String get userMessage => serverMessage ?? message;
+
   @override
-  String toString() => 'ApiException: $message (${statusCode ?? 'n/a'})';
+  String toString() => 'ApiException: $message (${statusCode ?? 'n/a'})${serverMessage != null ? ' [$serverMessage]' : ''}';
 }
 
 class ApiService {
@@ -26,7 +31,7 @@ class ApiService {
 
   Map<String, String> get _jsonHeaders => {'Content-Type': 'application/json'};
   Map<String, String> get _headers {
-  final h = Map<String, String>.from(_jsonHeaders);
+    final h = Map<String, String>.from(_jsonHeaders);
     if (_cookie != null && _cookie!.isNotEmpty) {
       final token = _cookie!.startsWith('connect.sid=')
           ? _cookie!.replaceFirst('connect.sid=', '')
@@ -44,11 +49,24 @@ class ApiService {
     }
   }
 
+  String _extractError(http.Response res) {
+    try {
+      final body = json.decode(res.body);
+      if (body is Map && body['error'] != null) {
+        return body['error'].toString();
+      }
+      if (body is Map && body['message'] != null) {
+        return body['message'].toString();
+      }
+    } catch (_) {}
+    return res.body.isNotEmpty ? res.body : 'Неизвестная ошибка';
+  }
+
   Future<User?> getMe() async {
     final res = await http.get(_uri('/auth/me'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) return User.fromJson(_decode(res.body) as Map<String, dynamic>);
     if (res.statusCode == 401) return null;
-    throw ApiException('Failed to get /auth/me', res.statusCode);
+    throw ApiException('Failed to get /auth/me', res.statusCode, _extractError(res));
   }
 
   Future<List<Friend>> searchUsers(String query) async {
@@ -57,32 +75,31 @@ class ApiService {
       final data = _decode(res.body) as List<dynamic>;
       return data.map((e) => Friend.fromJson(e as Map<String, dynamic>)).toList();
     }
-    throw ApiException('Failed to search users', res.statusCode);
+    throw ApiException('Ошибка поиска', res.statusCode, _extractError(res));
   }
 
   Future<bool> sendFriendRequest(String receiverId) async {
-    print('sendFriendRequest - cookie: $_cookie');
     final res = await http.post(_uri('/friends/request'), headers: _headers, body: json.encode({'receiverId': receiverId})).timeout(timeout);
     if (res.statusCode == 200 || res.statusCode == 201) return true;
-    throw ApiException('Failed to send friend request', res.statusCode);
+    throw ApiException('Ошибка отправки заявки', res.statusCode, _extractError(res));
   }
 
   Future<bool> acceptRequest(String friendshipId) async {
     final res = await http.patch(_uri('/friends/$friendshipId/accept'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) return true;
-    throw ApiException('Failed to accept request', res.statusCode);
+    throw ApiException('Ошибка принятия заявки', res.statusCode, _extractError(res));
   }
 
   Future<bool> deleteRequest(String friendshipId) async {
     final res = await http.delete(_uri('/friends/$friendshipId'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) return true;
-    throw ApiException('Failed to delete request', res.statusCode);
+    throw ApiException('Ошибка удаления заявки', res.statusCode, _extractError(res));
   }
 
   Future<bool> deleteFriendByUserId(String friendId) async {
     final res = await http.delete(_uri('/friends/by-user/$friendId'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) return true;
-    throw ApiException('Failed to delete friend by user id', res.statusCode);
+    throw ApiException('Ошибка удаления друга', res.statusCode, _extractError(res));
   }
 
   Future<Map<String, dynamic>> getFriends({String? cursor, int? limit}) async {
@@ -110,7 +127,7 @@ class ApiService {
       final items = itemsRaw.map((e) => Friend.fromJson(e as Map<String, dynamic>)).toList();
       return {'items': items, 'nextCursor': nextCursor};
     }
-    throw ApiException('Failed to fetch friends', res.statusCode);
+    throw ApiException('Ошибка получения друзей', res.statusCode, _extractError(res));
   }
 
   Future<Map<String, dynamic>> getIncomingRequests({String? cursor, int? limit}) async {
@@ -136,16 +153,15 @@ class ApiService {
       }
       return {'items': itemsRaw.cast<Map<String, dynamic>>(), 'nextCursor': nextCursor};
     }
-    throw ApiException('Failed to fetch incoming requests', res.statusCode);
+    throw ApiException('Ошибка получения входящих заявок', res.statusCode, _extractError(res));
   }
 
-  // Sessions
   Future<Map<String, dynamic>?> createSession(String name, String friendId) async {
     final res = await http.post(_uri('/sessions'), headers: _headers, body: json.encode({'name': name, 'friendId': friendId})).timeout(timeout);
     if (res.statusCode == 200 || res.statusCode == 201) {
       return _decode(res.body) as Map<String, dynamic>;
     }
-    throw ApiException('Failed to create session', res.statusCode);
+    throw ApiException('Ошибка создания сессии', res.statusCode, _extractError(res));
   }
 
   Future<List<dynamic>> getMySessions() async {
@@ -153,73 +169,64 @@ class ApiService {
     if (res.statusCode == 200) {
       return _decode(res.body) as List<dynamic>;
     }
-    throw ApiException('Failed to fetch sessions', res.statusCode);
+    throw ApiException('Ошибка получения сессий', res.statusCode, _extractError(res));
   }
 
   Future<bool> addTracks(String sessionId, List<Map<String, dynamic>> tracks) async {
     final res = await http.post(_uri('/sessions/$sessionId/tracks'), headers: _headers, body: json.encode({'tracks': tracks})).timeout(timeout);
     if (res.statusCode == 200 || res.statusCode == 201) return true;
-    throw ApiException('Failed to add tracks', res.statusCode);
+    throw ApiException('Ошибка добавления треков', res.statusCode, _extractError(res));
   }
 
   Future<bool> rateTrack(String trackId, int rating) async {
     final res = await http.post(_uri('/sessions/tracks/$trackId/rate'), headers: _headers, body: json.encode({'rating': rating})).timeout(timeout);
     if (res.statusCode == 200 || res.statusCode == 201) return true;
-    throw ApiException('Failed to rate track', res.statusCode);
+    throw ApiException('Ошибка оценки трека', res.statusCode, _extractError(res));
   }
 
   Future<Map<String, dynamic>?> endSession(String sessionId) async {
     final res = await http.patch(_uri('/sessions/$sessionId/end'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
-    throw ApiException('Failed to end session', res.statusCode);
+    throw ApiException('Ошибка завершения сессии', res.statusCode, _extractError(res));
   }
 
   Future<List<dynamic>> getPlaylists() async {
     final res = await http.get(_uri('/spotify/playlists'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
-    throw ApiException('Failed to fetch playlists', res.statusCode);
+    throw ApiException('Ошибка получения плейлистов', res.statusCode, _extractError(res));
   }
 
   Future<List<dynamic>> getPlaylistTracks(String playlistId) async {
-    print('Cookie value: $_cookie');
     final res = await http.get(_uri('/spotify/playlists/$playlistId/tracks'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) {
       return _decode(res.body) as List<dynamic>;
     }
-    throw ApiException('Failed to fetch tracks', res.statusCode);
+    throw ApiException('Ошибка получения треков', res.statusCode, _extractError(res));
   }
 
   Future<Map<String, dynamic>> getSpotifyStatus() async {
-  final res = await http.get(_uri('/spotify/status'), headers: _headers).timeout(timeout);
-  if (res.statusCode == 200) {
-    return _decode(res.body) as Map<String, dynamic>;
-  }
-  throw ApiException('Failed to get Spotify status', res.statusCode);
-}
-
-  void setCookie(String cookie) {
-    _cookie = cookie;
+    final res = await http.get(_uri('/spotify/status'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) {
+      return _decode(res.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Ошибка статуса Spotify', res.statusCode, _extractError(res));
   }
 
   Future<bool> disconnectSpotify() async {
-  final res = await http.post(
-    _uri('/spotify/disconnect'),
-    headers: _headers,
-  ).timeout(timeout);
-  
-  if (res.statusCode == 200) return true;
-  throw ApiException('Failed to disconnect Spotify', res.statusCode);
-}
+    final res = await http.post(_uri('/spotify/disconnect'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) return true;
+    throw ApiException('Ошибка отключения Spotify', res.statusCode, _extractError(res));
+  }
 
   Future<Map<String, dynamic>> googleLogin(String idToken) async {
-  final res = await http.post(
-    _uri('/auth/google'),
-    headers: _jsonHeaders,
-    body: json.encode({'idToken': idToken}),
-  ).timeout(timeout);
-  if (res.statusCode == 200) {
-    return _decode(res.body) as Map<String, dynamic>;
+    final res = await http.post(_uri('/auth/google'), headers: _jsonHeaders, body: json.encode({'idToken': idToken})).timeout(timeout);
+    if (res.statusCode == 200) {
+      return _decode(res.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Ошибка входа через Google', res.statusCode, _extractError(res));
   }
-  throw ApiException('Failed to login with Google', res.statusCode);
+
+  void setCookie(String cookie) {
+    _cookie = cookie;
   }
 }

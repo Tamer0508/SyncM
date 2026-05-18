@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
+import '../../services/api_service.dart';
 
 class FriendRequestsScreen extends StatefulWidget {
   const FriendRequestsScreen({Key? key}) : super(key: key);
@@ -51,7 +52,10 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                     const SizedBox(height: 16),
                     Text('Запросов нет', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                     const SizedBox(height: 8),
-                    Text('Попросите друзей отправить вам запрос, чтобы начать общение.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.75)), textAlign: TextAlign.center),
+                    Text('Попросите друзей отправить вам запрос, чтобы начать общение.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.textTheme.bodySmall?.color?.withOpacity(0.75)),
+                        textAlign: TextAlign.center),
                   ],
                 ),
               );
@@ -61,7 +65,6 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                 separatorBuilder: (_, __) => const SizedBox(height: 14),
                 itemBuilder: (_, i) {
                   if (i >= prov.incomingRequests.length) {
-                    // Load more button / indicator
                     if (prov.incomingLoading) {
                       return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
                     }
@@ -83,27 +86,47 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                         contentPadding: EdgeInsets.zero,
                         leading: CircleAvatar(
                           radius: 28,
-                          backgroundImage: sender?['avatarUrl'] != null ? NetworkImage(sender!['avatarUrl']) : null,
+                          backgroundImage: sender?['avatarUrl'] != null
+                              ? NetworkImage(sender!['avatarUrl'])
+                              : null,
                           child: sender?['avatarUrl'] == null ? const Icon(Icons.person) : null,
                         ),
-                        title: Text(sender?['displayName'] ?? 'Unknown', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                        subtitle: Text('Хочет добавить вас в друзья', style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.78))),
+                        title: Text(sender?['displayName'] ?? 'Unknown',
+                            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                        subtitle: Text('Хочет добавить вас в друзья',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.textTheme.bodySmall?.color?.withOpacity(0.78))),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
                               onPressed: () async {
-                                final prov = Provider.of<FriendsProvider>(context, listen: false);
-                                await prov.api.acceptRequest(r['id']);
-                                prov.fetchIncomingRequests(refresh: true);
+                                try {
+                                  await prov.acceptRequest(r['id']);
+                                } catch (e) {
+                                  final msg = (e is ApiException)
+                                      ? e.userMessage
+                                      : 'Ошибка принятия заявки';
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(msg)),
+                                  );
+                                }
                               },
                               icon: Icon(Icons.check_circle, color: theme.colorScheme.primary),
                             ),
                             IconButton(
                               onPressed: () async {
-                                final prov = Provider.of<FriendsProvider>(context, listen: false);
-                                await prov.api.deleteRequest(r['id']);
-                                prov.fetchIncomingRequests(refresh: true);
+                                try {
+                                  await prov.deleteRequest(r['id']);
+                                  prov.fetchIncomingRequests(refresh: true);
+                                } catch (e) {
+                                  final msg = (e is ApiException)
+                                      ? e.userMessage
+                                      : 'Ошибка отклонения заявки';
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(msg)),
+                                  );
+                                }
                               },
                               icon: Icon(Icons.close, color: theme.colorScheme.error),
                             ),

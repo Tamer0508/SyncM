@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
+import '../../services/api_service.dart';
 import '../../models/friend.dart';
 
 class SearchUsersScreen extends StatefulWidget {
@@ -43,8 +44,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       });
     } catch (e) {
       if (mounted) {
+        final msg = (e is ApiException) ? e.userMessage : 'Ошибка поиска: $e';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка поиска: $e'))
+          SnackBar(content: Text(msg))
         );
       }
     } finally {
@@ -82,14 +84,10 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       
       setState(() => _pendingRequests.remove(userId));
       
-      String errorMessage = 'Ошибка при отправке заявки';
-      if (e.toString().contains('уже существует')) {
-        errorMessage = 'Заявка этому пользователю уже отправлена';
-      }
-      
+      final msg = (e is ApiException) ? e.userMessage : 'Ошибка при отправке заявки';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(errorMessage),
+          content: Text(msg),
           backgroundColor: Theme.of(context).colorScheme.error,
         )
       );
@@ -125,7 +123,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    SizedBox( // Добавляем SizedBox для ограничения ширины
+                    SizedBox(
                       width: 80,
                       height: 40,
                       child: ElevatedButton(
@@ -190,7 +188,6 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                                     ),
                                     child: Row(
                                       children: [
-                                        // Аватар
                                         CircleAvatar(
                                           radius: 24,
                                           backgroundImage: u.avatarUrl != null && 
@@ -203,7 +200,6 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                                               : null,
                                         ),
                                         const SizedBox(width: 16),
-                                        // Имя
                                         Expanded(
                                           child: Text(
                                             u.name,
@@ -212,7 +208,6 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                                             ),
                                           ),
                                         ),
-                                        // Кнопка
                                         SizedBox(
                                           width: 120,
                                           height: 36,

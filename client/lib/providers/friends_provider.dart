@@ -8,7 +8,6 @@ class FriendsProvider with ChangeNotifier {
 
   FriendsProvider({ApiService? api}) : api = api ?? ApiService();
 
-  // Вызови это после логина из AuthProvider
   void syncCookie(String cookie) {
     api.setCookie(cookie);
   }
@@ -61,6 +60,15 @@ class FriendsProvider with ChangeNotifier {
     if (ok) {
       _incomingRequests.removeWhere((req) => req['id'] == friendshipId);
       await fetchFriends(refresh: true);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  Future<bool> deleteRequest(String friendshipId) async {
+    final ok = await api.deleteRequest(friendshipId);
+    if (ok) {
+      _incomingRequests.removeWhere((req) => req['id'] == friendshipId);
       notifyListeners();
     }
     return ok;

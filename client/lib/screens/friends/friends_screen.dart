@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:syncm/services/api_service.dart';
 import '../../providers/friends_provider.dart';
 import '../../widgets/friend_tile.dart';
 
@@ -94,7 +95,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
                   final prov = Provider.of<FriendsProvider>(context, listen: false);
 
-                  // Если у записи нет friendshipId — попробуем обновить список и получить его
                   String? friendshipId = f.friendshipId;
                   if (friendshipId == null) {
                     try {
@@ -129,9 +129,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       );
                     }
                   } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Ошибка удаления: $e')),
-                    );
+                      final msg = (e is ApiException) ? e.userMessage : 'Ошибка удаления: $e';
+                      ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(msg)),
+                      );
                   }
                 },
               );
