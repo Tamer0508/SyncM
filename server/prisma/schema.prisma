@@ -20,9 +20,14 @@ model AppUser {
   sessionMembers   SessionMember[]
   ratings          TrackRating[]
   User             User?
+  friendsCount    Int  @default(0)
+  sessionsCount   Int  @default(0)
 
-  friendsCount    Int @default(0)
-  sessionsCount   Int @default(0)
+  isOnline        Boolean       @default(false)  
+  lastSeenAt      DateTime?                      
+  isFriendsHidden Boolean       @default(false)  
+  isActivityHidden Boolean      @default(false)   
+  isOnlineHidden  Boolean       @default(false)
 
   @@index([username])  // поиск пользователей
 }
