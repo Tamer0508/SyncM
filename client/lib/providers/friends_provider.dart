@@ -56,7 +56,24 @@ class FriendsProvider with ChangeNotifier {
     return true;
   }
 
-  // Incoming requests pagination
+  Future<bool> acceptRequest(String friendshipId) async {
+    final ok = await api.acceptRequest(friendshipId);
+    if (ok) {
+      _incomingRequests.removeWhere((req) => req['id'] == friendshipId);
+      await fetchFriends(refresh: true);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  Future<bool> cancelSentRequest(String friendshipId) async {
+    final ok = await api.deleteRequest(friendshipId);
+    if (ok) {
+      notifyListeners();
+    }
+    return ok;
+  }
+
   List<Map<String, dynamic>> _incomingRequests = [];
   List<Map<String, dynamic>> get incomingRequests => _incomingRequests;
 
@@ -94,9 +111,10 @@ class FriendsProvider with ChangeNotifier {
   }
 
   Future<bool> removeFriend(String friendshipId) async {
-    final ok = await api.deleteRequest(friendshipId);
+    final friend = _friends.firstWhere((f) => f.friendshipId == friendshipId);
+    final ok = await api.deleteFriendByUserId(friend.id);
     if (ok) {
-      _friends.removeWhere((f) => f.friendshipId == friendshipId);
+      _friends.removeWhere((f) => f.id == friend.id);
       notifyListeners();
     }
     return ok;

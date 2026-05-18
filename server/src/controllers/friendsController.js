@@ -66,8 +66,26 @@ const sendRequest = async (req, res) => {
   if (!senderId) return res.status(401).json({ error: 'Не авторизован' });
   if (!receiverId) return res.status(400).json({ error: 'receiverId обязателен' });
   if (senderId === receiverId) return res.status(400).json({ error: 'Нельзя добавить себя' });
-  
+
   try {
+    const existing = await prisma.friendship.findFirst({
+      where: {
+        OR: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ],
+        status: { in: ['pending', 'accepted'] }
+      }
+    });
+
+    if (existing) {
+      if (existing.status === 'accepted') {
+        return res.status(400).json({ error: 'Вы уже друзья' });
+      }
+      // Если pending — заявка уже существует (неважно кто отправитель)
+      return res.status(400).json({ error: 'Заявка уже существует' });
+    }
+
     const friendship = await prisma.friendship.create({
       data: { senderId, receiverId },
       include: {
@@ -181,6 +199,12 @@ const deleteRequest = async (req, res) => {
     });
 
     if (!friendship) return res.status(404).json({ error: 'Не найдено' });
+
+    if (friendship.status === 'accepted') {
+      return res.status(400).json({
+        error: 'Для удаления друга используйте /friends/by-user/:friendId'
+      });
+    }
 
     if (friendship.senderId !== userId && friendship.receiverId !== userId) {
       return res.status(403).json({ error: 'Нет доступа' });
