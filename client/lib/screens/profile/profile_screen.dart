@@ -245,59 +245,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (isOwnProfile) const SizedBox(height: 20),
 
             if (isOwnProfile)
-              Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Приватность',
-                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 16),
-                      SwitchListTile(
-                        title: const Text('Скрыть количество друзей'),
-                        value: auth.user?.isFriendsHidden ?? false,
-                        onChanged: (val) async {
-                          try {
-                            await auth.updateSettings({'isFriendsHidden': val});
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Ошибка: $e')),
-                            );
-                          }
-                        },
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      SwitchListTile(
-                        title: const Text('Скрыть активность'),
-                        value: auth.user?.isActivityHidden ?? false,
-                        onChanged: (val) async {
-                          await auth.updateSettings({'isActivityHidden': val});
-                        },
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      SwitchListTile(
-                        title: const Text('Скрыть онлайн-статус'),
-                        value: auth.user?.isOnlineHidden ?? false,
-                        onChanged: (val) async {
-                          try {
-                            await auth.updateSettings({'isOnlineHidden': val});
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Ошибка: $e')),
-                            );
-                          }
-                        },
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // Выход – только для своего профиля
-            if (isOwnProfile)
               ElevatedButton.icon(
                 onPressed: () => _logout(context),
                 icon: const Icon(Icons.logout),
