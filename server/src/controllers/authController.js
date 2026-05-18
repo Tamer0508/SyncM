@@ -214,8 +214,15 @@ const getMe = async (req, res) => {
   return res.status(401).json({ error: 'Пользователь не найден' });
 };
 
+const getUserId = (req) => {
+  if (req.session?.userId) return req.session.userId;
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
+  return null;
+};
+
 const getSettings = async (req, res) => {
-  const userId = req.session?.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
@@ -236,7 +243,7 @@ const getSettings = async (req, res) => {
 };
 
 const updateSettings = async (req, res) => {
-  const userId = req.session?.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { isFriendsHidden, isActivityHidden, isOnlineHidden } = req.body;
