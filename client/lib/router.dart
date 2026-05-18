@@ -27,7 +27,10 @@ Route<dynamic> generateRoute(RouteSettings settings) {
     case '/session':
       return MaterialPageRoute(builder: (_) => const SessionScreen());
     case '/profile':
-      return MaterialPageRoute(builder: (_) => const ProfileScreen());
+      return MaterialPageRoute(
+        builder: (_) => const ProfileScreen(),
+        settings: settings,
+      );
     case '/player':
       final args = settings.arguments as Map<String, dynamic>?;
       return MaterialPageRoute(

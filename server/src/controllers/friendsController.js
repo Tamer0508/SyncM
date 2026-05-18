@@ -355,6 +355,74 @@ const getIncomingRequests = async (req, res) => {
   }
 };
 
+const getUserById = async (req, res) => {
+  const { userId } = req.params;
+  const currentUserId = getUserId(req); // null, если не авторизован
+
+  try {
+    const user = await prisma.appUser.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        username: true,
+        friendsCount: true,
+        User: { select: { avatarUrl: true, displayName: true } }
+      }
+    });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    let mutualFriendsCount = 0;
+    if (currentUserId && currentUserId !== userId) {
+      const currentFriends = await prisma.friendship.findMany({
+        where: {
+          status: 'accepted',
+          OR: [
+            { senderId: currentUserId },
+            { receiverId: currentUserId }
+          ]
+        },
+        select: { senderId: true, receiverId: true }
+      });
+      const currentFriendIds = new Set();
+      currentFriends.forEach(f => {
+        if (f.senderId === currentUserId) currentFriendIds.add(f.receiverId);
+        else currentFriendIds.add(f.senderId);
+      });
+
+      const targetFriends = await prisma.friendship.findMany({
+        where: {
+          status: 'accepted',
+          OR: [
+            { senderId: userId },
+            { receiverId: userId }
+          ]
+        },
+        select: { senderId: true, receiverId: true }
+      });
+      const targetFriendIds = new Set();
+      targetFriends.forEach(f => {
+        if (f.senderId === userId) targetFriendIds.add(f.receiverId);
+        else targetFriendIds.add(f.senderId);
+      });
+
+      mutualFriendsCount = [...currentFriendIds]
+        .filter(id => targetFriendIds.has(id) && id !== currentUserId && id !== userId)
+        .length;
+    }
+
+    res.json({
+      id: user.id,
+      displayName: user.username,
+      avatarUrl: user.User?.avatarUrl || null,
+      friendsCount: user.friendsCount,
+      mutualFriendsCount: currentUserId && currentUserId !== userId ? mutualFriendsCount : 0,
+    });
+  } catch (error) {
+    console.error('Get user error:', error);
+    res.status(500).json({ error: 'Ошибка получения пользователя', details: error.message });
+  }
+};
+
 module.exports = {
   searchUsers,
   sendRequest,
@@ -363,4 +431,5 @@ module.exports = {
   deleteFriendByUserId,
   getFriends,
   getIncomingRequests,
+  getUserById
 };

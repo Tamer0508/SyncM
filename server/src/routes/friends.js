@@ -5,6 +5,7 @@ const {
   sendRequest,
   acceptRequest,
   deleteRequest,
+  getUserById,
   deleteFriendByUserId,
   getFriends,
   getIncomingRequests,
@@ -13,6 +14,7 @@ const {
 router.get('/search', searchUsers);
 router.get('/', getFriends);
 router.get('/requests', getIncomingRequests);
+router.get('/user/:userId', getUserById);
 router.post('/request', sendRequest);
 router.patch('/:friendshipId/accept', acceptRequest);
 router.delete('/:friendshipId', deleteRequest);

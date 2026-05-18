@@ -78,6 +78,14 @@ class ApiService {
     throw ApiException('Ошибка поиска', res.statusCode, _extractError(res));
   }
 
+  Future<Map<String, dynamic>> getUserProfile(String userId) async {
+    final res = await http.get(_uri('/friends/user/$userId'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) {
+      return _decode(res.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Ошибка загрузки профиля', res.statusCode, _extractError(res));
+  }
+
   Future<bool> sendFriendRequest(String receiverId) async {
     final res = await http.post(_uri('/friends/request'), headers: _headers, body: json.encode({'receiverId': receiverId})).timeout(timeout);
     if (res.statusCode == 200 || res.statusCode == 201) return true;
