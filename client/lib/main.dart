@@ -7,6 +7,7 @@ import 'providers/friends_provider.dart';
 import 'providers/session_provider.dart';
 import 'providers/playback_provider.dart';
 import 'providers/theme_provider.dart';
+import 'services/socket_service.dart';
 import 'theme.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/home/home_screen.dart';
@@ -47,6 +48,7 @@ class MyApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(create: (_) => PlaybackProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        Provider<SocketService>.value(value: SocketService()), 
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) => MaterialApp(
@@ -100,6 +102,12 @@ class _AuthGateState extends State<_AuthGate> {
       }
 
       await auth.fetchMe();
+
+      final userId = auth.user?.id;
+      if (userId != null) {
+        final socket = SocketService();
+        socket.init('https://syncm-production.up.railway.app', userId);
+      }
     });
   }
 

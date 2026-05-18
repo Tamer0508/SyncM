@@ -1,5 +1,6 @@
 // providers/friends_provider.dart
 import 'package:flutter/material.dart';
+import 'package:syncm/services/socket_service.dart';
 import '../services/api_service.dart';
 import '../models/friend.dart';
 
@@ -135,5 +136,38 @@ class FriendsProvider with ChangeNotifier {
       notifyListeners();
     }
     return ok;
+  }
+
+  bool _socketListening = false;
+
+  final SocketService _socket = SocketService();
+
+  void listenToSocket() {
+    if (_socketListening) return;
+    _socketListening = true;
+    _socket.on('friend_online', (data) {
+      final userId = data['userId'] as String;
+      _updateFriendOnline(userId, true);
+    });
+    _socket.on('friend_offline', (data) {
+      final userId = data['userId'] as String;
+      _updateFriendOnline(userId, false, lastSeenAt: data['lastSeenAt'] as String?);
+    });
+  }
+
+  void _updateFriendOnline(String userId, bool online, {String? lastSeenAt}) {
+    final idx = _friends.indexWhere((f) => f.id == userId);
+    if (idx != -1) {
+      final old = _friends[idx];
+      _friends[idx] = Friend(
+        id: old.id,
+        name: old.name,
+        avatarUrl: old.avatarUrl,
+        friendshipId: old.friendshipId,
+        isOnline: online,
+        lastSeenAt: online ? null : (lastSeenAt != null ? DateTime.parse(lastSeenAt) : old.lastSeenAt),
+      );
+      notifyListeners();
+    }
   }
 }

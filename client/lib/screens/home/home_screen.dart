@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
+import 'package:syncm/services/socket_service.dart';
 import '../../widgets/playlist_card.dart';
 import '../../widgets/scrollable_playlist_row.dart';
 import '../../widgets/interactive_card.dart';
@@ -72,6 +73,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadPlaylists();
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final userId = auth.user?.id;
+      if (userId != null) {
+        final socket = SocketService();
+        socket.init(auth.api.baseUrl, userId);
+        Provider.of<FriendsProvider>(context, listen: false).listenToSocket();
+      }
   }
 
   Future<void> _loadPlaylists() async {

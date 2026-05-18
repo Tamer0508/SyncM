@@ -13,6 +13,41 @@ class FriendTile extends StatelessWidget {
     required this.onRemoveFriend,
   }) : super(key: key);
 
+  Widget _buildSubtitle(BuildContext context) {
+    final theme = Theme.of(context);
+    if (friend.isOnline) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.green,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text('В сети', style: theme.textTheme.bodySmall?.copyWith(color: Colors.green)),
+        ],
+      );
+    } else if (friend.lastSeenAt != null) {
+      final diff = DateTime.now().difference(friend.lastSeenAt!);
+      String text;
+      if (diff.inMinutes < 1) {
+        text = 'Только что';
+      } else if (diff.inMinutes < 60) {
+        text = '${diff.inMinutes} мин. назад';
+      } else if (diff.inHours < 24) {
+        text = '${diff.inHours} ч. назад';
+      } else {
+        text = '${diff.inDays} д. назад';
+      }
+      return Text('Был(а) в сети $text', style: theme.textTheme.bodySmall);
+    }
+    return const SizedBox.shrink();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -35,10 +70,7 @@ class FriendTile extends StatelessWidget {
         friend.name,
         style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
       ),
-      subtitle: Text(
-        'Online',
-        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
-      ),
+      subtitle: _buildSubtitle(context),
       trailing: PopupMenuButton<String>(
         tooltip: '',
         elevation: 4,

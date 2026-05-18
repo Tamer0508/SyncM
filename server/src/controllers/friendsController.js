@@ -272,6 +272,8 @@ const getFriends = async (req, res) => {
           select: {
             id: true,
             username: true,
+            isOnline: true,
+            lastSeenAt: true,
             User: { select: { avatarUrl: true, displayName: true } }
           }
         },
@@ -279,6 +281,8 @@ const getFriends = async (req, res) => {
           select: {
             id: true,
             username: true,
+            isOnline: true,
+            lastSeenAt: true,
             User: { select: { avatarUrl: true, displayName: true } }
           }
         }
@@ -295,6 +299,8 @@ const getFriends = async (req, res) => {
         spotifyDisplayName: friendData.User?.displayName || null,
         avatarUrl: friendData.User?.avatarUrl || null,
         friendshipId: f.id,
+        isOnline: friendData.isOnline ?? false,
+        lastSeenAt: friendData.lastSeenAt,
       };
     });
 
@@ -366,6 +372,8 @@ const getUserById = async (req, res) => {
         id: true,
         username: true,
         friendsCount: true,
+        isOnline: true,
+        lastSeenAt: true,
         User: { select: { avatarUrl: true, displayName: true } }
       }
     });
@@ -416,6 +424,8 @@ const getUserById = async (req, res) => {
       avatarUrl: user.User?.avatarUrl || null,
       friendsCount: user.friendsCount,
       mutualFriendsCount: currentUserId && currentUserId !== userId ? mutualFriendsCount : 0,
+      isOnline: user.isOnline ?? false,
+      lastSeenAt: user.lastSeenAt,
     });
   } catch (error) {
     console.error('Get user error:', error);
