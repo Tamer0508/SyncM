@@ -367,8 +367,6 @@ const getIncomingRequests = async (req, res) => {
 const getUserById = async (req, res) => {
   const { userId } = req.params;
   const currentUserId = getUserId(req); // null, если не авторизован
-  const showFriends = !user.isFriendsHidden;
-  const showOnline = !user.isOnlineHidden;
 
   try {
     const user = await prisma.appUser.findUnique({
@@ -385,6 +383,9 @@ const getUserById = async (req, res) => {
       }
     });
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    const showFriends = !user.isFriendsHidden;
+    const showOnline = !user.isOnlineHidden;
 
     let mutualFriendsCount = 0;
     if (currentUserId && currentUserId !== userId) {
