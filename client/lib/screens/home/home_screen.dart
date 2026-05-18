@@ -429,6 +429,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: () => Navigator.of(context).pushNamed('/session/create'),
                   ),
                 ],
+                if (_currentIndex == 2) ...[
+                  IconButton(
+                    icon: const Icon(Icons.settings),
+                    onPressed: () => Navigator.of(context).pushNamed('/settings'),
+                  ),
+                ],
               ],
             ),
       body: isDesktop
