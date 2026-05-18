@@ -15,6 +15,9 @@ class FriendTile extends StatelessWidget {
 
   Widget _buildSubtitle(BuildContext context) {
     final theme = Theme.of(context);
+    if (friend.isOnlineHidden) {
+      return const SizedBox.shrink();
+    }
     if (friend.isOnline) {
       return Row(
         mainAxisSize: MainAxisSize.min,

@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
+import 'package:syncm/screens/settings/settings_screen.dart';
 import 'package:syncm/services/socket_service.dart';
 import '../../widgets/playlist_card.dart';
 import '../../widgets/scrollable_playlist_row.dart';
@@ -332,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               child: Text(
-                ['Главная', 'Друзья', 'Профиль'][_currentIndex],
+                ['Главная', 'Друзья', 'Профиль', 'Настройки'][_currentIndex],
                 key: ValueKey(_currentIndex),
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
@@ -361,6 +362,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () => Navigator.of(context).pushNamed('/session/create'),
                 ),
               ],
+              if (_currentIndex == 2) ...[
+                IconButton(
+                  icon: const Icon(Icons.settings),
+                  onPressed: () => Navigator.of(context).pushNamed('/settings'),
+                ),
+              ],
               IconButton(
                 icon: Icon(themeProvider.isDark ? Icons.dark_mode : Icons.light_mode),
                 onPressed: () => themeProvider.toggleTheme(),
@@ -379,10 +386,16 @@ class _HomeScreenState extends State<HomeScreen> {
     const desktopBreakpoint = 900;
     final isDesktop = width >= desktopBreakpoint;
 
-    final tabs = [
+    final tabsMobile = [
       _buildHomeTab(),
       FriendsScreen(embedded: true),
       ProfileScreen(embedded: true),
+    ];
+    final tabsDesktop = [
+      _buildHomeTab(),
+      FriendsScreen(embedded: true),
+      ProfileScreen(embedded: true),
+      const SettingsScreen(),
     ];
 
     return Scaffold(
@@ -477,6 +490,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           selectedIcon: _RailIconWidget(icon: Icons.person, selected: _currentIndex == 2),
                           label: const Text('Профиль'),
                         ),
+                        NavigationRailDestination(
+                          icon: _RailIconWidget(icon: Icons.settings, selected: _currentIndex == 3),
+                          selectedIcon: _RailIconWidget(icon: Icons.settings, selected: _currentIndex == 3),
+                          label: const Text('Настройки'),
+                        ),
                       ],
                     ),
                   ),
@@ -492,7 +510,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             constraints: const BoxConstraints(maxWidth: 1100),
                             child: AnimatedSwitcher(
                               duration: const Duration(milliseconds: 280),
-                              child: tabs[_currentIndex],
+                              child: tabsDesktop[_currentIndex],
                             ),
                           ),
                         ),
@@ -506,7 +524,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             )
-          : tabs[_currentIndex],
+          : tabsMobile[_currentIndex],
       bottomNavigationBar: isDesktop
           ? null
           : SafeArea(

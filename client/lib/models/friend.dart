@@ -5,6 +5,7 @@ class Friend {
   final String? friendshipId;
   final bool isOnline;
   final DateTime? lastSeenAt;
+  final bool isOnlineHidden;
 
   Friend({
     required this.id,
@@ -12,7 +13,8 @@ class Friend {
     this.avatarUrl,
     this.friendshipId, 
     this.isOnline = false, 
-    this.lastSeenAt});
+    this.lastSeenAt,
+    this.isOnlineHidden = false});
 
   factory Friend.fromJson(Map<String, dynamic> json) => Friend(
         id: json['id'] ?? json['friendId'] ?? '',
@@ -21,5 +23,6 @@ class Friend {
         friendshipId: json['friendshipId'] as String?, 
         isOnline: json['isOnline'] == true,
         lastSeenAt: json['lastSeenAt'] != null ? DateTime.parse(json['lastSeenAt']) : null,
+        isOnlineHidden: json['isOnlineHidden'] == true,
       );
 }

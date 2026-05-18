@@ -166,7 +166,18 @@ const getMe = async (req, res) => {
   // Ищем AppUser с привязанным Spotify (поле User согласно схеме Prisma)
   const appUser = await prisma.appUser.findUnique({
     where: { id: userId },
-    include: { User: true },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      friendsCount: true,
+      isOnline: true,
+      lastSeenAt: true,
+      isFriendsHidden: true,
+      isActivityHidden: true,
+      isOnlineHidden: true,
+      User: { select: { avatarUrl: true, spotifyId: true } }
+    }
   });
 
   if (appUser) {
@@ -177,6 +188,9 @@ const getMe = async (req, res) => {
       avatarUrl: appUser.User?.avatarUrl || null,
       spotifyConnected: !!appUser.User,
       spotifyId: appUser.User?.spotifyId || null,
+      isFriendsHidden: appUser.isFriendsHidden,
+      isActivityHidden: appUser.isActivityHidden,
+      isOnlineHidden: appUser.isOnlineHidden,
     });
   }
 
@@ -198,6 +212,58 @@ const getMe = async (req, res) => {
   }
 
   return res.status(401).json({ error: 'Пользователь не найден' });
+};
+
+const getSettings = async (req, res) => {
+  const userId = req.session?.userId;
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const user = await prisma.appUser.findUnique({
+      where: { id: userId },
+      select: {
+        isFriendsHidden: true,
+        isActivityHidden: true,
+        isOnlineHidden: true,
+      }
+    });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+    res.json(user);
+  } catch (error) {
+    console.error('Get settings error:', error);
+    res.status(500).json({ error: 'Ошибка получения настроек' });
+  }
+};
+
+const updateSettings = async (req, res) => {
+  const userId = req.session?.userId;
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const { isFriendsHidden, isActivityHidden, isOnlineHidden } = req.body;
+  const data = {};
+  if (typeof isFriendsHidden === 'boolean') data.isFriendsHidden = isFriendsHidden;
+  if (typeof isActivityHidden === 'boolean') data.isActivityHidden = isActivityHidden;
+  if (typeof isOnlineHidden === 'boolean') data.isOnlineHidden = isOnlineHidden;
+
+  if (Object.keys(data).length === 0) {
+    return res.status(400).json({ error: 'Нет полей для обновления' });
+  }
+
+  try {
+    const updated = await prisma.appUser.update({
+      where: { id: userId },
+      data,
+      select: {
+        isFriendsHidden: true,
+        isActivityHidden: true,
+        isOnlineHidden: true,
+      }
+    });
+    res.json(updated);
+  } catch (error) {
+    console.error('Update settings error:', error);
+    res.status(500).json({ error: 'Ошибка обновления настроек' });
+  }
 };
 
 const googleAuth = async (req, res) => {
@@ -253,4 +319,4 @@ const logout = (req, res) => {
   res.json({ message: 'Вышли из системы' });
 };
 
-module.exports = { login, callback, getMe, logout, googleAuth };
+module.exports = { login, callback, getMe, logout, googleAuth, getSettings, updateSettings };

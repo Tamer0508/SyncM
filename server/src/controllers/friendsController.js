@@ -274,6 +274,7 @@ const getFriends = async (req, res) => {
             username: true,
             isOnline: true,
             lastSeenAt: true,
+            isOnlineHidden: true,
             User: { select: { avatarUrl: true, displayName: true } }
           }
         },
@@ -283,6 +284,7 @@ const getFriends = async (req, res) => {
             username: true,
             isOnline: true,
             lastSeenAt: true,
+            isOnlineHidden: true,
             User: { select: { avatarUrl: true, displayName: true } }
           }
         }
@@ -299,8 +301,9 @@ const getFriends = async (req, res) => {
         spotifyDisplayName: friendData.User?.displayName || null,
         avatarUrl: friendData.User?.avatarUrl || null,
         friendshipId: f.id,
-        isOnline: friendData.isOnline ?? false,
-        lastSeenAt: friendData.lastSeenAt,
+        isOnline: friendData.isOnlineHidden ? false : (friendData.isOnline ?? false),
+        lastSeenAt: friendData.isOnlineHidden ? null : friendData.lastSeenAt,
+        isOnlineHidden: friendData.isOnlineHidden ?? false,
       };
     });
 
@@ -364,6 +367,8 @@ const getIncomingRequests = async (req, res) => {
 const getUserById = async (req, res) => {
   const { userId } = req.params;
   const currentUserId = getUserId(req); // null, если не авторизован
+  const showFriends = !user.isFriendsHidden;
+  const showOnline = !user.isOnlineHidden;
 
   try {
     const user = await prisma.appUser.findUnique({
@@ -374,6 +379,8 @@ const getUserById = async (req, res) => {
         friendsCount: true,
         isOnline: true,
         lastSeenAt: true,
+        isFriendsHidden: true,
+        isOnlineHidden: true,
         User: { select: { avatarUrl: true, displayName: true } }
       }
     });
@@ -422,10 +429,10 @@ const getUserById = async (req, res) => {
       id: user.id,
       displayName: user.username,
       avatarUrl: user.User?.avatarUrl || null,
-      friendsCount: user.friendsCount,
-      mutualFriendsCount: currentUserId && currentUserId !== userId ? mutualFriendsCount : 0,
-      isOnline: user.isOnline ?? false,
-      lastSeenAt: user.lastSeenAt,
+      friendsCount: showFriends ? user.friendsCount : 0,
+      mutualFriendsCount: (currentUserId && currentUserId !== userId && showFriends) ? mutualFriendsCount : 0,
+      isOnline: showOnline ? (user.isOnline ?? false) : false,
+      lastSeenAt: showOnline ? user.lastSeenAt : null,
     });
   } catch (error) {
     console.error('Get user error:', error);

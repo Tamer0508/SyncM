@@ -5,6 +5,9 @@ class User {
   final String? avatarUrl;
   final bool spotifyConnected;
   final String? spotifyId;
+  final bool isFriendsHidden;
+  final bool isActivityHidden;
+  final bool isOnlineHidden;
 
   User({
     required this.id,
@@ -13,6 +16,9 @@ class User {
     this.avatarUrl,
     this.spotifyConnected = false,
     this.spotifyId,
+    this.isFriendsHidden = false,
+    this.isActivityHidden = false,
+    this.isOnlineHidden = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -26,6 +32,9 @@ class User {
           (json['spotifyLinked'] == true) ||
           ((json['spotifyId'] as String?)?.isNotEmpty ?? false),
       spotifyId: json['spotifyId'] as String?,
+      isFriendsHidden: json['isFriendsHidden'] == true,
+      isActivityHidden: json['isActivityHidden'] == true,
+      isOnlineHidden: json['isOnlineHidden'] == true,
     );
   }
 
@@ -36,5 +45,8 @@ class User {
         'avatarUrl': avatarUrl,
         'spotifyConnected': spotifyConnected,
         'spotifyId': spotifyId,
+        'isFriendsHidden': isFriendsHidden,
+        'isActivityHidden': isActivityHidden,
+        'isOnlineHidden': isOnlineHidden,
       };
 }

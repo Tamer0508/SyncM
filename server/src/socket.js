@@ -56,16 +56,22 @@ const setupSocket = (io) => {
 
       await updateOnlineStatus(userId, true);
 
-      const friendIds = await getFriendIds(userId);
-      friendIds.forEach(fid => {
-        io.to(fid).emit('friend_online', { userId });
-        const friendSockets = onlineUsers.get(fid);
-        if (friendSockets) {
-          friendSockets.forEach(sid => {
-            io.to(sid).emit('friend_online', { userId });
-          });
-        }
+      const userSettings = await prisma.appUser.findUnique({
+        where: { id: userId },
+        select: { isOnlineHidden: true }
       });
+      if (!userSettings?.isOnlineHidden) {
+        const friendIds = await getFriendIds(userId);
+        friendIds.forEach(fid => {
+          io.to(fid).emit('friend_online', { userId });
+          const friendSockets = onlineUsers.get(fid);
+          if (friendSockets) {
+            friendSockets.forEach(sid => {
+              io.to(sid).emit('friend_online', { userId });
+            });
+          }
+        });
+      }
     });
 
     socket.on('join_session', ({ sessionId, userId }) => {
@@ -127,15 +133,21 @@ const setupSocket = (io) => {
           if (userSockets.size === 0) {
             onlineUsers.delete(uid);
             await updateOnlineStatus(uid, false);
-            const friendIds = await getFriendIds(uid);
-            friendIds.forEach(fid => {
-              const friendSockets = onlineUsers.get(fid);
-              if (friendSockets) {
-                friendSockets.forEach(sid => {
-                  io.to(sid).emit('friend_offline', { userId: uid, lastSeenAt: new Date().toISOString() });
-                });
-              }
+            const settings = await prisma.appUser.findUnique({
+              where: { id: uid },
+              select: { isOnlineHidden: true }
             });
+            if (!settings?.isOnlineHidden) {
+              const friendIds = await getFriendIds(uid);
+              friendIds.forEach(fid => {
+                const friendSockets = onlineUsers.get(fid);
+                if (friendSockets) {
+                  friendSockets.forEach(sid => {
+                    io.to(sid).emit('friend_offline', { userId: uid, lastSeenAt: new Date().toISOString() });
+                  });
+                }
+              });
+            }
           }
         }
       }

@@ -8,6 +8,7 @@ import 'screens/session/create_session_screen.dart';
 import 'screens/session/session_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/player/now_playing.dart';
+import 'screens/settings/settings_screen.dart';
 
 
 Route<dynamic> generateRoute(RouteSettings settings) {
@@ -31,6 +32,8 @@ Route<dynamic> generateRoute(RouteSettings settings) {
         builder: (_) => const ProfileScreen(),
         settings: settings,
       );
+    case '/settings':
+      return MaterialPageRoute(builder: (_) => const SettingsScreen());
     case '/player':
       final args = settings.arguments as Map<String, dynamic>?;
       return MaterialPageRoute(

@@ -69,6 +69,18 @@ class ApiService {
     throw ApiException('Failed to get /auth/me', res.statusCode, _extractError(res));
   }
 
+  Future<Map<String, dynamic>> updatePrivacySettings(Map<String, bool> settings) async {
+    final res = await http.patch(
+      _uri('/auth/settings'),
+      headers: _headers,
+      body: json.encode(settings),
+    ).timeout(timeout);
+    if (res.statusCode == 200) {
+      return _decode(res.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Ошибка обновления настроек', res.statusCode, _extractError(res));
+  }
+
   Future<List<Friend>> searchUsers(String query) async {
     final res = await http.get(_uri('/friends/search?query=${Uri.encodeQueryComponent(query)}'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) {
