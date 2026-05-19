@@ -1,23 +1,23 @@
 const prisma = require('../db/prisma');
+const { getIo } = require('../services/socketService');
 
-// Создать сессию
 const createSession = async (req, res) => {
   const { name, friendId } = req.body;
-  const userId = req.session.userId;
+  const userId = req.session?.userId;
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
   if (!friendId) return res.status(400).json({ error: 'friendId обязателен' });
 
   try {
-    const created = await prisma.$transaction(async (tx) => {
-      const session = await tx.session.create({
+    const session = await prisma.$transaction(async (tx) => {
+      const newSession = await tx.session.create({
         data: {
           name,
           hostId: userId,
           members: {
             create: [
-              { userId }, // хост
-              { userId: friendId }, // друг
+              { userId },
+              { userId: friendId },
             ],
           },
         },
@@ -25,7 +25,7 @@ const createSession = async (req, res) => {
           members: {
             include: {
               user: {
-                select: { id: true, displayName: true, avatarUrl: true },
+                select: { id: true, username: true, User: { select: { avatarUrl: true } } },
               },
             },
           },
@@ -37,39 +37,33 @@ const createSession = async (req, res) => {
         data: { sessionsCount: { increment: 1 } }
       });
 
-      return session;
+      return newSession;
     });
 
-    res.json(created);
+    res.json(session);
   } catch (error) {
     console.error('Create session error:', error);
     res.status(500).json({ error: 'Ошибка создания сессии', details: error.message });
   }
 };
 
-// Получить активные сессии пользователя
 const getMySessions = async (req, res) => {
-  const userId = req.session.userId;
-
+  const userId = req.session?.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
     const sessions = await prisma.session.findMany({
       where: {
         isActive: true,
-        members: {
-          some: { userId },
-        },
+        members: { some: { userId } },
       },
       include: {
         members: {
           include: {
-            user: {
-              select: { id: true, displayName: true, avatarUrl: true },
-            },
+            user: { select: { id: true, username: true, User: { select: { avatarUrl: true } } } },
           },
         },
-        tracks: true,
+        tracks: { include: { addedBy: { select: { username: true } } } },
       },
     });
 
@@ -79,73 +73,64 @@ const getMySessions = async (req, res) => {
   }
 };
 
-// Добавить треки в сессию
 const addTracks = async (req, res) => {
   const { sessionId } = req.params;
-  const { tracks } = req.body; // [{ spotifyUri, trackName, artistName }]
-  const userId = req.session.userId;
+  const { tracks } = req.body;
+  const userId = req.session?.userId;
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
-    const created = await prisma.sessionTrack.createMany({
-      data: tracks.map((t) => ({
-        sessionId,
-        spotifyUri: t.spotifyUri,
-        trackName: t.trackName,
-        artistName: t.artistName,
-      })),
-    });
+    const createdTracks = await Promise.all(tracks.map((t) => 
+      prisma.sessionTrack.create({
+        data: {
+          sessionId,
+          addedById: userId,
+          spotifyUri: t.spotifyUri,
+          trackName: t.trackName,
+          artistName: t.artistName,
+        },
+        include: { addedBy: { select: { username: true } } }
+      })
+    ));
 
-    res.json({ message: `Добавлено ${created.count} треков` });
+    const io = getIo();
+    io.to(sessionId).emit('tracks-added', createdTracks);
+
+    res.json({ message: `Добавлено ${createdTracks.length} треков`, tracks: createdTracks });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка добавления треков' });
   }
 };
 
-// Оценить трек
 const rateTrack = async (req, res) => {
   const { trackId } = req.params;
-  const { rating } = req.body; // 1 или -1
-  const userId = req.session.userId;
+  const { rating } = req.body;
+  const userId = req.session?.userId;
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
-    const existing = await prisma.trackRating.findFirst({
-      where: { trackId, userId },
+    const result = await prisma.trackRating.upsert({
+      where: { trackId_userId: { trackId, userId } },
+      update: { rating },
+      create: { trackId, userId, rating },
     });
-
-    let result;
-    if (existing) {
-      result = await prisma.trackRating.update({
-        where: { id: existing.id },
-        data: { rating },
-      });
-    } else {
-      result = await prisma.trackRating.create({
-        data: { trackId, userId, rating },
-      });
-    }
-
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: 'Ошибка оценки' });
   }
 };
 
-// Завершить сессию и получить треки которые понравились обоим
 const endSession = async (req, res) => {
   const { sessionId } = req.params;
 
   try {
-    // Деактивируем сессию
     await prisma.session.update({
       where: { id: sessionId },
       data: { isActive: false },
     });
 
-    // Находим треки с двумя лайками
     const tracks = await prisma.sessionTrack.findMany({
       where: { sessionId },
       include: { ratings: true },
@@ -153,14 +138,11 @@ const endSession = async (req, res) => {
 
     const mutualLikes = tracks.filter(
       (track) =>
-        track.ratings.length === 2 &&
+        track.ratings.length >= 2 &&
         track.ratings.every((r) => r.rating === 1)
     );
 
-    res.json({
-      message: 'Сессия завершена',
-      mutualLikes,
-    });
+    res.json({ message: 'Сессия завершена', mutualLikes });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка завершения сессии' });
   }

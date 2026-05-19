@@ -7,34 +7,39 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model AppUser {
+model User {
   id               String          @id @default(uuid())
   username         String
   email            String          @unique
   passwordHash     String
   createdAt        DateTime        @default(now())
   isEmailVerified  Boolean         @default(false)
+  
+  // Статус и приватность
+  isOnline        Boolean         @default(false)
+  lastSeenAt      DateTime?
+  isOnlineHidden  Boolean         @default(false)
+  isFriendsHidden Boolean         @default(false)
+
+  // Связи
   receivedRequests Friendship[]    @relation("receiver")
   sentRequests     Friendship[]    @relation("sender")
   hostedSessions   Session[]       @relation("host")
   sessionMembers   SessionMember[]
   ratings          TrackRating[]
-  User             User?
-  friendsCount    Int  @default(0)
-  sessionsCount   Int  @default(0)
+  playlists        Playlist[]
+  
+  spotifyAccount   SpotifyAccount?
 
-  isOnline        Boolean       @default(false)  
-  lastSeenAt      DateTime?                      
-  isFriendsHidden Boolean       @default(false)  
-  isActivityHidden Boolean      @default(false)   
-  isOnlineHidden  Boolean       @default(false)
+  friendsCount    Int @default(0)
+  sessionsCount   Int @default(0)
 
-  @@index([username])  // поиск пользователей
+  @@index([username])
 }
 
-model User {
+model SpotifyAccount {
   id           String   @id @default(uuid())
-  app_user_id   String?  @unique
+  userId       String?  @unique
   spotifyId    String   @unique
   displayName  String
   email        String?
@@ -42,9 +47,10 @@ model User {
   accessToken  String?
   refreshToken String?
   createdAt    DateTime @default(now())
-  AppUser      AppUser? @relation(fields: [app_user_id], references: [id])
+  
+  user         User?    @relation(fields: [userId], references: [id])
 
-  @@index([displayName])  // поиск по имени
+  @@index([displayName])
 }
 
 model Friendship {
@@ -54,12 +60,27 @@ model Friendship {
   status     String   @default("pending")
   createdAt  DateTime @default(now())
 
-  receiver   AppUser  @relation("receiver", fields: [receiverId], references: [id])
-  sender     AppUser  @relation("sender", fields: [senderId], references: [id])
+  receiver   User     @relation("receiver", fields: [receiverId], references: [id])
+  sender     User     @relation("sender", fields: [senderId], references: [id])
 
   @@index([receiverId, status])
   @@index([senderId, status])
-  @@unique([senderId, receiverId])  // нельзя отправить два запроса одному человеку
+  @@unique([senderId, receiverId])
+}
+
+model Playlist {
+  id          String   @id @default(uuid())
+  userId      String
+  spotifyId   String   @unique
+  name        String
+  description String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
 }
 
 model Session {
@@ -68,12 +89,13 @@ model Session {
   name      String
   isActive  Boolean         @default(true)
   createdAt DateTime        @default(now())
-  host      AppUser         @relation("host", fields: [hostId], references: [id])
+  
+  host      User            @relation("host", fields: [hostId], references: [id])
   members   SessionMember[]
   tracks    SessionTrack[]
 
-  @@index([isActive])  // быстрый поиск активных сессий
-  @@index([hostId, createdAt])  // сессии конкретного пользователя
+  @@index([isActive])
+  @@index([hostId, createdAt])
 }
 
 model SessionMember {
@@ -83,11 +105,11 @@ model SessionMember {
   joinedAt  DateTime @default(now())
 
   session   Session  @relation(fields: [sessionId], references: [id])
-  user      AppUser  @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 
   @@index([sessionId])
   @@index([userId])
-  @@unique([sessionId, userId])  // нельзя войти в сессию дважды
+  @@unique([sessionId, userId])
 }
 
 model SessionTrack {
@@ -96,6 +118,7 @@ model SessionTrack {
   spotifyUri String
   trackName  String
   artistName String
+  durationMs Int?
   addedAt    DateTime      @default(now())
 
   session    Session       @relation(fields: [sessionId], references: [id])
@@ -111,7 +134,7 @@ model TrackRating {
   rating  Int
 
   track   SessionTrack @relation(fields: [trackId], references: [id])
-  user    AppUser      @relation(fields: [userId], references: [id])
+  user    User         @relation(fields: [userId], references: [id])
 
   @@unique([trackId, userId])
 }
@@ -123,12 +146,13 @@ model EmailVerification {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  @@index([email])  // быстрый поиск кода по email
-  @@index([expiresAt])  // очистка просроченных кодов
+  @@index([email])
 }
 
-model session {
+model SessionStore {
   sid    String   @id @db.VarChar
   sess   Json     @db.Json
   expire DateTime @db.Timestamp(6)
+
+  @@map("session")
 }

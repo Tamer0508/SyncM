@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:spotify_sdk/models/player_state.dart';
 import 'package:spotify_sdk/models/image_uri.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class PlaybackProvider extends ChangeNotifier {
   Map<String, dynamic>? _currentTrack;
@@ -11,7 +12,10 @@ class PlaybackProvider extends ChangeNotifier {
   int _durationMs = 0;
   int _positionMs = 0;
   Uint8List? _currentImageBytes;
-  String? _lastImageUri; // отслеживаем URI обложки чтобы не мигать
+  String? _lastImageUri;
+  
+  IO.Socket? _socket;
+  String? _currentSessionId;
 
   Map<String, dynamic>? get currentTrack => _currentTrack;
   bool get isPlaying => _isPlaying;
@@ -22,6 +26,26 @@ class PlaybackProvider extends ChangeNotifier {
 
   static const _clientId = '809ce8e069a64cb5970c20e356024786';
   static const _redirectUrl = 'syncm://callback';
+  static const _serverUrl = 'http://YOUR_SERVER_IP:3000'; // Замените на ваш IP
+
+  void initSocket(String sessionId) {
+    _currentSessionId = sessionId;
+    _socket = IO.io(_serverUrl, IO.OptionBuilder()
+      .setTransports(['websocket'])
+      .build());
+
+    _socket!.onConnect((_) {
+      print('Connected to WebSocket');
+      _socket!.emit('join-session', sessionId);
+    });
+
+    // Слушаем обновления от сервера (от хоста)
+    _socket!.on('track-updated', (data) {
+      if (!_isPlaying) { // Простая проверка, чтобы не зациклить
+        playTrack({'uri': data['trackUri'], 'title': data['trackName'], 'artist': data['artistName']});
+      }
+    });
+  }
 
   Future<bool> connect() async {
     try {
@@ -58,7 +82,6 @@ class PlaybackProvider extends ChangeNotifier {
         final imageUriId = state.track!.imageUri.raw;
         final trackChanged = trackUri != _currentTrack?['uri'];
 
-        // Обновляем метаданные трека
         _currentTrack = {
           ..._currentTrack ?? {},
           'title': state.track!.name,
@@ -66,10 +89,18 @@ class PlaybackProvider extends ChangeNotifier {
           'uri': trackUri,
         };
 
-        // Загружаем обложку только если imageUri изменился
+        // Если мы хост и трек изменился, уведомляем сервер
+        if (trackChanged && _currentSessionId != null) {
+          _socket?.emit('track-changed', {
+            'sessionId': _currentSessionId,
+            'trackUri': trackUri,
+            'trackName': state.track!.name,
+            'artistName': state.track!.artist.name,
+          });
+        }
+
         if (trackChanged && imageUriId != _lastImageUri) {
           _lastImageUri = imageUriId;
-          // НЕ сбрасываем _currentImageBytes сразу — держим старую до загрузки новой
           notifyListeners();
 
           try {
@@ -77,7 +108,6 @@ class PlaybackProvider extends ChangeNotifier {
               imageUri: state.track!.imageUri,
               dimension: ImageDimension.large,
             );
-            // Обновляем только если URI не изменился пока грузили
             if (_lastImageUri == imageUriId) {
               _currentImageBytes = imageBytes;
               notifyListeners();
@@ -143,6 +173,10 @@ class PlaybackProvider extends ChangeNotifier {
         await SpotifySdk.resume();
         _isPlaying = true;
       }
+      _socket?.emit('playback-toggle', {
+        'sessionId': _currentSessionId,
+        'isPlaying': _isPlaying
+      });
       notifyListeners();
     } catch (e) {
       _isPlaying = !_isPlaying;
@@ -153,6 +187,7 @@ class PlaybackProvider extends ChangeNotifier {
   Future<void> skipNext() async {
     try {
       await SpotifySdk.skipNext();
+      // Событие 'track-changed' отправится автоматически из _subscribeToPlayerState
     } catch (e) {
       print('Skip next error: $e');
     }
@@ -182,6 +217,7 @@ class PlaybackProvider extends ChangeNotifier {
     _isConnected = false;
     _currentImageBytes = null;
     _lastImageUri = null;
+    _socket?.disconnect();
     notifyListeners();
   }
 }

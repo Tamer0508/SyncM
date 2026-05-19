@@ -3,23 +3,22 @@ const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
 const { createServer } = require('http');
-const { Server } = require('socket.io');
 const { Pool } = require('pg');
+const pgSession = require('connect-pg-simple')(session);
 
 const authRoutes = require('./routes/auth');
 const friendsRoutes = require('./routes/friends'); 
 const sessionRoutes = require('./routes/sessions'); 
-const setupSocket = require('./socket');
-const pgSession = require('connect-pg-simple')(session);
 const spotifyRoutes = require('./routes/spotify');
+const playlistRoutes = require('./routes/playlists'); // Добавили роуты плейлистов
+const { initSocket } = require('./services/socketService'); // Используем наш новый сервис
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// Создание таблицы сессий если её нет
 pool.query(`
   CREATE TABLE IF NOT EXISTS "session" (
     "sid" varchar NOT NULL COLLATE "default",
@@ -27,20 +26,15 @@ pool.query(`
     "expire" timestamp(6) NOT NULL,
     CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
   )
-`).then(() => {
-  console.log("Session table ready");
-}).catch(err => {
-  console.error("Session table error:", err);
-});
+`).catch(err => console.error("Session table error:", err));
 
 const app = express();
 app.set('trust proxy', 1);
 const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: { origin: '*' }
-});
 
-// ВАЖНО: CORS должен быть ПЕРЕД роутами!
+// Инициализация Socket.io через наш сервис
+const io = initSocket(httpServer);
+
 app.use(cors({
   origin: true,
   credentials: true,
@@ -50,12 +44,10 @@ app.use(cors({
 
 app.use(express.json());
 
-// Настройка сессии
 app.use(session({
   store: new pgSession({
     pool: pool, 
     tableName: 'session', 
-    createTableIfMissing: true
   }),
   secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
@@ -68,34 +60,23 @@ app.use(session({
   }
 }));
 
-// Логирование запросов для отладки
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
-  console.log('Session ID:', req.sessionID);
-  console.log('Session:', req.session);
-  next();
-});
-
-// Роуты — после session middleware
+// Роуты
 app.use('/auth', authRoutes);
 app.use('/friends', friendsRoutes);
 app.use('/sessions', sessionRoutes);
 app.use('/spotify', spotifyRoutes);
-
-// УБИРАЕМ дублирующий CORS middleware отсюда!
+app.use('/playlists', playlistRoutes); // Подключили плейлисты
 
 app.get('/', (req, res) => {
   res.json({ message: 'SyncM server is running' });
 });
 
-setupSocket(io);
-
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error.message, error.stack);
+  console.error('Uncaught Exception:', error.message);
 });
 
 const PORT = process.env.PORT || 3000;
