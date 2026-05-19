@@ -37,7 +37,10 @@ async function getFriendIds(userId) {
   }
 }
 
+let ioInstance;
+
 const setupSocket = (io) => {
+  ioInstance = io;
   io.on('connection', async (socket) => {
     console.log('User connected:', socket.id);
 
@@ -161,4 +164,13 @@ const setupSocket = (io) => {
   });
 };
 
-module.exports = setupSocket;
+const getIo = () => {
+  if (!ioInstance) {
+    // В некоторых случаях это может вызваться до инициализации, 
+    // возвращаем заглушку или выбрасываем ошибку
+    console.warn("getIo called before socket initialization");
+  }
+  return ioInstance;
+};
+
+module.exports = { setupSocket, getIo };

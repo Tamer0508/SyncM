@@ -1,5 +1,5 @@
 const prisma = require('../db/prisma');
-const { getIo } = require('../services/socketService');
+const { getIo } = require('../socket'); // Теперь берем getIo из твоего socket.js
 
 const createSession = async (req, res) => {
   const { name, friendId } = req.body;
