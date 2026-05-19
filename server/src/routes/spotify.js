@@ -2,14 +2,21 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const prisma = require('../db/prisma');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 const refreshAccessToken = async (spotifyUser) => {
   try {
+    // Расшифровываем refresh-токен перед использованием
+    const decryptedRefreshToken = decrypt(spotifyUser.refreshToken);
+    if (!decryptedRefreshToken) {
+      throw new Error('Не удалось расшифровать refresh token');
+    }
+
     const response = await axios.post(
       'https://accounts.spotify.com/api/token',
       new URLSearchParams({
         grant_type: 'refresh_token',
-        refresh_token: spotifyUser.refreshToken,
+        refresh_token: decryptedRefreshToken,
       }),
       {
         headers: {
@@ -22,19 +29,26 @@ const refreshAccessToken = async (spotifyUser) => {
     );
 
     const newAccessToken = response.data.access_token;
+    
+    // Шифруем новый токен перед сохранением
     await prisma.spotifyUser.update({
       where: { id: spotifyUser.id },
       data: {
-        accessToken: newAccessToken,
-        ...(response.data.refresh_token && { refreshToken: response.data.refresh_token }),
+        accessToken: encrypt(newAccessToken),
+        ...(response.data.refresh_token && { refreshToken: encrypt(response.data.refresh_token) }),
       },
     });
 
-    return newAccessToken;
+    return newAccessToken; // Возвращаем уже расшифрованный для использования
   } catch (error) {
     console.error('Refresh token error:', error.response?.data || error.message);
     throw error;
   }
+};
+
+// Хелпер: получить расшифрованный access token
+const getAccessToken = (spotifyUser) => {
+  return decrypt(spotifyUser.accessToken);
 };
 
 const getUserId = (req) => {
@@ -44,6 +58,7 @@ const getUserId = (req) => {
   return null;
 };
 
+// Ищем Spotify-аккаунт по ID пользователя или по ID самого Spotify-аккаунта
 const getSpotifyUser = async (userId) => {
   return await prisma.spotifyUser.findFirst({
     where: { OR: [{ userId }, { id: userId }] }
@@ -62,7 +77,7 @@ router.get('/playlists', async (req, res) => {
       return res.status(401).json({ error: 'Spotify не подключен' });
     }
 
-    let accessToken = spotifyUser.accessToken;
+    let accessToken = getAccessToken(spotifyUser);
     let response;
 
     try {
@@ -102,7 +117,7 @@ router.get('/playlists/:playlistId/tracks', async (req, res) => {
     const spotifyUser = await getSpotifyUser(userId);
     if (!spotifyUser) return res.status(401).json({ error: 'Spotify не подключен' });
 
-    let accessToken = spotifyUser.accessToken;
+    let accessToken = getAccessToken(spotifyUser);
     let response;
 
     try {
@@ -183,10 +198,11 @@ router.get('/token-info', async (req, res) => {
     const spotifyUser = await getSpotifyUser(userId);
     if (!spotifyUser) return res.status(401).json({ error: 'Spotify не подключен' });
 
+    const accessToken = getAccessToken(spotifyUser);
     const response = await axios.get('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${spotifyUser.accessToken}` },
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
-    res.json({ spotifyUser: response.data, tokenPreview: spotifyUser.accessToken.substring(0, 10) + '...' });
+    res.json({ spotifyUser: response.data, tokenPreview: accessToken.substring(0, 10) + '...' });
   } catch (error) {
     res.json({ error: error.message });
   }

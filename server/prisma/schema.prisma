@@ -16,10 +16,10 @@ model User {
   isEmailVerified  Boolean         @default(false)
   
   // Статус и приватность
-  isOnline        Boolean         @default(false)
-  lastSeenAt      DateTime?
-  isOnlineHidden  Boolean         @default(false)
-  isFriendsHidden Boolean         @default(false)
+  isOnline         Boolean         @default(false)
+  lastSeenAt       DateTime?
+  isOnlineHidden   Boolean         @default(false)
+  isFriendsHidden  Boolean         @default(false)
   isActivityHidden Boolean         @default(false)
 
   friendsCount    Int @default(0)
@@ -55,15 +55,22 @@ model SpotifyUser {
   @@index([displayName])
 }
 
+enum FriendshipStatus {
+  pending
+  accepted
+  declined
+  blocked
+}
+
 model Friendship {
-  id         String   @id @default(uuid())
+  id         String           @id @default(uuid())
   senderId   String
   receiverId String
-  status     String   @default("pending") // pending, accepted, declined
-  createdAt  DateTime @default(now())
+  status     FriendshipStatus @default(pending)
+  createdAt  DateTime         @default(now())
 
-  receiver   User     @relation("receiver", fields: [receiverId], references: [id])
-  sender     User     @relation("sender", fields: [senderId], references: [id])
+  receiver   User             @relation("receiver", fields: [receiverId], references: [id])
+  sender     User             @relation("sender", fields: [senderId], references: [id])
 
   @@index([receiverId, status])
   @@index([senderId, status])
