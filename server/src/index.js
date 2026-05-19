@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
 const { createServer } = require('http');
+const { Server } = require('socket.io');
 const { Pool } = require('pg');
 const pgSession = require('connect-pg-simple')(session);
 
@@ -11,7 +12,7 @@ const friendsRoutes = require('./routes/friends');
 const sessionRoutes = require('./routes/sessions'); 
 const spotifyRoutes = require('./routes/spotify');
 const playlistRoutes = require('./routes/playlists');
-const { setupSocket } = require('./socket'); // Изменили на деструктуризацию
+const { setupSocket } = require('./socket');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -26,14 +27,17 @@ pool.query(`
     "expire" timestamp(6) NOT NULL,
     CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
   )
-`).catch(err => console.error("Session table error:", err));
+`).then(() => console.log("Session table ready"))
+  .catch(err => console.error("Session table error:", err));
 
 const app = express();
 app.set('trust proxy', 1);
 const httpServer = createServer(app);
 
-// Инициализация Socket.io через наш сервис
-const io = initSocket(httpServer);
+// Создаём io
+const io = new Server(httpServer, {
+  cors: { origin: '*' }
+});
 
 app.use(cors({
   origin: true,
@@ -71,7 +75,8 @@ app.get('/', (req, res) => {
   res.json({ message: 'SyncM server is running' });
 });
 
-setupSocket(io); // Инициализируем сокет твоей функцией
+// Инициализируем сокеты твоей функцией
+setupSocket(io);
 
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
