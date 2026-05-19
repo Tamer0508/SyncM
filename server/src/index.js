@@ -10,8 +10,8 @@ const authRoutes = require('./routes/auth');
 const friendsRoutes = require('./routes/friends'); 
 const sessionRoutes = require('./routes/sessions'); 
 const spotifyRoutes = require('./routes/spotify');
-const playlistRoutes = require('./routes/playlists'); // Добавили роуты плейлистов
-const { initSocket } = require('./services/socketService'); // Используем наш новый сервис
+const playlistRoutes = require('./routes/playlists');
+const setupSocket = require('./socket'); // Подключаем твой сокет
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -70,6 +70,8 @@ app.use('/playlists', playlistRoutes); // Подключили плейлист�
 app.get('/', (req, res) => {
   res.json({ message: 'SyncM server is running' });
 });
+
+setupSocket(io); // Инициализируем сокет твоей функцией
 
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);

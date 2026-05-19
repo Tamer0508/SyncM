@@ -9,7 +9,7 @@ async function updateOnlineStatus(userId, isOnline) {
       where: { id: userId },
       data: {
         isOnline,
-        lastSeenAt: isOnline ? undefined : new Date()
+        lastSeenAt: isOnline ? null : new Date() // Используем null вместо undefined для Prisma
       }
     });
   } catch (err) {
@@ -18,33 +18,34 @@ async function updateOnlineStatus(userId, isOnline) {
 }
 
 async function getFriendIds(userId) {
-  const friendships = await prisma.friendship.findMany({
-    where: {
-      status: 'accepted',
-      OR: [{ senderId: userId }, { receiverId: userId }]
-    },
-    select: { senderId: true, receiverId: true }
-  });
-  const ids = new Set();
-  friendships.forEach(f => {
-    if (f.senderId === userId) ids.add(f.receiverId);
-    else ids.add(f.senderId);
-  });
-  return [...ids];
+  try {
+    const friendships = await prisma.friendship.findMany({
+      where: {
+        status: 'accepted',
+        OR: [{ senderId: userId }, { receiverId: userId }]
+      },
+      select: { senderId: true, receiverId: true }
+    });
+    const ids = new Set();
+    friendships.forEach(f => {
+      if (f.senderId === userId) ids.add(f.receiverId);
+      else ids.add(f.senderId);
+    });
+    return [...ids];
+  } catch (err) {
+    return [];
+  }
 }
 
 const setupSocket = (io) => {
   io.on('connection', async (socket) => {
     console.log('User connected:', socket.id);
 
-    const rawCookie = socket.handshake.headers.cookie;
     let userId = null;
-    if (rawCookie) {
-      const parsed = cookie.parse(rawCookie);
-    }
 
+    // Авторизация пользователя при подключении
     socket.on('authenticate', async (data) => {
-      const token = data.token;
+      const token = data.token; // В твоем случае это userId
       if (!token) return;
       userId = token;
       socket.data.userId = userId;
@@ -60,10 +61,11 @@ const setupSocket = (io) => {
         where: { id: userId },
         select: { isOnlineHidden: true }
       });
+
       if (!userSettings?.isOnlineHidden) {
         const friendIds = await getFriendIds(userId);
         friendIds.forEach(fid => {
-          io.to(fid).emit('friend_online', { userId });
+          // Уведомляем друга напрямую если он в сети
           const friendSockets = onlineUsers.get(fid);
           if (friendSockets) {
             friendSockets.forEach(sid => {
@@ -74,12 +76,13 @@ const setupSocket = (io) => {
       }
     });
 
-    socket.on('join_session', ({ sessionId, userId }) => {
+    // Сессионная логика
+    socket.on('join_session', ({ sessionId, userId: joinUserId }) => {
       socket.join(sessionId);
-      socket.data.userId = userId;
+      socket.data.userId = joinUserId || userId;
       socket.data.sessionId = sessionId;
-      io.to(sessionId).emit('user_joined', { userId });
-      console.log(`User ${userId} joined session ${sessionId}`);
+      io.to(sessionId).emit('user_joined', { userId: socket.data.userId });
+      console.log(`User ${socket.data.userId} joined session ${sessionId}`);
     });
 
     socket.on('play', ({ sessionId, spotifyUri, position_ms }) => {
@@ -98,34 +101,35 @@ const setupSocket = (io) => {
       socket.to(sessionId).emit('seek', { position_ms });
     });
 
-    socket.on('rate_track', async ({ sessionId, trackId, rating, userId }) => {
+    socket.on('rate_track', async ({ sessionId, trackId, rating, userId: rUserId }) => {
       try {
-        const existing = await prisma.trackRating.findFirst({
-          where: { trackId, userId },
+        const uid = rUserId || socket.data.userId;
+        await prisma.trackRating.upsert({
+          where: { trackId_userId: { trackId, userId: uid } },
+          update: { rating },
+          create: { trackId, userId: uid, rating }
         });
-        if (existing) {
-          await prisma.trackRating.update({ where: { id: existing.id }, data: { rating } });
-        } else {
-          await prisma.trackRating.create({ data: { trackId, userId, rating } });
-        }
-        io.to(sessionId).emit('track_rated', { trackId, userId, rating });
+        io.to(sessionId).emit('track_rated', { trackId, userId: uid, rating });
       } catch (error) {
         socket.emit('error', { message: 'Ошибка сохранения оценки' });
       }
     });
 
-    socket.on('leave_session', ({ sessionId, userId }) => {
+    socket.on('leave_session', ({ sessionId, userId: lUserId }) => {
+      const uid = lUserId || socket.data.userId;
       socket.leave(sessionId);
-      io.to(sessionId).emit('user_left', { userId });
+      io.to(sessionId).emit('user_left', { userId: uid });
     });
 
     socket.on('disconnect', async () => {
       console.log('User disconnected:', socket.id);
-      const uid = socket.data.userId || userId;
+      const uid = socket.data.userId;
       const sid = socket.data.sessionId;
+
       if (sid && uid) {
         io.to(sid).emit('user_left', { userId: uid });
       }
+
       if (uid) {
         const userSockets = onlineUsers.get(uid);
         if (userSockets) {
@@ -133,10 +137,12 @@ const setupSocket = (io) => {
           if (userSockets.size === 0) {
             onlineUsers.delete(uid);
             await updateOnlineStatus(uid, false);
+            
             const settings = await prisma.appUser.findUnique({
               where: { id: uid },
               select: { isOnlineHidden: true }
             });
+
             if (!settings?.isOnlineHidden) {
               const friendIds = await getFriendIds(uid);
               friendIds.forEach(fid => {
