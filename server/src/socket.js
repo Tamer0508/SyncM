@@ -2,6 +2,8 @@ const prisma = require('./db/prisma');
 const cookie = require('cookie');
 
 const onlineUsers = new Map();
+const offlineTimers = new Map(); // userId -> Timeout
+const OFFLINE_DELAY_MS = 5000; // 5 секунд "grace period"
 let ioInstance;
 
 async function updateOnlineStatus(userId, isOnline) {
@@ -51,28 +53,39 @@ const setupSocket = (io) => {
       userId = token;
       socket.data.userId = userId;
 
+      // Отменяем "выход в оффлайн" если был запланирован
+      if (offlineTimers.has(userId)) {
+        clearTimeout(offlineTimers.get(userId));
+        offlineTimers.delete(userId);
+      }
+
+      const wasOffline = !onlineUsers.has(userId);
+
       if (!onlineUsers.has(userId)) {
         onlineUsers.set(userId, new Set());
       }
       onlineUsers.get(userId).add(socket.id);
 
-      await updateOnlineStatus(userId, true);
+      // Обновляем БД только если пользователь реально был оффлайн
+      if (wasOffline) {
+        await updateOnlineStatus(userId, true);
 
-      const userSettings = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isOnlineHidden: true }
-      });
-
-      if (!userSettings?.isOnlineHidden) {
-        const friendIds = await getFriendIds(userId);
-        friendIds.forEach(fid => {
-          const friendSockets = onlineUsers.get(fid);
-          if (friendSockets) {
-            friendSockets.forEach(sid => {
-              io.to(sid).emit('friend_online', { userId });
-            });
-          }
+        const userSettings = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { isOnlineHidden: true }
         });
+
+        if (!userSettings?.isOnlineHidden) {
+          const friendIds = await getFriendIds(userId);
+          friendIds.forEach(fid => {
+            const friendSockets = onlineUsers.get(fid);
+            if (friendSockets) {
+              friendSockets.forEach(sid => {
+                io.to(sid).emit('friend_online', { userId });
+              });
+            }
+          });
+        }
       }
     });
 
@@ -135,24 +148,34 @@ const setupSocket = (io) => {
           userSockets.delete(socket.id);
           if (userSockets.size === 0) {
             onlineUsers.delete(uid);
-            await updateOnlineStatus(uid, false);
 
-            const settings = await prisma.user.findUnique({
-              where: { id: uid },
-              select: { isOnlineHidden: true }
-            });
+            // Не отмечаем offline сразу — даём 5 сек на переподключение
+            const timer = setTimeout(async () => {
+              offlineTimers.delete(uid);
+              // Проверяем что юзер всё ещё оффлайн
+              if (onlineUsers.has(uid)) return;
 
-            if (!settings?.isOnlineHidden) {
-              const friendIds = await getFriendIds(uid);
-              friendIds.forEach(fid => {
-                const friendSockets = onlineUsers.get(fid);
-                if (friendSockets) {
-                  friendSockets.forEach(sid => {
-                    io.to(sid).emit('friend_offline', { userId: uid, lastSeenAt: new Date().toISOString() });
-                  });
-                }
+              await updateOnlineStatus(uid, false);
+
+              const settings = await prisma.user.findUnique({
+                where: { id: uid },
+                select: { isOnlineHidden: true }
               });
-            }
+
+              if (!settings?.isOnlineHidden) {
+                const friendIds = await getFriendIds(uid);
+                friendIds.forEach(fid => {
+                  const friendSockets = onlineUsers.get(fid);
+                  if (friendSockets) {
+                    friendSockets.forEach(sid => {
+                      io.to(sid).emit('friend_offline', { userId: uid, lastSeenAt: new Date().toISOString() });
+                    });
+                  }
+                });
+              }
+            }, OFFLINE_DELAY_MS);
+
+            offlineTimers.set(uid, timer);
           }
         }
       }
