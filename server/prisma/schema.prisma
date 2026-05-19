@@ -21,6 +21,9 @@ model User {
   isOnlineHidden  Boolean         @default(false)
   isFriendsHidden Boolean         @default(false)
 
+  friendsCount    Int @default(0)
+  sessionsCount   Int @default(0)
+
   // Связи
   receivedRequests Friendship[]    @relation("receiver")
   sentRequests     Friendship[]    @relation("sender")
@@ -28,18 +31,16 @@ model User {
   sessionMembers   SessionMember[]
   ratings          TrackRating[]
   playlists        Playlist[]
+  addedTracks      SessionTrack[]  @relation("trackAdder")
   
-  spotifyAccount   SpotifyAccount?
-
-  friendsCount    Int @default(0)
-  sessionsCount   Int @default(0)
+  spotifyUser      SpotifyUser?
 
   @@index([username])
 }
 
-model SpotifyAccount {
+model SpotifyUser {
   id           String   @id @default(uuid())
-  userId       String?  @unique
+  userId       String?  @unique @map("user_id")
   spotifyId    String   @unique
   displayName  String
   email        String?
@@ -57,7 +58,7 @@ model Friendship {
   id         String   @id @default(uuid())
   senderId   String
   receiverId String
-  status     String   @default("pending")
+  status     String   @default("pending") // pending, accepted, declined
   createdAt  DateTime @default(now())
 
   receiver   User     @relation("receiver", fields: [receiverId], references: [id])
@@ -115,6 +116,7 @@ model SessionMember {
 model SessionTrack {
   id         String        @id @default(uuid())
   sessionId  String
+  addedById  String?       // Кто добавил трек
   spotifyUri String
   trackName  String
   artistName String
@@ -122,19 +124,21 @@ model SessionTrack {
   addedAt    DateTime      @default(now())
 
   session    Session       @relation(fields: [sessionId], references: [id])
+  addedBy    User?         @relation("trackAdder", fields: [addedById], references: [id])
   ratings    TrackRating[]
 
   @@index([sessionId, addedAt])
 }
 
 model TrackRating {
-  id      String       @id @default(uuid())
-  trackId String
-  userId  String
-  rating  Int
+  id        String       @id @default(uuid())
+  trackId   String
+  userId    String
+  rating    Int          @default(1) // 1 = лайк, -1 = дизлайк
+  createdAt DateTime     @default(now())
 
-  track   SessionTrack @relation(fields: [trackId], references: [id])
-  user    User         @relation(fields: [userId], references: [id])
+  track     SessionTrack @relation(fields: [trackId], references: [id])
+  user      User         @relation(fields: [userId], references: [id])
 
   @@unique([trackId, userId])
 }
@@ -147,8 +151,10 @@ model EmailVerification {
   createdAt DateTime @default(now())
 
   @@index([email])
+  @@index([expiresAt])
 }
 
+// Системная таблица для express-session
 model SessionStore {
   sid    String   @id @db.VarChar
   sess   Json     @db.Json

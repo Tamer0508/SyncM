@@ -15,13 +15,13 @@ const searchUsers = async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
-    const users = await prisma.appUser.findMany({
+    const users = await prisma.user.findMany({
       where: {
         username: { contains: query, mode: 'insensitive' },
         id: { not: userId }
       },
       include: {
-        User: { select: { avatarUrl: true } },
+        spotifyUser: { select: { avatarUrl: true } },
         sentRequests: {
           where: { receiverId: userId },
           select: { id: true, status: true }
@@ -47,7 +47,7 @@ const searchUsers = async (req, res) => {
       return {
         id: u.id,
         displayName: u.username,
-        avatarUrl: u.User?.avatarUrl || null,
+        avatarUrl: u.spotifyUser?.avatarUrl || null,
         friendshipStatus
       };
     }));
@@ -87,7 +87,7 @@ const sendRequest = async (req, res) => {
           select: {
             id: true,
             username: true,
-            User: { select: { avatarUrl: true } }
+            spotifyUser: { select: { avatarUrl: true } }
           }
         }
       }
@@ -98,7 +98,7 @@ const sendRequest = async (req, res) => {
       receiver: {
         id: friendship.receiver.id,
         displayName: friendship.receiver.username,
-        avatarUrl: friendship.receiver.User?.avatarUrl || null
+        avatarUrl: friendship.receiver.spotifyUser?.avatarUrl || null
       },
       status: friendship.status,
       createdAt: friendship.createdAt
@@ -127,10 +127,10 @@ const acceptRequest = async (req, res) => {
       const updatedFriendship = await tx.friendship.update({
         where: { id: friendshipId },
         data: { status: 'accepted' },
-        include: { sender: { select: { id: true, username: true, User: { select: { avatarUrl: true } } } } }
+        include: { sender: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } } }
       });
 
-      await tx.appUser.updateMany({
+      await tx.user.updateMany({
         where: { id: { in: [friendship.senderId, friendship.receiverId] } },
         data: { friendsCount: { increment: 1 } }
       });
@@ -143,7 +143,7 @@ const acceptRequest = async (req, res) => {
       sender: {
         id: updated.sender.id,
         displayName: updated.sender.username,
-        avatarUrl: updated.sender.User?.avatarUrl || null
+        avatarUrl: updated.sender.spotifyUser?.avatarUrl || null
       },
       status: updated.status
     });
@@ -166,8 +166,8 @@ const getFriends = async (req, res) => {
         ...(cursor && { id: { lt: cursor } })
       },
       include: {
-        sender: { include: { User: { select: { avatarUrl: true, displayName: true } } } },
-        receiver: { include: { User: { select: { avatarUrl: true, displayName: true } } } }
+        sender: { include: { spotifyUser: { select: { avatarUrl: true, displayName: true } } } },
+        receiver: { include: { spotifyUser: { select: { avatarUrl: true, displayName: true } } } }
       },
       orderBy: { id: 'desc' },
       take: Number(limit)
@@ -178,8 +178,8 @@ const getFriends = async (req, res) => {
       return {
         id: friendData.id,
         displayName: friendData.username,
-        spotifyDisplayName: friendData.User?.displayName || null,
-        avatarUrl: friendData.User?.avatarUrl || null,
+        spotifyDisplayName: friendData.spotifyUser?.displayName || null,
+        avatarUrl: friendData.spotifyUser?.avatarUrl || null,
         friendshipId: f.id,
         isOnline: friendData.isOnlineHidden ? false : (friendData.isOnline ?? false),
         lastSeenAt: friendData.isOnlineHidden ? null : friendData.lastSeenAt,
@@ -195,19 +195,18 @@ const getFriends = async (req, res) => {
 
 const getUserById = async (req, res) => {
   const { userId } = req.params;
-  const currentUserId = getUserId(req);
 
   try {
-    const user = await prisma.appUser.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { User: { select: { avatarUrl: true, displayName: true } } }
+      include: { spotifyUser: { select: { avatarUrl: true, displayName: true } } }
     });
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
     res.json({
       id: user.id,
       displayName: user.username,
-      avatarUrl: user.User?.avatarUrl || null,
+      avatarUrl: user.spotifyUser?.avatarUrl || null,
       friendsCount: user.isFriendsHidden ? 0 : user.friendsCount,
       isOnline: user.isOnlineHidden ? false : (user.isOnline ?? false),
       lastSeenAt: user.isOnlineHidden ? null : user.lastSeenAt,
@@ -225,7 +224,7 @@ const getIncomingRequests = async (req, res) => {
   try {
     const requests = await prisma.friendship.findMany({
       where: { receiverId: userId, status: 'pending', ...(cursor && { id: { lt: cursor } }) },
-      include: { sender: { include: { User: { select: { avatarUrl: true } } } } },
+      include: { sender: { include: { spotifyUser: { select: { avatarUrl: true } } } } },
       orderBy: { id: 'desc' },
       take: Number(limit)
     });
@@ -235,7 +234,7 @@ const getIncomingRequests = async (req, res) => {
       sender: {
         id: r.sender.id,
         displayName: r.sender.username,
-        avatarUrl: r.sender.User?.avatarUrl || null
+        avatarUrl: r.sender.spotifyUser?.avatarUrl || null
       },
       status: r.status,
       createdAt: r.createdAt
@@ -248,6 +247,60 @@ const getIncomingRequests = async (req, res) => {
   }
 };
 
+const deleteRequest = async (req, res) => {
+  const { friendshipId } = req.params;
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const friendship = await prisma.friendship.findUnique({ where: { id: friendshipId } });
+    if (!friendship) return res.status(404).json({ error: 'Не найдено' });
+
+    if (friendship.status === 'accepted') {
+      return res.status(400).json({ error: 'Для удаления друга используйте /friends/by-user/:friendId' });
+    }
+    if (friendship.senderId !== userId && friendship.receiverId !== userId) {
+      return res.status(403).json({ error: 'Нет доступа' });
+    }
+
+    await prisma.friendship.delete({ where: { id: friendshipId } });
+    res.json({ message: 'Удалено' });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка удаления' });
+  }
+};
+
+const deleteFriendByUserId = async (req, res) => {
+  const { friendId } = req.params;
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const friendship = await prisma.friendship.findFirst({
+      where: {
+        status: 'accepted',
+        OR: [
+          { senderId: userId, receiverId: friendId },
+          { senderId: friendId, receiverId: userId },
+        ],
+      },
+    });
+
+    if (!friendship) return res.status(404).json({ error: 'Дружба не найдена' });
+
+    await prisma.$transaction([
+      prisma.friendship.delete({ where: { id: friendship.id } }),
+      prisma.user.updateMany({
+        where: { id: { in: [friendship.senderId, friendship.receiverId] } },
+        data: { friendsCount: { decrement: 1 } }
+      })
+    ]);
+    res.json({ message: 'Друг удален' });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка удаления' });
+  }
+};
+
 module.exports = {
   searchUsers,
   sendRequest,
@@ -255,6 +308,6 @@ module.exports = {
   getFriends,
   getUserById,
   getIncomingRequests,
-  deleteRequest: async (req, res) => { res.json({message: 'Deleted'}); },
-  deleteFriendByUserId: async (req, res) => { res.json({message: 'Deleted'}); }
+  deleteRequest,
+  deleteFriendByUserId
 };

@@ -7,7 +7,6 @@ const getUserId = (req) => {
   return null;
 };
 
-// Импорт плейлиста из Spotify в нашу БД
 exports.importPlaylist = async (req, res) => {
   try {
     const { spotifyPlaylistId, name, description, imageUrl } = req.body;
@@ -34,7 +33,6 @@ exports.importPlaylist = async (req, res) => {
   }
 };
 
-// Получение всех сохраненных плейлистов пользователя
 exports.getUserPlaylists = async (req, res) => {
   try {
     const userId = getUserId(req);

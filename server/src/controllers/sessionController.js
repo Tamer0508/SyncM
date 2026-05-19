@@ -1,5 +1,5 @@
 const prisma = require('../db/prisma');
-const { getIo } = require('../socket'); // Теперь берем getIo из твоего socket.js
+const { getIo } = require('../socket');
 
 const createSession = async (req, res) => {
   const { name, friendId } = req.body;
@@ -25,14 +25,14 @@ const createSession = async (req, res) => {
           members: {
             include: {
               user: {
-                select: { id: true, username: true, User: { select: { avatarUrl: true } } },
+                select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } },
               },
             },
           },
         },
       });
 
-      await tx.appUser.updateMany({
+      await tx.user.updateMany({
         where: { id: { in: [userId, friendId] } },
         data: { sessionsCount: { increment: 1 } }
       });
@@ -60,7 +60,7 @@ const getMySessions = async (req, res) => {
       include: {
         members: {
           include: {
-            user: { select: { id: true, username: true, User: { select: { avatarUrl: true } } } },
+            user: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } },
           },
         },
         tracks: { include: { addedBy: { select: { username: true } } } },
@@ -81,7 +81,7 @@ const addTracks = async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
-    const createdTracks = await Promise.all(tracks.map((t) => 
+    const createdTracks = await Promise.all(tracks.map((t) =>
       prisma.sessionTrack.create({
         data: {
           sessionId,
@@ -94,8 +94,12 @@ const addTracks = async (req, res) => {
       })
     ));
 
-    const io = getIo();
-    io.to(sessionId).emit('tracks-added', createdTracks);
+    try {
+      const io = getIo();
+      if (io) io.to(sessionId).emit('tracks-added', createdTracks);
+    } catch (e) {
+      console.warn('Socket emit failed:', e.message);
+    }
 
     res.json({ message: `Добавлено ${createdTracks.length} треков`, tracks: createdTracks });
   } catch (error) {

@@ -30,8 +30,13 @@ const login = async (req, res) => {
     } catch (e) {}
   }
 
+  if (stateObj.userId) {
+    req.session.pendingLinkUserId = stateObj.userId;
+    await req.session.save();
+  }
+
   const returnTo = stateObj.returnTo || req.query.returnTo || '';
-  const stateForSpotify = Buffer.from(JSON.stringify({ returnTo, userId: stateObj.userId || req.session.userId })).toString('base64');
+  const stateForSpotify = Buffer.from(JSON.stringify({ returnTo, userId: stateObj.userId })).toString('base64');
 
   const url = `https://accounts.spotify.com/authorize` +
     `?response_type=code` +
@@ -64,25 +69,29 @@ const callback = async (req, res) => {
     );
 
     const { access_token, refresh_token } = tokenResponse.data;
+
     const profileResponse = await axios.get('https://api.spotify.com/v1/me', {
       headers: { Authorization: `Bearer ${access_token}` },
     });
+
     const profile = profileResponse.data;
 
     let returnTo = null;
-    let pendingUserId = null;
+    let pendingLinkUserId = null;
+
     if (state) {
       try {
         const decoded = Buffer.from(state, 'base64').toString('utf8');
         const parsed = JSON.parse(decoded);
-        returnTo = parsed.returnTo;
-        pendingUserId = parsed.userId;
-      } catch (e) {}
+        returnTo = parsed?.returnTo;
+        pendingLinkUserId = parsed?.userId;
+      } catch (_) {}
     }
 
-    const userId = pendingUserId || req.session.userId;
+    const userId = pendingLinkUserId || req.session?.userId;
 
-    const spotifyAccount = await prisma.spotifyAccount.upsert({
+    // Создаем или обновляем Spotify-аккаунт и связываем с User
+    const spotifyUser = await prisma.spotifyUser.upsert({
       where: { spotifyId: profile.id },
       update: {
         displayName: profile.display_name,
@@ -103,28 +112,49 @@ const callback = async (req, res) => {
       },
     });
 
-    req.session.userId = spotifyAccount.userId || spotifyAccount.id;
+    req.session.userId = spotifyUser.userId || spotifyUser.id;
     await req.session.save();
 
     const cookie = `connect.sid=${req.sessionID}`;
+
     if (returnTo) {
       const joiner = returnTo.includes('?') ? '&' : '?';
-      return res.redirect(`${returnTo}${joiner}auth_done=1&token=${req.session.userId}&cookie=${encodeURIComponent(cookie)}`);
+      const redirectUrl = returnTo.startsWith('myapp://')
+        ? `${returnTo}?token=${req.session.userId}&cookie=${encodeURIComponent(cookie)}`
+        : `${returnTo}${joiner}auth_done=1&token=${req.session.userId}&cookie=${encodeURIComponent(cookie)}`;
+      return res.redirect(redirectUrl);
     }
 
-    res.json({ message: 'Spotify connected', userId: req.session.userId });
+    res.json({
+      message: 'Spotify подключен успешно',
+      user: {
+        id: req.session.userId,
+        displayName: spotifyUser.displayName,
+        spotifyConnected: true,
+      },
+      cookie,
+    });
   } catch (error) {
-    res.status(500).json({ error: 'OAuth error' });
+    console.error('OAuth error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Ошибка авторизации Spotify' });
   }
 };
 
 const getMe = async (req, res) => {
-  const userId = req.session?.userId;
-  if (!userId) return res.status(401).json({ error: 'Not authorized' });
+  let userId = req.session?.userId;
+  if (!userId) {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith('Bearer ')) {
+      userId = auth.replace('Bearer ', '');
+    }
+  }
 
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  // Ищем User вместе с привязанным Spotify-аккаунтом
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { spotifyAccount: true },
+    include: { spotifyUser: true },
   });
 
   if (user) {
@@ -132,52 +162,77 @@ const getMe = async (req, res) => {
       id: user.id,
       displayName: user.username,
       email: user.email,
-      avatarUrl: user.spotifyAccount?.avatarUrl || null,
-      spotifyConnected: !!user.spotifyAccount,
+      avatarUrl: user.spotifyUser?.avatarUrl || null,
+      spotifyConnected: !!user.spotifyUser,
+      spotifyId: user.spotifyUser?.spotifyId || null,
     });
   }
 
-  // Fallback for direct spotify login without full User profile
-  const spotAccount = await prisma.spotifyAccount.findUnique({
+  // Fallback: если userId — это ID SpotifyUser (legacy)
+  const spotifyUser = await prisma.spotifyUser.findUnique({
     where: { id: userId },
-    include: { user: true }
+    include: { user: true },
   });
 
-  if (spotAccount) {
+  if (spotifyUser) {
     return res.json({
-      id: spotAccount.userId || spotAccount.id,
-      displayName: spotAccount.user?.username || spotAccount.displayName,
-      avatarUrl: spotAccount.avatarUrl,
+      id: spotifyUser.userId || spotifyUser.id,
+      displayName: spotifyUser.user?.username || spotifyUser.displayName,
+      email: spotifyUser.user?.email || spotifyUser.email,
+      avatarUrl: spotifyUser.avatarUrl,
       spotifyConnected: true,
+      spotifyId: spotifyUser.spotifyId,
     });
   }
 
-  res.status(401).json({ error: 'User not found' });
+  return res.status(401).json({ error: 'Пользователь не найден' });
 };
 
 const googleAuth = async (req, res) => {
   const { idToken } = req.body;
+  if (!idToken) return res.status(400).json({ error: 'Missing idToken' });
+
   try {
-    const ticket = await googleClient.verifyIdToken({ idToken, audience: process.env.GOOGLE_CLIENT_ID });
-    const { email, name } = ticket.getPayload();
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const email = payload.email;
+    const name = payload.name;
 
     const user = await prisma.user.upsert({
       where: { email },
       update: { username: name },
-      create: { username: name, email, passwordHash: '' },
+      create: {
+        username: name,
+        email,
+        passwordHash: '',
+      },
     });
 
     req.session.userId = user.id;
     await req.session.save();
-    res.json({ message: 'Logged in with Google', user });
+
+    res.json({
+      message: 'Logged in with Google',
+      user: {
+        id: user.id,
+        displayName: user.username,
+        email: user.email,
+        spotifyConnected: false,
+      },
+      cookie: `connect.sid=${req.sessionID}`,
+    });
   } catch (error) {
-    res.status(401).json({ error: 'Invalid Google token' });
+    console.error('Google auth error:', error);
+    res.status(401).json({ error: 'Invalid token' });
   }
 };
 
 const logout = (req, res) => {
   req.session.destroy();
-  res.json({ message: 'Logged out' });
+  res.json({ message: 'Вышли из системы' });
 };
 
 module.exports = { login, callback, getMe, logout, googleAuth };

@@ -1,15 +1,16 @@
 const prisma = require('./db/prisma');
 const cookie = require('cookie');
 
-const onlineUsers = new Map(); 
+const onlineUsers = new Map();
+let ioInstance;
 
 async function updateOnlineStatus(userId, isOnline) {
   try {
-    await prisma.appUser.update({
+    await prisma.user.update({
       where: { id: userId },
       data: {
         isOnline,
-        lastSeenAt: isOnline ? null : new Date() // Используем null вместо undefined для Prisma
+        lastSeenAt: isOnline ? null : new Date()
       }
     });
   } catch (err) {
@@ -37,8 +38,6 @@ async function getFriendIds(userId) {
   }
 }
 
-let ioInstance;
-
 const setupSocket = (io) => {
   ioInstance = io;
   io.on('connection', async (socket) => {
@@ -46,9 +45,8 @@ const setupSocket = (io) => {
 
     let userId = null;
 
-    // Авторизация пользователя при подключении
     socket.on('authenticate', async (data) => {
-      const token = data.token; // В твоем случае это userId
+      const token = data.token;
       if (!token) return;
       userId = token;
       socket.data.userId = userId;
@@ -60,7 +58,7 @@ const setupSocket = (io) => {
 
       await updateOnlineStatus(userId, true);
 
-      const userSettings = await prisma.appUser.findUnique({
+      const userSettings = await prisma.user.findUnique({
         where: { id: userId },
         select: { isOnlineHidden: true }
       });
@@ -68,7 +66,6 @@ const setupSocket = (io) => {
       if (!userSettings?.isOnlineHidden) {
         const friendIds = await getFriendIds(userId);
         friendIds.forEach(fid => {
-          // Уведомляем друга напрямую если он в сети
           const friendSockets = onlineUsers.get(fid);
           if (friendSockets) {
             friendSockets.forEach(sid => {
@@ -79,7 +76,6 @@ const setupSocket = (io) => {
       }
     });
 
-    // Сессионная логика
     socket.on('join_session', ({ sessionId, userId: joinUserId }) => {
       socket.join(sessionId);
       socket.data.userId = joinUserId || userId;
@@ -140,8 +136,8 @@ const setupSocket = (io) => {
           if (userSockets.size === 0) {
             onlineUsers.delete(uid);
             await updateOnlineStatus(uid, false);
-            
-            const settings = await prisma.appUser.findUnique({
+
+            const settings = await prisma.user.findUnique({
               where: { id: uid },
               select: { isOnlineHidden: true }
             });
@@ -164,13 +160,7 @@ const setupSocket = (io) => {
   });
 };
 
-const getIo = () => {
-  if (!ioInstance) {
-    // В некоторых случаях это может вызваться до инициализации, 
-    // возвращаем заглушку или выбрасываем ошибку
-    console.warn("getIo called before socket initialization");
-  }
-  return ioInstance;
-};
+const getIo = () => ioInstance;
 
 module.exports = setupSocket;
+module.exports.getIo = getIo;
