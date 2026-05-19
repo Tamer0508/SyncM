@@ -235,4 +235,73 @@ const logout = (req, res) => {
   res.json({ message: 'Вышли из системы' });
 };
 
-module.exports = { login, callback, getMe, logout, googleAuth };
+// Получить настройки приватности пользователя
+const getSettings = async (req, res) => {
+  let userId = req.session?.userId;
+  if (!userId) {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
+  }
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        isOnlineHidden: true,
+        isFriendsHidden: true,
+        isActivityHidden: true,
+      },
+    });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    res.json({
+      isOnlineHidden: user.isOnlineHidden,
+      isFriendsHidden: user.isFriendsHidden,
+      isActivityHidden: user.isActivityHidden,
+    });
+  } catch (error) {
+    console.error('Get settings error:', error);
+    res.status(500).json({ error: 'Ошибка получения настроек' });
+  }
+};
+
+// Обновить настройки приватности
+const updateSettings = async (req, res) => {
+  let userId = req.session?.userId;
+  if (!userId) {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
+  }
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const { isOnlineHidden, isFriendsHidden, isActivityHidden } = req.body;
+
+  try {
+    const dataToUpdate = {};
+    if (typeof isOnlineHidden === 'boolean') dataToUpdate.isOnlineHidden = isOnlineHidden;
+    if (typeof isFriendsHidden === 'boolean') dataToUpdate.isFriendsHidden = isFriendsHidden;
+    if (typeof isActivityHidden === 'boolean') dataToUpdate.isActivityHidden = isActivityHidden;
+
+    if (Object.keys(dataToUpdate).length === 0) {
+      return res.status(400).json({ error: 'Нет данных для обновления' });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: dataToUpdate,
+      select: {
+        isOnlineHidden: true,
+        isFriendsHidden: true,
+        isActivityHidden: true,
+      },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Update settings error:', error);
+    res.status(500).json({ error: 'Ошибка обновления настроек' });
+  }
+};
+
+module.exports = { login, callback, getMe, logout, googleAuth, getSettings, updateSettings };

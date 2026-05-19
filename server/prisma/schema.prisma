@@ -20,6 +20,7 @@ model User {
   lastSeenAt      DateTime?
   isOnlineHidden  Boolean         @default(false)
   isFriendsHidden Boolean         @default(false)
+  isActivityHidden Boolean         @default(false)
 
   friendsCount    Int @default(0)
   sessionsCount   Int @default(0)
