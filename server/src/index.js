@@ -11,7 +11,7 @@ const friendsRoutes = require('./routes/friends');
 const sessionRoutes = require('./routes/sessions'); 
 const spotifyRoutes = require('./routes/spotify');
 const playlistRoutes = require('./routes/playlists');
-const setupSocket = require('./socket'); // Подключаем твой сокет
+const { setupSocket } = require('./socket'); // Изменили на деструктуризацию
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -65,7 +65,7 @@ app.use('/auth', authRoutes);
 app.use('/friends', friendsRoutes);
 app.use('/sessions', sessionRoutes);
 app.use('/spotify', spotifyRoutes);
-app.use('/playlists', playlistRoutes); // Подключили плейлисты
+app.use('/playlists', playlistRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'SyncM server is running' });
