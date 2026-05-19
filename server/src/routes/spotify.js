@@ -1,166 +1,195 @@
-const prisma = require('./db/prisma');
-const cookie = require('cookie');
+const express = require('express');
+const router = express.Router();
+const axios = require('axios');
+const prisma = require('../db/prisma');
 
-const onlineUsers = new Map();
-let ioInstance;
-
-async function updateOnlineStatus(userId, isOnline) {
+const refreshAccessToken = async (spotifyUser) => {
   try {
-    await prisma.user.update({
-      where: { id: userId },
+    const response = await axios.post(
+      'https://accounts.spotify.com/api/token',
+      new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: spotifyUser.refreshToken,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${Buffer.from(
+            `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
+          ).toString('base64')}`,
+        },
+      }
+    );
+
+    const newAccessToken = response.data.access_token;
+    await prisma.spotifyUser.update({
+      where: { id: spotifyUser.id },
       data: {
-        isOnline,
-        lastSeenAt: isOnline ? null : new Date()
-      }
-    });
-  } catch (err) {
-    console.error('Update online status error:', err.message);
-  }
-}
-
-async function getFriendIds(userId) {
-  try {
-    const friendships = await prisma.friendship.findMany({
-      where: {
-        status: 'accepted',
-        OR: [{ senderId: userId }, { receiverId: userId }]
+        accessToken: newAccessToken,
+        ...(response.data.refresh_token && { refreshToken: response.data.refresh_token }),
       },
-      select: { senderId: true, receiverId: true }
     });
-    const ids = new Set();
-    friendships.forEach(f => {
-      if (f.senderId === userId) ids.add(f.receiverId);
-      else ids.add(f.senderId);
-    });
-    return [...ids];
-  } catch (err) {
-    return [];
+
+    return newAccessToken;
+  } catch (error) {
+    console.error('Refresh token error:', error.response?.data || error.message);
+    throw error;
   }
-}
+};
 
-const setupSocket = (io) => {
-  ioInstance = io;
-  io.on('connection', async (socket) => {
-    console.log('User connected:', socket.id);
+const getUserId = (req) => {
+  if (req.session?.userId) return req.session.userId;
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
+  return null;
+};
 
-    let userId = null;
-
-    socket.on('authenticate', async (data) => {
-      const token = data.token;
-      if (!token) return;
-      userId = token;
-      socket.data.userId = userId;
-
-      if (!onlineUsers.has(userId)) {
-        onlineUsers.set(userId, new Set());
-      }
-      onlineUsers.get(userId).add(socket.id);
-
-      await updateOnlineStatus(userId, true);
-
-      const userSettings = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isOnlineHidden: true }
-      });
-
-      if (!userSettings?.isOnlineHidden) {
-        const friendIds = await getFriendIds(userId);
-        friendIds.forEach(fid => {
-          const friendSockets = onlineUsers.get(fid);
-          if (friendSockets) {
-            friendSockets.forEach(sid => {
-              io.to(sid).emit('friend_online', { userId });
-            });
-          }
-        });
-      }
-    });
-
-    socket.on('join_session', ({ sessionId, userId: joinUserId }) => {
-      socket.join(sessionId);
-      socket.data.userId = joinUserId || userId;
-      socket.data.sessionId = sessionId;
-      io.to(sessionId).emit('user_joined', { userId: socket.data.userId });
-      console.log(`User ${socket.data.userId} joined session ${sessionId}`);
-    });
-
-    socket.on('play', ({ sessionId, spotifyUri, position_ms }) => {
-      socket.to(sessionId).emit('play', { spotifyUri, position_ms });
-    });
-
-    socket.on('pause', ({ sessionId }) => {
-      socket.to(sessionId).emit('pause');
-    });
-
-    socket.on('next_track', ({ sessionId, spotifyUri }) => {
-      socket.to(sessionId).emit('next_track', { spotifyUri });
-    });
-
-    socket.on('seek', ({ sessionId, position_ms }) => {
-      socket.to(sessionId).emit('seek', { position_ms });
-    });
-
-    socket.on('rate_track', async ({ sessionId, trackId, rating, userId: rUserId }) => {
-      try {
-        const uid = rUserId || socket.data.userId;
-        await prisma.trackRating.upsert({
-          where: { trackId_userId: { trackId, userId: uid } },
-          update: { rating },
-          create: { trackId, userId: uid, rating }
-        });
-        io.to(sessionId).emit('track_rated', { trackId, userId: uid, rating });
-      } catch (error) {
-        socket.emit('error', { message: 'Ошибка сохранения оценки' });
-      }
-    });
-
-    socket.on('leave_session', ({ sessionId, userId: lUserId }) => {
-      const uid = lUserId || socket.data.userId;
-      socket.leave(sessionId);
-      io.to(sessionId).emit('user_left', { userId: uid });
-    });
-
-    socket.on('disconnect', async () => {
-      console.log('User disconnected:', socket.id);
-      const uid = socket.data.userId;
-      const sid = socket.data.sessionId;
-
-      if (sid && uid) {
-        io.to(sid).emit('user_left', { userId: uid });
-      }
-
-      if (uid) {
-        const userSockets = onlineUsers.get(uid);
-        if (userSockets) {
-          userSockets.delete(socket.id);
-          if (userSockets.size === 0) {
-            onlineUsers.delete(uid);
-            await updateOnlineStatus(uid, false);
-
-            const settings = await prisma.user.findUnique({
-              where: { id: uid },
-              select: { isOnlineHidden: true }
-            });
-
-            if (!settings?.isOnlineHidden) {
-              const friendIds = await getFriendIds(uid);
-              friendIds.forEach(fid => {
-                const friendSockets = onlineUsers.get(fid);
-                if (friendSockets) {
-                  friendSockets.forEach(sid => {
-                    io.to(sid).emit('friend_offline', { userId: uid, lastSeenAt: new Date().toISOString() });
-                  });
-                }
-              });
-            }
-          }
-        }
-      }
-    });
+const getSpotifyUser = async (userId) => {
+  return await prisma.spotifyUser.findFirst({
+    where: { OR: [{ userId }, { id: userId }] }
   });
 };
 
-const getIo = () => ioInstance;
+const extractTrack = (item) => item.item || item.track || null;
 
-module.exports = setupSocket;
-module.exports.getIo = getIo;
+router.get('/playlists', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser || !spotifyUser.accessToken) {
+      return res.status(401).json({ error: 'Spotify не подключен' });
+    }
+
+    let accessToken = spotifyUser.accessToken;
+    let response;
+
+    try {
+      response = await axios.get('https://api.spotify.com/v1/me/playlists?limit=20', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    } catch (err) {
+      if (err.response?.status === 401) {
+        accessToken = await refreshAccessToken(spotifyUser);
+        response = await axios.get('https://api.spotify.com/v1/me/playlists?limit=20', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } else throw err;
+    }
+
+    const playlists = response.data.items.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      imageUrl: p.images?.[0]?.url || null,
+      trackCount: p.tracks?.total ?? 0,
+      owner: p.owner?.display_name,
+      isPublic: p.public,
+    }));
+
+    res.json(playlists);
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка получения плейлистов' });
+  }
+});
+
+router.get('/playlists/:playlistId/tracks', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser) return res.status(401).json({ error: 'Spotify не подключен' });
+
+    let accessToken = spotifyUser.accessToken;
+    let response;
+
+    try {
+      response = await axios.get(
+        `https://api.spotify.com/v1/playlists/${req.params.playlistId}/items?limit=50&market=from_token`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+    } catch (err) {
+      if (err.response?.status === 401) {
+        accessToken = await refreshAccessToken(spotifyUser);
+        response = await axios.get(
+          `https://api.spotify.com/v1/playlists/${req.params.playlistId}/items?limit=50&market=from_token`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+      } else throw err;
+    }
+
+    const tracks = response.data.items
+      .map((item) => extractTrack(item))
+      .filter((track) => track !== null)
+      .map((track) => ({
+        id: track.id,
+        name: track.name,
+        artist: track.artists?.map((a) => a.name).join(', ') ?? '',
+        imageUrl: track.album?.images?.[0]?.url || null,
+        uri: track.uri,
+        durationMs: track.duration_ms,
+        album: track.album?.name ?? '',
+      }));
+
+    res.json(tracks);
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка получения треков' });
+  }
+});
+
+router.get('/status', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    res.json({
+      connected: !!spotifyUser,
+      spotifyId: spotifyUser?.spotifyId || null,
+      displayName: spotifyUser?.displayName || null,
+      avatarUrl: spotifyUser?.avatarUrl || null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка проверки статуса' });
+  }
+});
+
+router.post('/disconnect', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser) return res.status(404).json({ error: 'Spotify не подключен' });
+
+    await prisma.spotifyUser.update({
+      where: { id: spotifyUser.id },
+      data: { userId: null },
+    });
+
+    res.json({ message: 'Spotify успешно отключен' });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка отключения Spotify' });
+  }
+});
+
+router.get('/token-info', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser) return res.status(401).json({ error: 'Spotify не подключен' });
+
+    const response = await axios.get('https://api.spotify.com/v1/me', {
+      headers: { Authorization: `Bearer ${spotifyUser.accessToken}` },
+    });
+    res.json({ spotifyUser: response.data, tokenPreview: spotifyUser.accessToken.substring(0, 10) + '...' });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
+module.exports = router;
