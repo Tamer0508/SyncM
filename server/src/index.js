@@ -12,14 +12,13 @@ const friendsRoutes = require('./routes/friends');
 const sessionRoutes = require('./routes/sessions'); 
 const spotifyRoutes = require('./routes/spotify');
 const playlistRoutes = require('./routes/playlists');
-const { setupSocket } = require('./socket');
+const setupSocket = require('./socket');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// Создание таблицы сессий если её нет
 pool.query(`
   CREATE TABLE IF NOT EXISTS "session" (
     "sid" varchar NOT NULL COLLATE "default",
@@ -34,7 +33,7 @@ const app = express();
 app.set('trust proxy', 1);
 const httpServer = createServer(app);
 
-// Создаём io
+// СОЗДАЁМ io ПРАВИЛЬНО:
 const io = new Server(httpServer, {
   cors: { origin: '*' }
 });
@@ -60,11 +59,10 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 дней
+    maxAge: 7 * 24 * 60 * 60 * 1000
   }
 }));
 
-// Роуты
 app.use('/auth', authRoutes);
 app.use('/friends', friendsRoutes);
 app.use('/sessions', sessionRoutes);
@@ -75,7 +73,7 @@ app.get('/', (req, res) => {
   res.json({ message: 'SyncM server is running' });
 });
 
-// Инициализируем сокеты твоей функцией
+// Подключаем твой setupSocket
 setupSocket(io);
 
 process.on('unhandledRejection', (reason) => {

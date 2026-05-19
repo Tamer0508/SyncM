@@ -173,4 +173,4 @@ const getIo = () => {
   return ioInstance;
 };
 
-module.exports = { setupSocket, getIo };
+module.exports = setupSocket;
