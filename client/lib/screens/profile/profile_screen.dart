@@ -114,6 +114,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   ],
+                    if (!isOwnProfile) ...[
+                      const SizedBox(height: 6),
+                      _buildOnlineStatus(theme),
+                  ],
                 ],
               ),
             ),
@@ -300,6 +304,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
       ],
     );
+  }
+
+    Widget _buildOnlineStatus(ThemeData theme) {
+    if (isOwnProfile) return const SizedBox.shrink();
+
+    final isOnlineHidden = _profileData?['isOnlineHidden'] == true;
+    if (isOnlineHidden) return const SizedBox.shrink();
+
+    final isOnline = _profileData?['isOnline'] == true;
+    final lastSeenAtStr = _profileData?['lastSeenAt'] as String?;
+    final lastSeenAt = lastSeenAtStr != null ? DateTime.tryParse(lastSeenAtStr) : null;
+
+    if (isOnline) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.green,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text('В сети',
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.green)),
+        ],
+      );
+    } else if (lastSeenAt != null) {
+      final diff = DateTime.now().difference(lastSeenAt);
+      String text;
+      if (diff.inMinutes < 1) {
+        text = 'Только что';
+      } else if (diff.inMinutes < 60) {
+        text = '${diff.inMinutes} мин. назад';
+      } else if (diff.inHours < 24) {
+        text = '${diff.inHours} ч. назад';
+      } else {
+        text = '${diff.inDays} д. назад';
+      }
+      return Text('Был(а) в сети $text', style: theme.textTheme.bodySmall);
+    }
+    return const SizedBox.shrink();
   }
 
   String _encodeState(Map<String, String> data) {

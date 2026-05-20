@@ -2,6 +2,7 @@
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
+import '../../widgets/track_card.dart';
 import '../player/now_playing.dart';
 
 class PlaylistTracksScreen extends StatefulWidget {
@@ -131,55 +132,17 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                     final isCurrentTrack = pb.currentTrack?['uri'] == t['uri'];
                     final isPlaying = isCurrentTrack && pb.isPlaying;
 
-                    return Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-                      margin: const EdgeInsets.only(bottom: 14),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        onTap: () => _onTrackTap(Map<String, dynamic>.from(t), i),
-                        leading: Stack(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: t['imageUrl'] != null
-                                  ? Image.network(t['imageUrl'], width: 56, height: 56, fit: BoxFit.cover)
-                                  : Container(
-                                      width: 56,
-                                      height: 56,
-                                      color: theme.colorScheme.surfaceVariant,
-                                      child: Icon(Icons.music_note, color: theme.colorScheme.primary),
-                                    ),
-                            ),
-                            if (isPlaying)
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  color: Colors.black45,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Icon(Icons.equalizer, color: Colors.white, size: 24),
-                              ),
-                          ],
-                        ),
-                        title: Text(
-                          t['name'] ?? '',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: isCurrentTrack ? theme.colorScheme.primary : null,
-                          ),
-                        ),
-                        subtitle: Text(
-                          t['artist'] ?? '',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.textTheme.bodySmall?.color?.withOpacity(0.78),
-                          ),
-                        ),
-                        trailing: isPlaying
-                            ? Icon(Icons.volume_up_rounded, color: theme.colorScheme.primary)
-                            : Icon(Icons.play_arrow_rounded,
-                                color: theme.colorScheme.onSurface.withOpacity(0.4)),
-                      ),
+                    return TrackCard(
+                      id: t['id'] ?? '',
+                      title: t['name'] ?? '',
+                      artist: t['artist'] ?? '',
+                      artworkUrl: t['imageUrl'] as String?,
+                      durationMs: t['durationMs'] as int?,
+                      isLiked: false, // можно расширить позже
+                      onPlay: () => _onTrackTap(Map<String, dynamic>.from(t), i),
+                      onLike: () {
+                        // TODO: лайк трека из плейлиста
+                      },
                     );
                   },
                   childCount: _tracks.length,

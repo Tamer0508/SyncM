@@ -2,14 +2,21 @@ class Track {
   final String id;
   final String name;
   final String artist;
+  final int? durationMs; // длительность в миллисекундах
 
-  Track({required this.id, required this.name, required this.artist});
+  Track({
+    required this.id,
+    required this.name,
+    required this.artist,
+    this.durationMs,
+  });
 
   factory Track.fromJson(Map<String, dynamic> json) {
     return Track(
       id: json['id'] as String,
       name: json['trackName'] as String? ?? json['name'] as String? ?? '',
       artist: json['artistName'] as String? ?? json['artist'] as String? ?? '',
+      durationMs: json['durationMs'] as int?,
     );
   }
 
@@ -17,5 +24,6 @@ class Track {
         'id': id,
         'trackName': name,
         'artistName': artist,
+        'durationMs': durationMs,
       };
 }

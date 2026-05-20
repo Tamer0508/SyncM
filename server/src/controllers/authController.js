@@ -165,6 +165,9 @@ const getMe = async (req, res) => {
       avatarUrl: user.spotifyUser?.avatarUrl || null,
       spotifyConnected: !!user.spotifyUser,
       spotifyId: user.spotifyUser?.spotifyId || null,
+      isFriendsHidden: user.isFriendsHidden,
+      isActivityHidden: user.isActivityHidden,
+      isOnlineHidden: user.isOnlineHidden,
     });
   }
 
@@ -182,6 +185,9 @@ const getMe = async (req, res) => {
       avatarUrl: spotifyUser.avatarUrl,
       spotifyConnected: true,
       spotifyId: spotifyUser.spotifyId,
+      isFriendsHidden: user.isFriendsHidden,
+      isActivityHidden: user.isActivityHidden,
+      isOnlineHidden: user.isOnlineHidden,
     });
   }
 
