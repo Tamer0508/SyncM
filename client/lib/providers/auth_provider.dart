@@ -50,6 +50,25 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  Future<void> updateProfile({String? username, String? customAvatarUrl}) async {
+    final updated = await api.updateProfile(username: username, customAvatarUrl: customAvatarUrl);
+    if (_user != null) {
+      _user = User(
+        id: _user!.id,
+        displayName: updated['displayName'] ?? _user!.displayName,
+        email: _user!.email,
+        avatarUrl: updated['avatarUrl'] ?? _user!.avatarUrl,
+        customAvatarUrl: updated['customAvatarUrl'] ?? _user!.customAvatarUrl,
+        spotifyConnected: _user!.spotifyConnected,
+        spotifyId: _user!.spotifyId,
+        isFriendsHidden: _user!.isFriendsHidden,
+        isActivityHidden: _user!.isActivityHidden,
+        isOnlineHidden: _user!.isOnlineHidden,
+      );
+      notifyListeners();
+    }
+  }
+
   void restoreSavedAuth() {
     if (_cookie != null && _cookie!.isNotEmpty) return;
     final token = readAuthToken();

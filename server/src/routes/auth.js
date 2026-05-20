@@ -7,7 +7,8 @@ const {
   logout, 
   googleAuth, 
   getSettings, 
-  updateSettings 
+  updateSettings,
+  updateProfile
 } = require('../controllers/authController');
 
 router.get('/login', login);
@@ -16,8 +17,9 @@ router.get('/me', getMe);
 router.get('/logout', logout);
 router.post('/google', googleAuth);
 
-// Настройки приватности
 router.get('/settings', getSettings);
 router.patch('/settings', updateSettings);
+
+router.patch('/profile', updateProfile);
 
 module.exports = router;

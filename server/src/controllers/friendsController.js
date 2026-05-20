@@ -47,7 +47,7 @@ const searchUsers = async (req, res) => {
       return {
         id: u.id,
         displayName: u.username,
-        avatarUrl: u.spotifyUser?.avatarUrl || null,
+        avatarUrl: u.customAvatarUrl || u.spotifyUser?.avatarUrl || null,
         friendshipStatus
       };
     }));
@@ -87,6 +87,7 @@ const sendRequest = async (req, res) => {
           select: {
             id: true,
             username: true,
+            customAvatarUrl: true,
             spotifyUser: { select: { avatarUrl: true } }
           }
         }
@@ -98,7 +99,7 @@ const sendRequest = async (req, res) => {
       receiver: {
         id: friendship.receiver.id,
         displayName: friendship.receiver.username,
-        avatarUrl: friendship.receiver.spotifyUser?.avatarUrl || null
+        avatarUrl: friendship.receiver.customAvatarUrl || friendship.receiver.spotifyUser?.avatarUrl || null
       },
       status: friendship.status,
       createdAt: friendship.createdAt
@@ -127,7 +128,10 @@ const acceptRequest = async (req, res) => {
       const updatedFriendship = await tx.friendship.update({
         where: { id: friendshipId },
         data: { status: 'accepted' },
-        include: { sender: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } } }
+        include: { sender: 
+          { select: 
+            { id: true, username: true, customAvatarUrl: true, spotifyUser: 
+              { select: { avatarUrl: true } } } } }
       });
 
       await tx.user.updateMany({
@@ -143,7 +147,7 @@ const acceptRequest = async (req, res) => {
       sender: {
         id: updated.sender.id,
         displayName: updated.sender.username,
-        avatarUrl: updated.sender.spotifyUser?.avatarUrl || null
+        avatarUrl: updated.sender.customAvatarUrl || updated.sender.spotifyUser?.avatarUrl || null
       },
       status: updated.status
     });
@@ -179,7 +183,7 @@ const getFriends = async (req, res) => {
         id: friendData.id,
         displayName: friendData.username,
         spotifyDisplayName: friendData.spotifyUser?.displayName || null,
-        avatarUrl: friendData.spotifyUser?.avatarUrl || null,
+        avatarUrl: friendData.customAvatarUrl || friendData.spotifyUser?.avatarUrl || null,
         friendshipId: f.id,
         isOnline: friendData.isOnlineHidden ? false : (friendData.isOnline ?? false),
         lastSeenAt: friendData.isOnlineHidden ? null : friendData.lastSeenAt,
@@ -206,7 +210,7 @@ const getUserById = async (req, res) => {
     res.json({
       id: user.id,
       displayName: user.username,
-      avatarUrl: user.spotifyUser?.avatarUrl || null,
+      avatarUrl: user.customAvatarUrl || user.spotifyUser?.avatarUrl || null,
       friendsCount: user.isFriendsHidden ? 0 : user.friendsCount,
       isOnline: user.isOnlineHidden ? false : (user.isOnline ?? false),
       lastSeenAt: user.isOnlineHidden ? null : user.lastSeenAt,
@@ -234,7 +238,7 @@ const getIncomingRequests = async (req, res) => {
       sender: {
         id: r.sender.id,
         displayName: r.sender.username,
-        avatarUrl: r.sender.spotifyUser?.avatarUrl || null
+        avatarUrl: r.sender.customAvatarUrl || r.sender.spotifyUser?.avatarUrl || null
       },
       status: r.status,
       createdAt: r.createdAt

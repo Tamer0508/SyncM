@@ -3,6 +3,7 @@ class User {
   final String displayName;
   final String? email;
   final String? avatarUrl;
+  final String? customAvatarUrl; 
   final bool spotifyConnected;
   final String? spotifyId;
   final bool isFriendsHidden;
@@ -14,6 +15,7 @@ class User {
     required this.displayName,
     this.email,
     this.avatarUrl,
+    this.customAvatarUrl,
     this.spotifyConnected = false,
     this.spotifyId,
     this.isFriendsHidden = false,
@@ -27,6 +29,7 @@ class User {
       displayName: json['displayName'] as String,
       email: json['email'] as String?,
       avatarUrl: json['avatarUrl'] as String?,
+      customAvatarUrl: json['customAvatarUrl'] as String?,
       spotifyConnected:
           (json['spotifyConnected'] == true) ||
           (json['spotifyLinked'] == true) ||
@@ -43,6 +46,7 @@ class User {
         'displayName': displayName,
         'email': email,
         'avatarUrl': avatarUrl,
+        'customAvatarUrl': customAvatarUrl,
         'spotifyConnected': spotifyConnected,
         'spotifyId': spotifyId,
         'isFriendsHidden': isFriendsHidden,

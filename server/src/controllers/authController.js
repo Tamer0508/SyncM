@@ -162,12 +162,13 @@ const getMe = async (req, res) => {
       id: user.id,
       displayName: user.username,
       email: user.email,
-      avatarUrl: user.spotifyUser?.avatarUrl || null,
+      avatarUrl: user.customAvatarUrl || user.spotifyUser?.avatarUrl || null,
       spotifyConnected: !!user.spotifyUser,
       spotifyId: user.spotifyUser?.spotifyId || null,
       isFriendsHidden: user.isFriendsHidden,
       isActivityHidden: user.isActivityHidden,
       isOnlineHidden: user.isOnlineHidden,
+      customAvatarUrl: user.customAvatarUrl,
     });
   }
 
@@ -310,4 +311,50 @@ const updateSettings = async (req, res) => {
   }
 };
 
-module.exports = { login, callback, getMe, logout, googleAuth, getSettings, updateSettings };
+const updateProfile = async (req, res) => {
+  let userId = req.session?.userId;
+  if (!userId) {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
+  }
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const { username, customAvatarUrl } = req.body;
+  const dataToUpdate = {};
+  if (typeof username === 'string' && username.trim().length > 0) {
+    if (username.trim().length < 2) return res.status(400).json({ error: 'Имя должно содержать минимум 2 символа' });
+    dataToUpdate.username = username.trim();
+  }
+  if (typeof customAvatarUrl === 'string') {
+    dataToUpdate.customAvatarUrl = customAvatarUrl.trim() || null;
+  }
+
+  if (Object.keys(dataToUpdate).length === 0) {
+    return res.status(400).json({ error: 'Нет данных для обновления' });
+  }
+
+  try {
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: dataToUpdate,
+      select: {
+        id: true,
+        username: true,
+        customAvatarUrl: true,
+        spotifyUser: { select: { avatarUrl: true } }
+      }
+    });
+
+    res.json({
+      id: updated.id,
+      displayName: updated.username,
+      avatarUrl: updated.customAvatarUrl || updated.spotifyUser?.avatarUrl || null,
+      customAvatarUrl: updated.customAvatarUrl
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Ошибка обновления профиля' });
+  }
+};
+
+module.exports = { login, callback, getMe, logout, googleAuth, getSettings, updateSettings, updateProfile };

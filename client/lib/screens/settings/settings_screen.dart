@@ -46,6 +46,7 @@ class _AppearanceTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final auth = Provider.of<AuthProvider>(context); 
     final theme = Theme.of(context);
 
     return ListView(
@@ -68,7 +69,57 @@ class _AppearanceTab extends StatelessWidget {
                   onChanged: (_) => themeProvider.toggleTheme(),
                   contentPadding: EdgeInsets.zero,
                 ),
-                // В будущем здесь можно добавить выбор конкретной темы (светлая/тёмная/системная)
+              ],
+            ),
+          ),
+        ),
+        // Здесь вставьте новый Card
+        const SizedBox(height: 20),
+        Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Профиль',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 16),
+                TextFormField(
+                  initialValue: auth.user?.displayName ?? '',
+                  decoration: const InputDecoration(labelText: 'Имя'),
+                  onFieldSubmitted: (val) async {
+                    try {
+                      await auth.updateProfile(username: val.trim());
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Ошибка: $e')),
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  initialValue: auth.user?.customAvatarUrl ?? '',
+                  decoration: const InputDecoration(labelText: 'URL аватарки (оставьте пустым для Spotify)'),
+                  onFieldSubmitted: (val) async {
+                    try {
+                      await auth.updateProfile(customAvatarUrl: val.trim());
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Ошибка: $e')),
+                      );
+                    }
+                  },
+                ),
+                if (auth.user?.customAvatarUrl != null && auth.user!.customAvatarUrl!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: CircleAvatar(
+                      radius: 30,
+                      backgroundImage: NetworkImage(auth.user!.customAvatarUrl!),
+                    ),
+                  ),
               ],
             ),
           ),

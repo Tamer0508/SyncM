@@ -192,6 +192,21 @@ class ApiService {
     throw ApiException('Ошибка получения сессий', res.statusCode, _extractError(res));
   }
 
+  Future<Map<String, dynamic>> updateProfile({String? username, String? customAvatarUrl}) async {
+    final body = <String, dynamic>{};
+    if (username != null) body['username'] = username;
+    if (customAvatarUrl != null) body['customAvatarUrl'] = customAvatarUrl;
+    final res = await http.patch(
+      _uri('/auth/profile'),
+      headers: _headers,
+      body: json.encode(body),
+    ).timeout(timeout);
+    if (res.statusCode == 200) {
+      return _decode(res.body) as Map<String, dynamic>;
+    }
+    throw ApiException('Ошибка обновления профиля', res.statusCode, _extractError(res));
+  }
+
   Future<bool> addTracks(String sessionId, List<Map<String, dynamic>> tracks) async {
     final res = await http.post(_uri('/sessions/$sessionId/tracks'), headers: _headers, body: json.encode({'tracks': tracks})).timeout(timeout);
     if (res.statusCode == 200 || res.statusCode == 201) return true;
