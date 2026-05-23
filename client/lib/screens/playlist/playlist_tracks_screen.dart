@@ -1,5 +1,7 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../widgets/track_card.dart';
@@ -26,6 +28,8 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   bool _loading = true;
   String? _error;
 
+  bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
+
   @override
   void initState() {
     super.initState();
@@ -44,7 +48,37 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     }
   }
 
+  // Открывает трек на Windows через Spotify app или браузер
+  Future<void> _openOnWindows(Map<String, dynamic> track) async {
+    final uri = track['uri'] as String?; // spotify:track:ID
+    if (uri == null) return;
+
+    // Извлекаем track ID из URI (spotify:track:XXXXXX)
+    final parts = uri.split(':');
+    final trackId = parts.length >= 3 ? parts[2] : null;
+
+    // Сначала пробуем открыть в Spotify приложении
+    final spotifyUri = Uri.parse(uri);
+    if (await canLaunchUrl(spotifyUri)) {
+      await launchUrl(spotifyUri);
+      return;
+    }
+
+    // Если Spotify не установлен — открываем в браузере
+    if (trackId != null) {
+      final webUrl = Uri.parse('https://open.spotify.com/track/$trackId');
+      await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _onTrackTap(Map<String, dynamic> track, int index) async {
+    // На Windows — открываем через url_launcher
+    if (_isWindows) {
+      await _openOnWindows(track);
+      return;
+    }
+
+    // На мобильных — через Spotify SDK
     final pb = Provider.of<PlaybackProvider>(context, listen: false);
 
     if (!pb.isConnected) {
@@ -103,6 +137,31 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                   : Container(color: theme.colorScheme.primary.withOpacity(0.3)),
             ),
           ),
+          if (_isWindows)
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: theme.colorScheme.primary, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'На Windows треки откроются в Spotify или браузере',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (_loading)
             SliverFillRemaining(
               child: Center(child: CircularProgressIndicator(color: theme.colorScheme.primary)),
@@ -110,7 +169,8 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
           else if (_error != null)
             SliverFillRemaining(
               child: Center(
-                child: Text(_error!, style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.error)),
+                child: Text(_error!,
+                    style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.error)),
               ),
             )
           else if (_tracks.isEmpty)
@@ -129,7 +189,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
                     final t = _tracks[i];
-                    final isCurrentTrack = pb.currentTrack?['uri'] == t['uri'];
+                    final isCurrentTrack = !_isWindows && pb.currentTrack?['uri'] == t['uri'];
                     final isPlaying = isCurrentTrack && pb.isPlaying;
 
                     return TrackCard(
@@ -138,11 +198,9 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                       artist: t['artist'] ?? '',
                       artworkUrl: t['imageUrl'] as String?,
                       durationMs: t['durationMs'] as int?,
-                      isLiked: false, // можно расширить позже
+                      isLiked: false,
                       onPlay: () => _onTrackTap(Map<String, dynamic>.from(t), i),
-                      onLike: () {
-                        // TODO: лайк трека из плейлиста
-                      },
+                      onLike: () {},
                     );
                   },
                   childCount: _tracks.length,

@@ -1,7 +1,8 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 
@@ -12,6 +13,8 @@ class GoogleSignInButton extends StatelessWidget {
   final VoidCallback onSignInSuccess;
 
   const GoogleSignInButton({super.key, required this.onSignInSuccess});
+
+  bool get _isWindows => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +27,7 @@ class GoogleSignInButton extends StatelessWidget {
           minimumSize: const Size.fromHeight(48),
           backgroundColor: theme.colorScheme.primary,
         ),
-        onPressed: () => _handleSignIn(context),
+        onPressed: () => _isWindows ? _handleWindowsSignIn(context) : _handleSignIn(context),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -37,6 +40,36 @@ class GoogleSignInButton extends StatelessWidget {
     }
   }
 
+  // На Windows — открываем браузер с Google OAuth
+  Future<void> _handleWindowsSignIn(BuildContext context) async {
+    try {
+      final api = ApiService();
+      // Используем бэкенд Google auth endpoint
+      // После авторизации бэкенд вернёт токен через redirect
+      final authUrl = Uri.parse(
+        '${api.baseUrl}/auth/google-web?returnTo=syncm://auth-callback',
+      );
+
+      if (await canLaunchUrl(authUrl)) {
+        await launchUrl(authUrl, mode: LaunchMode.externalApplication);
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Не удалось открыть браузер')),
+          );
+        }
+      }
+    } catch (e) {
+      print('Windows Google Sign-In error: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка входа: $e')),
+        );
+      }
+    }
+  }
+
+  // На мобильных — через Google Sign In SDK
   Future<void> _handleSignIn(BuildContext context) async {
     try {
       await GoogleSignIn.instance.initialize(

@@ -357,4 +357,81 @@ const updateProfile = async (req, res) => {
   }
 };
 
-module.exports = { login, callback, getMe, logout, googleAuth, getSettings, updateSettings, updateProfile };
+// POST /auth/google-web — редирект на Google OAuth для Windows/Desktop
+const googleWebLogin = (req, res) => {
+  const returnTo = req.query.returnTo || '';
+  const state = Buffer.from(JSON.stringify({ returnTo })).toString('base64');
+
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth' +
+    `?client_id=${process.env.GOOGLE_CLIENT_ID}` +
+    `&redirect_uri=${encodeURIComponent(process.env.GOOGLE_REDIRECT_URI)}` +
+    `&response_type=code` +
+    `&scope=email%20profile` +
+    `&state=${encodeURIComponent(state)}`;
+
+  res.redirect(url);
+};
+
+// GET /auth/google-callback — обработка ответа от Google
+const googleWebCallback = async (req, res) => {
+  const { code, state } = req.query;
+  if (!code) return res.status(400).json({ error: 'Missing code' });
+
+  let returnTo = null;
+  try {
+    const decoded = Buffer.from(state, 'base64').toString('utf8');
+    returnTo = JSON.parse(decoded)?.returnTo;
+  } catch (_) {}
+
+  try {
+    const tokenRes = await axios.post(
+      'https://oauth2.googleapis.com/token',
+      new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+        grant_type: 'authorization_code',
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+
+    const { id_token } = tokenRes.data;
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: id_token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+
+    const user = await prisma.user.upsert({
+      where: { email: payload.email },
+      update: { username: payload.name },
+      create: { username: payload.name, email: payload.email, passwordHash: '' },
+    });
+
+    req.session.userId = user.id;
+    await req.session.save();
+
+    const cookie = `connect.sid=${req.sessionID}`;
+    const token = user.id;
+
+    if (returnTo) {
+      const joiner = returnTo.includes('?') ? '&' : '?';
+      return res.redirect(
+        `${returnTo}${joiner}auth_done=1&token=${token}&cookie=${encodeURIComponent(cookie)}`
+      );
+    }
+
+    res.json({
+      message: 'Logged in with Google',
+      user: { id: user.id, displayName: user.username, email: user.email },
+      cookie,
+    });
+  } catch (error) {
+    console.error('Google web callback error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Ошибка авторизации Google' });
+  }
+};
+
+module.exports = { login, callback, getMe, logout, googleAuth, getSettings, updateSettings, updateProfile, googleWebLogin, googleWebCallback };
