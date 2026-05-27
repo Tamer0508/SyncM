@@ -1,6 +1,7 @@
 const axios = require('axios');
 const prisma = require('../db/prisma');
 const { OAuth2Client } = require('google-auth-library');
+const crypto = require('crypto');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -90,7 +91,6 @@ const callback = async (req, res) => {
 
     const userId = pendingLinkUserId || req.session?.userId;
 
-    // Создаем или обновляем Spotify-аккаунт и связываем с User
     const spotifyUser = await prisma.spotifyUser.upsert({
       where: { spotifyId: profile.id },
       update: {
@@ -127,11 +127,7 @@ const callback = async (req, res) => {
 
     res.json({
       message: 'Spotify подключен успешно',
-      user: {
-        id: req.session.userId,
-        displayName: spotifyUser.displayName,
-        spotifyConnected: true,
-      },
+      user: { id: req.session.userId, displayName: spotifyUser.displayName, spotifyConnected: true },
       cookie,
     });
   } catch (error) {
@@ -144,14 +140,11 @@ const getMe = async (req, res) => {
   let userId = req.session?.userId;
   if (!userId) {
     const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) {
-      userId = auth.replace('Bearer ', '');
-    }
+    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
   }
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  // Ищем User вместе с привязанным Spotify-аккаунтом
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { spotifyUser: true },
@@ -172,7 +165,6 @@ const getMe = async (req, res) => {
     });
   }
 
-  // Fallback: если userId — это ID SpotifyUser (legacy)
   const spotifyUser = await prisma.spotifyUser.findUnique({
     where: { id: userId },
     include: { user: true },
@@ -186,9 +178,9 @@ const getMe = async (req, res) => {
       avatarUrl: spotifyUser.avatarUrl,
       spotifyConnected: true,
       spotifyId: spotifyUser.spotifyId,
-      isFriendsHidden: user.isFriendsHidden,
-      isActivityHidden: user.isActivityHidden,
-      isOnlineHidden: user.isOnlineHidden,
+      isFriendsHidden: spotifyUser.user?.isFriendsHidden ?? false,
+      isActivityHidden: spotifyUser.user?.isActivityHidden ?? false,
+      isOnlineHidden: spotifyUser.user?.isOnlineHidden ?? false,
     });
   }
 
@@ -205,17 +197,11 @@ const googleAuth = async (req, res) => {
       audience: process.env.GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
-    const email = payload.email;
-    const name = payload.name;
 
     const user = await prisma.user.upsert({
-      where: { email },
-      update: { username: name },
-      create: {
-        username: name,
-        email,
-        passwordHash: '',
-      },
+      where: { email: payload.email },
+      update: { username: payload.name },
+      create: { username: payload.name, email: payload.email, passwordHash: '' },
     });
 
     req.session.userId = user.id;
@@ -223,12 +209,7 @@ const googleAuth = async (req, res) => {
 
     res.json({
       message: 'Logged in with Google',
-      user: {
-        id: user.id,
-        displayName: user.username,
-        email: user.email,
-        spotifyConnected: false,
-      },
+      user: { id: user.id, displayName: user.username, email: user.email, spotifyConnected: false },
       cookie: `connect.sid=${req.sessionID}`,
     });
   } catch (error) {
@@ -242,7 +223,6 @@ const logout = (req, res) => {
   res.json({ message: 'Вышли из системы' });
 };
 
-// Получить настройки приватности пользователя
 const getSettings = async (req, res) => {
   let userId = req.session?.userId;
   if (!userId) {
@@ -254,26 +234,16 @@ const getSettings = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        isOnlineHidden: true,
-        isFriendsHidden: true,
-        isActivityHidden: true,
-      },
+      select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true },
     });
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-
-    res.json({
-      isOnlineHidden: user.isOnlineHidden,
-      isFriendsHidden: user.isFriendsHidden,
-      isActivityHidden: user.isActivityHidden,
-    });
+    res.json(user);
   } catch (error) {
     console.error('Get settings error:', error);
     res.status(500).json({ error: 'Ошибка получения настроек' });
   }
 };
 
-// Обновить настройки приватности
 const updateSettings = async (req, res) => {
   let userId = req.session?.userId;
   if (!userId) {
@@ -297,11 +267,7 @@ const updateSettings = async (req, res) => {
     const updated = await prisma.user.update({
       where: { id: userId },
       data: dataToUpdate,
-      select: {
-        isOnlineHidden: true,
-        isFriendsHidden: true,
-        isActivityHidden: true,
-      },
+      select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true },
     });
 
     res.json(updated);
@@ -357,11 +323,8 @@ const updateProfile = async (req, res) => {
   }
 };
 
-// POST /auth/google-web — редирект на Google OAuth для Windows/Desktop
+// GET /auth/google-web — редирект на Google OAuth для Windows
 const googleWebLogin = (req, res) => {
-  console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID);
-  console.log('GOOGLE_REDIRECT_URI:', process.env.GOOGLE_REDIRECT_URI);
-  console.log('GOOGLE_CLIENT_SECRET exists:', !!process.env.GOOGLE_CLIENT_SECRET);
   const returnTo = req.query.returnTo || '';
   const state = Buffer.from(JSON.stringify({ returnTo })).toString('base64');
 
@@ -419,33 +382,45 @@ const googleWebCallback = async (req, res) => {
     const cookie = `connect.sid=${req.sessionID}`;
     const token = user.id;
 
-    if (returnTo) {
+    // Сохраняем для polling из Flutter на Windows
+    const pendingTokens = global.pendingTokens || (global.pendingTokens = new Map());
+    const tempToken = crypto.randomBytes(16).toString('hex');
+    pendingTokens.set(tempToken, { userId: user.id, cookie });
+    setTimeout(() => pendingTokens.delete(tempToken), 5 * 60 * 1000);
+
+    if (returnTo && !returnTo.startsWith('syncm://')) {
       const joiner = returnTo.includes('?') ? '&' : '?';
       return res.redirect(
         `${returnTo}${joiner}auth_done=1&token=${token}&cookie=${encodeURIComponent(cookie)}`
       );
     }
 
-    res.json({
-      message: 'Logged in with Google',
-      user: { id: user.id, displayName: user.username, email: user.email },
-      cookie,
-    });
+    // Для Windows — страница успеха с кодом для ввода в приложение
+    return res.send(`
+      <html>
+        <head>
+          <title>SyncM — Вход выполнен</title>
+          <style>
+            body { font-family: sans-serif; text-align: center; padding: 60px; background: #111; color: #fff; }
+            code { background: #222; padding: 8px 16px; border-radius: 8px; font-size: 20px; letter-spacing: 2px; }
+            p { color: #aaa; }
+          </style>
+        </head>
+        <body>
+          <h2>✅ Вход выполнен!</h2>
+          <p>Введите этот код в приложении SyncM:</p>
+          <code>${tempToken}</code>
+          <p>Код действителен 5 минут.</p>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error('Google web callback error:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Ошибка авторизации Google' });
+    return res.status(500).json({ error: 'Ошибка авторизации Google' });
   }
-  // Сохраняем токен для polling
-  const pendingTokens = global.pendingTokens || (global.pendingTokens = new Map());
-  const tempToken = require('crypto').randomBytes(16).toString('hex');
-  pendingTokens.set(tempToken, { userId: user.id, cookie: `connect.sid=${req.sessionID}` });
-  setTimeout(() => pendingTokens.delete(tempToken), 5 * 60 * 1000); // 5 минут
-
-  // Редиректим на страницу успеха
-  res.send(`<html><body><h2>Вход выполнен! Вернитесь в приложение.</h2><script>window.close();</script></body></html>`);
 };
 
-// Новый endpoint для polling
+// GET /auth/check-pending?token=xxx — polling для Windows
 const checkPendingAuth = (req, res) => {
   const { token } = req.query;
   const pendingTokens = global.pendingTokens || new Map();
@@ -457,4 +432,16 @@ const checkPendingAuth = (req, res) => {
   res.json({ success: false });
 };
 
-module.exports = { login, callback, getMe, logout, googleAuth, getSettings, updateSettings, updateProfile, googleWebLogin, googleWebCallback };
+module.exports = {
+  login,
+  callback,
+  getMe,
+  logout,
+  googleAuth,
+  getSettings,
+  updateSettings,
+  updateProfile,
+  googleWebLogin,
+  googleWebCallback,
+  checkPendingAuth,
+};
