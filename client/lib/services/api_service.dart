@@ -302,7 +302,6 @@ Future<Map<String, dynamic>?> getPlayerState() async {
   if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
   return null;
 }
-
   void setCookie(String cookie) {
     _cookie = cookie;
   }

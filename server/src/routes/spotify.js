@@ -60,6 +60,7 @@ const getUserId = (req) => {
 
 // Ищем Spotify-аккаунт по ID пользователя или по ID самого Spotify-аккаунта
 const getSpotifyUser = async (userId) => {
+  if (!userId) return null;
   return await prisma.spotifyUser.findFirst({
     where: { OR: [{ userId }, { id: userId }] }
   });

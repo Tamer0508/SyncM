@@ -192,28 +192,35 @@ class PlaybackProvider extends ChangeNotifier {
 
     try {
       if (_isWindows) {
-        try {
-          final devices = await _apiService?.getDevices() ?? [];
-          String? deviceId;
-          if (devices.isNotEmpty) {
-            final active = devices.firstWhere(
-              (d) => d['is_active'] == true,
-              orElse: () => devices.first,
-            );
-            deviceId = active['id'] as String?;
-          }
-          final played = await _apiService?.playTrack(uri, deviceId: deviceId) ?? false;
-          if (played) {
-            _currentTrack = track;
-            _isPlaying = true;
-            notifyListeners();
-            _startPolling();
-          }
-        } catch (e) {
-          print('[Windows] Play error: $e');
-        }
-        return;
-      }
+  try {
+    final devices = await _apiService?.getDevices() ?? [];
+    String? deviceId;
+    if (devices.isNotEmpty) {
+      final active = devices.firstWhere(
+        (d) => d['is_active'] == true,
+        orElse: () => devices.first,
+      );
+      deviceId = active['id'] as String?;
+    }
+    
+    // Пробуем с deviceId, если не получилось — без него
+    bool played = false;
+    if (deviceId != null) {
+      played = await _apiService?.playTrack(uri, deviceId: deviceId) ?? false;
+    }
+    if (!played) {
+      played = await _apiService?.playTrack(uri) ?? false;
+    }
+    
+    _currentTrack = track;
+    _isPlaying = true;
+    notifyListeners();
+    _startPolling(); // запускаем всегда
+  } catch (e) {
+    print('[Windows] Play error: $e');
+  }
+  return;
+}
 
       if (playlistId != null) {
         final contextUri = playlistId.startsWith('spotify:')
