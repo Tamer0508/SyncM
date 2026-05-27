@@ -261,6 +261,19 @@ class ApiService {
     throw ApiException('Ошибка входа через Google', res.statusCode, _extractError(res));
   }
 
+  Future<Map<String, dynamic>> uploadAvatar(String filePath) async {
+  final uri = _uri('/auth/avatar');
+  final request = http.MultipartRequest('POST', uri);
+  request.headers['Authorization'] = _headers['Authorization'] ?? '';
+  request.files.add(await http.MultipartFile.fromPath('avatar', filePath));
+  final streamed = await request.send().timeout(timeout);
+  final res = await http.Response.fromStream(streamed);
+  if (res.statusCode == 200) {
+    return _decode(res.body) as Map<String, dynamic>;
+  }
+  throw ApiException('Ошибка загрузки аватарки', res.statusCode, _extractError(res));
+}
+
   Future<bool> playTrack(String uri, {String? deviceId}) async {
   final body = <String, dynamic>{'uri': uri};
   if (deviceId != null) body['deviceId'] = deviceId;

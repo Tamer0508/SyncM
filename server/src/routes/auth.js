@@ -12,6 +12,7 @@ const {
   googleWebLogin,
   googleWebCallback,
   checkPendingAuth,
+  uploadAvatar,
 } = require('../controllers/authController');
 
 router.get('/login', login);
@@ -19,6 +20,7 @@ router.get('/callback', callback);
 router.get('/me', getMe);
 router.get('/logout', logout);
 router.post('/google', googleAuth);
+router.post('/avatar', uploadAvatar);
 
 router.get('/google-web', googleWebLogin);
 router.get('/google-callback', googleWebCallback);

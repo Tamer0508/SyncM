@@ -420,6 +420,80 @@ const googleWebCallback = async (req, res) => {
   }
 };
 
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../../uploads/avatars');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const name = `${req.session.userId || 'unknown'}_${Date.now()}${ext}`;
+    cb(null, name);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, allowed.includes(ext));
+  }
+}).single('avatar');
+
+const uploadAvatar = async (req, res) => {
+  upload(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'Файл не загружен' });
+    }
+
+    const userId = req.session?.userId || req.headers.authorization?.replace('Bearer ', '');
+    if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+    // Формируем URL
+    const baseUrl = process.env.BASE_URL || `https://${req.get('host')}`;
+    const avatarUrl = `${baseUrl}/uploads/avatars/${req.file.filename}`;
+
+    try {
+      const oldUser = await prisma.user.findUnique({ where: { id: userId }, select: { customAvatarUrl: true } });
+      if (oldUser?.customAvatarUrl) {
+        const oldPath = path.join(__dirname, '../../', oldUser.customAvatarUrl.replace(baseUrl, ''));
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { customAvatarUrl: avatarUrl },
+        select: {
+          id: true,
+          username: true,
+          customAvatarUrl: true,
+          spotifyUser: { select: { avatarUrl: true } }
+        }
+      });
+
+      res.json({
+        id: updated.id,
+        displayName: updated.username,
+        avatarUrl: updated.customAvatarUrl || updated.spotifyUser?.avatarUrl || null,
+        customAvatarUrl: updated.customAvatarUrl
+      });
+    } catch (error) {
+      console.error('Upload avatar error:', error);
+      res.status(500).json({ error: 'Ошибка сохранения аватарки' });
+    }
+  });
+};
+
 // GET /auth/check-pending?token=xxx — polling для Windows
 const checkPendingAuth = (req, res) => {
   const { token } = req.query;
@@ -444,4 +518,5 @@ module.exports = {
   googleWebLogin,
   googleWebCallback,
   checkPendingAuth,
+  uploadAvatar,
 };

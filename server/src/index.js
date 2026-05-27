@@ -6,6 +6,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { Pool } = require('pg');
 const pgSession = require('connect-pg-simple')(session);
+const path = require('path');
 
 const authRoutes = require('./routes/auth');
 const friendsRoutes = require('./routes/friends'); 
@@ -45,6 +46,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use(express.json());
 
 app.use(session({

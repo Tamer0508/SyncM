@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
@@ -46,7 +47,7 @@ class _AppearanceTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final auth = Provider.of<AuthProvider>(context); 
+    final auth = Provider.of<AuthProvider>(context);
     final theme = Theme.of(context);
 
     return ListView(
@@ -62,18 +63,34 @@ class _AppearanceTab extends StatelessWidget {
                 Text('Оформление',
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 16),
-                SwitchListTile(
-                  title: const Text('Тёмная тема'),
-                  subtitle: const Text('Переключить между светлой и тёмной темой'),
-                  value: themeProvider.isDark,
-                  onChanged: (_) => themeProvider.toggleTheme(),
-                  contentPadding: EdgeInsets.zero,
+                ListTile(
+                  title: const Text('Системная'),
+                  leading: Radio<ThemeMode>(
+                    value: ThemeMode.system,
+                    groupValue: themeProvider.themeMode,
+                    onChanged: (v) => themeProvider.setThemeMode(v!),
+                  ),
+                ),
+                ListTile(
+                  title: const Text('Светлая'),
+                  leading: Radio<ThemeMode>(
+                    value: ThemeMode.light,
+                    groupValue: themeProvider.themeMode,
+                    onChanged: (v) => themeProvider.setThemeMode(v!),
+                  ),
+                ),
+                ListTile(
+                  title: const Text('Тёмная'),
+                  leading: Radio<ThemeMode>(
+                    value: ThemeMode.dark,
+                    groupValue: themeProvider.themeMode,
+                    onChanged: (v) => themeProvider.setThemeMode(v!),
+                  ),
                 ),
               ],
             ),
           ),
         ),
-        // Здесь вставьте новый Card
         const SizedBox(height: 20),
         Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -99,25 +116,47 @@ class _AppearanceTab extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
-                  initialValue: auth.user?.customAvatarUrl ?? '',
-                  decoration: const InputDecoration(labelText: 'URL аватарки (оставьте пустым для Spotify)'),
-                  onFieldSubmitted: (val) async {
-                    try {
-                      await auth.updateProfile(customAvatarUrl: val.trim());
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Ошибка: $e')),
-                      );
+                // Замена URL поля на кнопку загрузки
+                InkWell(
+                  onTap: () async {
+                    final picker = ImagePicker();
+                    final XFile? image = await picker.pickImage(
+                      source: ImageSource.gallery,
+                      maxWidth: 512,
+                      maxHeight: 512,
+                    );
+                    if (image != null) {
+                      try {
+                        await auth.uploadAvatar(image.path);
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Ошибка: $e')),
+                        );
+                      }
                     }
                   },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: theme.colorScheme.primary),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.photo_camera, size: 20),
+                        SizedBox(width: 8),
+                        Text('Выбрать фото'),
+                      ],
+                    ),
+                  ),
                 ),
-                if (auth.user?.customAvatarUrl != null && auth.user!.customAvatarUrl!.isNotEmpty)
+                if (auth.user?.avatarUrl != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: CircleAvatar(
                       radius: 30,
-                      backgroundImage: NetworkImage(auth.user!.customAvatarUrl!),
+                      backgroundImage: NetworkImage(auth.user!.avatarUrl!),
                     ),
                   ),
               ],

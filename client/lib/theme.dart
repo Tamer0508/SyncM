@@ -2,20 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  static const Color lightPrimary    = Color(0xFFE43636);  // красный акцент
-  static const Color lightBackground = Color(0xFFF5F6FA);  // мягкий светло-серый фон
-  static const Color lightSurface    = Color(0xFFFFFFFF);  // белые карточки/поверхности
-  static const Color lightNavBar     = Color(0xFFFFFFFF);  // белая нижняя панель
-  static const Color textOnLight     = Color(0xFF1A1C1E);  // почти чёрный текст
-  static const Color lightDivider    = Color(0xFFE0E0E0);
+  // ==================== Light Palette ====================
+  static const Color lightPrimary    = Color(0xFF6800FF);  // фиолетовый акцент
+  static const Color lightBackground = Color(0xFFFFF9EB);  // тёплый светлый
+  static const Color lightSurface    = Color(0xFFFFFFFF);  // белые карточки
+  static const Color lightNavBar     = Color(0xFFFFFFFF);  // белая панель
+  static const Color textOnLight     = Color(0xFF1A1C1E);  // почти чёрный
+  static const Color lightDivider    = Color(0xFFF5F0E6);
 
-  static const Color darkDeepest      = Color(0xFF121212);  // самый глубокий фон (scaffold)
-  static const Color darkSurface      = Color(0xFF1F1F1F);  // карточки, диалоги
-  static const Color darkNavBar       = Color(0xFF282828);  // нижняя панель, AppBar (если непрозрачный)
-  static const Color darkPrimaryColor = Color(0xFF9D3ED5);  // фиолетовый акцент
-  static const Color textOnDark       = Color(0xFFE1E3E6);  // светлый текст
+  // ==================== Dark Palette ====================
+  static const Color darkDeepest      = Color(0xFF12111A);  // фон
+  static const Color darkSurface      = Color(0xFF1E1D2A);  // карточки
+  static const Color darkNavBar       = Color(0xFF2A2936);  // нижняя панель
+  static const Color darkPrimaryColor = Color(0xFFE8B4D8);  // розовый акцент
+  static const Color textOnDark       = Color(0xFFF2E0D0);  // тёплый текст
 
-  // Brand colors
+  // Brand
   static const Color spotifyGreen = Color(0xFF1DB954);
 
   // ==================== Light Theme ====================
@@ -23,7 +25,7 @@ class AppTheme {
     final base = ThemeData.light(useMaterial3: true);
     final colorScheme = ColorScheme.light(
       primary: lightPrimary,
-      secondary: const Color(0xFF9D3ED5),
+      secondary: const Color(0xFFE43636),
       background: lightBackground,
       surface: lightSurface,
       onPrimary: Colors.white,
@@ -57,9 +59,7 @@ class AppTheme {
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: GoogleFonts.montserrat(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          color: textOnLight,
+          fontSize: 20, fontWeight: FontWeight.w700, color: textOnLight,
         ),
         iconTheme: IconThemeData(color: textOnLight),
       ),
@@ -117,10 +117,10 @@ class AppTheme {
     final base = ThemeData.dark(useMaterial3: true);
     final colorScheme = ColorScheme.dark(
       primary: darkPrimaryColor,
-      secondary: lightPrimary,               // контрастный акцент
+      secondary: const Color(0xFF9D3ED5),
       background: darkDeepest,
       surface: darkSurface,
-      onPrimary: Colors.white,
+      onPrimary: Colors.black,          // на розовом акценте чёрный текст
       onSecondary: Colors.white,
       onBackground: textOnDark,
       onSurface: textOnDark,
@@ -136,24 +136,22 @@ class AppTheme {
       ),
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: darkDeepest,          // #121212
+      scaffoldBackgroundColor: darkDeepest,
       canvasColor: darkDeepest,
-      cardColor: darkSurface,                        // #1F1F1F
+      cardColor: darkSurface,
       dialogBackgroundColor: darkSurface,
-      dividerColor: darkNavBar.withOpacity(0.5),     // мягкий разделитель
+      dividerColor: darkNavBar.withOpacity(0.5),
       textTheme: GoogleFonts.montserratTextTheme(base.textTheme).apply(
         bodyColor: textOnDark,
         displayColor: textOnDark,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: Colors.transparent,         // наследует фон scaffold
+        backgroundColor: Colors.transparent,
         foregroundColor: textOnDark,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: GoogleFonts.montserrat(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          color: textOnDark,
+          fontSize: 20, fontWeight: FontWeight.w700, color: textOnDark,
         ),
         iconTheme: IconThemeData(color: textOnDark),
       ),
@@ -170,14 +168,14 @@ class AppTheme {
         style: TextButton.styleFrom(foregroundColor: colorScheme.primary),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: darkNavBar,                  // #282828
+        backgroundColor: darkNavBar,
         selectedItemColor: colorScheme.primary,
         unselectedItemColor: colorScheme.onSurface.withOpacity(0.6),
         showUnselectedLabels: true,
         elevation: 12,
       ),
       cardTheme: CardThemeData(
-        color: darkSurface,                           // #1F1F1F
+        color: darkSurface,
         elevation: 6,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
