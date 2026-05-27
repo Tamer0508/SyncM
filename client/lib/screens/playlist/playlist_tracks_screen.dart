@@ -48,33 +48,46 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     }
   }
 
-  // Открывает трек на Windows через Spotify app или браузер
-  Future<void> _openOnWindows(Map<String, dynamic> track) async {
-    final uri = track['uri'] as String?; // spotify:track:ID
-    if (uri == null) return;
-
-    // Извлекаем track ID из URI (spotify:track:XXXXXX)
-    final parts = uri.split(':');
-    final trackId = parts.length >= 3 ? parts[2] : null;
-
-    // Сначала пробуем открыть в Spotify приложении
-    final spotifyUri = Uri.parse(uri);
-    if (await canLaunchUrl(spotifyUri)) {
-      await launchUrl(spotifyUri);
-      return;
-    }
-
-    // Если Spotify не установлен — открываем в браузере
-    if (trackId != null) {
-      final webUrl = Uri.parse('https://open.spotify.com/track/$trackId');
-      await launchUrl(webUrl, mode: LaunchMode.externalApplication);
-    }
-  }
-
   Future<void> _onTrackTap(Map<String, dynamic> track, int index) async {
-    // На Windows — открываем через url_launcher
     if (_isWindows) {
-      await _openOnWindows(track);
+      final api = Provider.of<AuthProvider>(context, listen: false).api;
+      final uri = track['uri'] as String?;
+      if (uri == null) return;
+
+      bool played = false;
+      try {
+        played = await api.playTrack(uri);
+      } catch (e) {
+        played = false;
+      }
+
+      if (!played) {
+        // Fallback — открываем в Spotify приложении
+        final spotifyUri = Uri.parse(uri);
+        if (await canLaunchUrl(spotifyUri)) {
+          await launchUrl(spotifyUri);
+          return;
+        }
+        // Или в браузере
+        final parts = uri.split(':');
+        if (parts.length >= 3) {
+          await launchUrl(
+            Uri.parse('https://open.spotify.com/track/${parts[2]}'),
+            mode: LaunchMode.externalApplication,
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => NowPlayingScreen(
+            title: track['name'] as String?,
+            artist: track['artist'] as String?,
+            artworkUrl: track['imageUrl'] as String?,
+          ),
+        ));
+      }
       return;
     }
 
@@ -137,31 +150,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                   : Container(color: theme.colorScheme.primary.withOpacity(0.3)),
             ),
           ),
-          if (_isWindows)
-            SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: theme.colorScheme.primary, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'На Windows треки откроются в Spotify или браузере',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           if (_loading)
             SliverFillRemaining(
               child: Center(child: CircularProgressIndicator(color: theme.colorScheme.primary)),
@@ -190,7 +178,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                   (context, i) {
                     final t = _tracks[i];
                     final isCurrentTrack = !_isWindows && pb.currentTrack?['uri'] == t['uri'];
-                    final isPlaying = isCurrentTrack && pb.isPlaying;
 
                     return TrackCard(
                       id: t['id'] ?? '',

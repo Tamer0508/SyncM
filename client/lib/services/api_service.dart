@@ -261,6 +261,16 @@ class ApiService {
     throw ApiException('Ошибка входа через Google', res.statusCode, _extractError(res));
   }
 
+  Future<bool> playTrack(String uri, {String? deviceId}) async {
+  final body = <String, dynamic>{'uri': uri};
+  if (deviceId != null) body['deviceId'] = deviceId;
+  final res = await http.post(_uri('/spotify/play'),
+    headers: _headers,
+    body: json.encode(body),
+  ).timeout(timeout);
+  return res.statusCode == 200;
+}
+
   void setCookie(String cookie) {
     _cookie = cookie;
   }

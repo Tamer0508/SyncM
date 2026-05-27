@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import 'dart:async';
+import 'dart:io';
 
 import 'google_sign_stub.dart'
     if (dart.library.html) 'google_sign_web.dart';
@@ -42,32 +44,70 @@ class GoogleSignInButton extends StatelessWidget {
 
   // На Windows — открываем браузер с Google OAuth
   Future<void> _handleWindowsSignIn(BuildContext context) async {
-    try {
-      final api = ApiService();
-      // Используем бэкенд Google auth endpoint
-      // После авторизации бэкенд вернёт токен через redirect
-      final authUrl = Uri.parse(
-        '${api.baseUrl}/auth/google-web?returnTo=syncm://auth-callback',
-      );
+  try {
+    final api = ApiService();
+    final completer = Completer<Map<String, dynamic>?>();
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8181);
+    print('Local server started on port 8181');
 
-      if (await canLaunchUrl(authUrl)) {
-        await launchUrl(authUrl, mode: LaunchMode.externalApplication);
-      } else {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Не удалось открыть браузер')),
-          );
-        }
-      }
-    } catch (e) {
-      print('Windows Google Sign-In error: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка входа: $e')),
-        );
-      }
+    final authUrl = Uri.parse(
+      '${api.baseUrl}/auth/google-web?returnTo=http://localhost:8181/callback',
+    );
+    print('Opening URL: $authUrl');
+
+    await launchUrl(authUrl, mode: LaunchMode.externalApplication);
+
+    server.listen((request) async {
+  final uri = request.requestedUri;
+  final response = request.response;
+  response.headers.set('Content-Type', 'text/html; charset=utf-8');
+  response.write('<html><body><h2>Login successful! You can close this tab.</h2></body></html>');
+  await response.close();
+  await server.close();
+
+  final cookie = uri.queryParameters['cookie'];
+  final token = uri.queryParameters['token'];
+  completer.complete({'cookie': cookie, 'token': token});
+});
+
+    final result = await completer.future.timeout(
+      const Duration(minutes: 2),
+      onTimeout: () { server.close(); return null; },
+    );
+
+    print('Auth result: $result');
+
+    if (result != null && context.mounted) {
+  final auth = Provider.of<AuthProvider>(context, listen: false);
+  final token = result['token'] as String?;
+  final cookie = result['cookie'] as String?;
+  
+  print('token: $token');
+  print('cookie: $cookie');
+  
+  // Используем token (userId) как основной идентификатор
+  if (token != null && token.isNotEmpty) {
+    auth.setCookie(token);
+  } else if (cookie != null && cookie.isNotEmpty) {
+    auth.setCookie(cookie);
+  }
+  
+  await auth.fetchMe();
+  print('isLoggedIn: ${auth.isLoggedIn}');
+  
+  if (auth.isLoggedIn && context.mounted) {
+    Navigator.of(context).pushReplacementNamed('/home');
+  }
+}
+  } catch (e) {
+    print('Windows Google Sign-In error: $e');
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка входа: $e')),
+      );
     }
   }
+}
 
   // На мобильных — через Google Sign In SDK
   Future<void> _handleSignIn(BuildContext context) async {
