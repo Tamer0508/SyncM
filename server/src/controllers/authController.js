@@ -359,6 +359,9 @@ const updateProfile = async (req, res) => {
 
 // POST /auth/google-web — редирект на Google OAuth для Windows/Desktop
 const googleWebLogin = (req, res) => {
+  console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID);
+  console.log('GOOGLE_REDIRECT_URI:', process.env.GOOGLE_REDIRECT_URI);
+  console.log('GOOGLE_CLIENT_SECRET exists:', !!process.env.GOOGLE_CLIENT_SECRET);
   const returnTo = req.query.returnTo || '';
   const state = Buffer.from(JSON.stringify({ returnTo })).toString('base64');
 
