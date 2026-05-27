@@ -49,71 +49,47 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   }
 
   Future<void> _onTrackTap(Map<String, dynamic> track, int index) async {
-    if (_isWindows) {
-      final api = Provider.of<AuthProvider>(context, listen: false).api;
-      final uri = track['uri'] as String?;
-      if (uri == null) return;
+  if (_isWindows) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final api = auth.api;
+    final uri = track['uri'] as String?;
+    if (uri == null) return;
 
-      bool played = false;
-      try {
-        played = await api.playTrack(uri);
-      } catch (e) {
-        played = false;
-      }
-
-      if (!played) {
-        // Fallback — открываем в Spotify приложении
-        final spotifyUri = Uri.parse(uri);
-        if (await canLaunchUrl(spotifyUri)) {
-          await launchUrl(spotifyUri);
-          return;
-        }
-        // Или в браузере
-        final parts = uri.split(':');
-        if (parts.length >= 3) {
-          await launchUrl(
-            Uri.parse('https://open.spotify.com/track/${parts[2]}'),
-            mode: LaunchMode.externalApplication,
-          );
-        }
-        return;
-      }
-
+    if (auth.user?.spotifyConnected != true) {
       if (mounted) {
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => NowPlayingScreen(
-            title: track['name'] as String?,
-            artist: track['artist'] as String?,
-            artworkUrl: track['imageUrl'] as String?,
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Подключите Spotify аккаунт в профиле'),
+            duration: Duration(seconds: 3),
           ),
-        ));
+        );
       }
       return;
     }
 
-    // На мобильных — через Spotify SDK
-    final pb = Provider.of<PlaybackProvider>(context, listen: false);
-
-    if (!pb.isConnected) {
-      final connected = await pb.connect();
-      if (!connected && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось подключиться к Spotify')),
-        );
-        return;
-      }
+    bool played = false;
+    try {
+      played = await api.playTrack(uri);
+      print('played: $played');
+    } catch (e) {
+      print('playTrack error: $e');
     }
 
-    await pb.playTrack(
-      {
-        'title': track['name'],
-        'artist': track['artist'],
-        'imageUrl': track['imageUrl'],
-        'uri': track['uri'],
-        'index': index,
-      },
-      playlistId: widget.playlistId,
-    );
+    if (!played) {
+      final spotifyUri = Uri.parse(uri);
+      if (await canLaunchUrl(spotifyUri)) {
+        await launchUrl(spotifyUri);
+        return;
+      }
+      final parts = uri.split(':');
+      if (parts.length >= 3) {
+        await launchUrl(
+          Uri.parse('https://open.spotify.com/track/${parts[2]}'),
+          mode: LaunchMode.externalApplication,
+        );
+      }
+      return;
+    }
 
     if (mounted) {
       Navigator.of(context).push(MaterialPageRoute(
@@ -124,7 +100,43 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         ),
       ));
     }
+    return;
   }
+
+  // На мобильных — через Spotify SDK
+  final pb = Provider.of<PlaybackProvider>(context, listen: false);
+
+  if (!pb.isConnected) {
+    final connected = await pb.connect();
+    if (!connected && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось подключиться к Spotify')),
+      );
+      return;
+    }
+  }
+
+  await pb.playTrack(
+    {
+      'title': track['name'],
+      'artist': track['artist'],
+      'imageUrl': track['imageUrl'],
+      'uri': track['uri'],
+      'index': index,
+    },
+    playlistId: widget.playlistId,
+  );
+
+  if (mounted) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => NowPlayingScreen(
+        title: track['name'] as String?,
+        artist: track['artist'] as String?,
+        artworkUrl: track['imageUrl'] as String?,
+      ),
+    ));
+  }
+}
 
   @override
   Widget build(BuildContext context) {

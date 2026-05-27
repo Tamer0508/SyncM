@@ -47,6 +47,11 @@ function decrypt(payload) {
     const key = getKey();
     const data = Buffer.from(payload, 'base64');
 
+    // Если данные слишком короткие — это plain text токен
+    if (data.length < IV_LENGTH + TAG_LENGTH + 1) {
+      return payload; // возвращаем как есть
+    }
+
     const iv = data.subarray(0, IV_LENGTH);
     const authTag = data.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
     const encrypted = data.subarray(IV_LENGTH + TAG_LENGTH);
@@ -61,8 +66,9 @@ function decrypt(payload) {
 
     return decrypted.toString('utf8');
   } catch (error) {
+    // Если расшифровка не удалась — возможно plain text, возвращаем как есть
     console.error('Decrypt error:', error.message);
-    return null;
+    return payload;
   }
 }
 

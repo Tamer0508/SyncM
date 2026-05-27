@@ -5,6 +5,10 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../theme.dart';
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:url_launcher/url_launcher.dart';
 import 'spotify_webview_screen.dart'
     if (dart.library.html) 'spotify_webview_stub.dart';
 
@@ -355,33 +359,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _connectSpotify(BuildContext context) async {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final api = auth.api;
-    final userId = auth.user?.id ?? '';
+  final auth = Provider.of<AuthProvider>(context, listen: false);
+  final api = auth.api;
+  final userId = auth.user?.id ?? '';
 
-    if (kIsWeb) {
-      final webState = _encodeState({
-        'returnTo': Uri.base.origin,
-        'userId': userId,
+  // Веб
+  if (kIsWeb) {
+    final webState = _encodeState({'returnTo': Uri.base.origin, 'userId': userId});
+    final webUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(webState)}';
+    redirectToUrl(webUrl);
+    return;
+  }
+
+  // Windows Desktop — локальный сервер
+  if (defaultTargetPlatform == TargetPlatform.windows) {
+    try {
+      final completer = Completer<Map<String, dynamic>?>();
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8282);
+
+      final state = _encodeState({'returnTo': 'http://localhost:8282/callback', 'userId': userId});
+      final authUrl = Uri.parse('${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}');
+      await launchUrl(authUrl, mode: LaunchMode.externalApplication);
+
+      server.listen((request) async {
+        final uri = request.requestedUri;
+        final response = request.response;
+        response.headers.set('Content-Type', 'text/html; charset=utf-8');
+        response.write('<html><body><h2>Spotify connected! You can close this tab.</h2></body></html>');
+        await response.close();
+        await server.close();
+        completer.complete({
+          'token': uri.queryParameters['token'],
+          'cookie': uri.queryParameters['cookie'],
+        });
       });
-      final webUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(webState)}';
-      redirectToUrl(webUrl);
-    } else {
-      final state = _encodeState({'returnTo': 'myapp://callback', 'userId': userId});
-      final authUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}';
 
-      final result = await Navigator.of(context).push<Map<String, dynamic>>(
-        MaterialPageRoute(builder: (_) => buildSpotifyWebView(authUrl)),
+      final result = await completer.future.timeout(
+        const Duration(minutes: 2),
+        onTimeout: () { server.close(); return null; },
       );
 
       if (result != null) {
         final token = result['token'] as String?;
         final cookie = result['cookie'] as String?;
-        if (token != null && token.isNotEmpty) {
-          auth.setCookie(token);
-        } else if (cookie != null && cookie.isNotEmpty) {
-          auth.setCookie(cookie);
-        }
+        if (token != null && token.isNotEmpty) auth.setCookie(token);
+        else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
         await auth.fetchMe();
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -389,8 +411,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
           );
         }
       }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка подключения: $e')),
+        );
+      }
+    }
+    return;
+  }
+
+  // Android/iOS — старый WebView способ (работает как раньше)
+  final state = _encodeState({'returnTo': 'myapp://callback', 'userId': userId});
+  final authUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}';
+
+  final result = await Navigator.of(context).push<Map<String, dynamic>>(
+    MaterialPageRoute(builder: (_) => buildSpotifyWebView(authUrl)),
+  );
+
+  if (result != null) {
+    final token = result['token'] as String?;
+    final cookie = result['cookie'] as String?;
+    if (token != null && token.isNotEmpty) auth.setCookie(token);
+    else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
+    await auth.fetchMe();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Spotify успешно подключён!')),
+      );
     }
   }
+}
 
   void _disconnectSpotify(BuildContext context) {
     showDialog(

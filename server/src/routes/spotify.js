@@ -179,37 +179,26 @@ router.post('/play', async (req, res) => {
   if (!uri) return res.status(400).json({ error: 'Missing uri' });
 
   try {
-    let user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      const appUser = await prisma.appUser.findUnique({
-        where: { id: userId },
-        include: { User: true },
-      });
-      user = appUser?.User || null;
-    }
-    if (!user?.accessToken) return res.status(401).json({ error: 'Нет токена Spotify' });
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена Spotify' });
 
-    let accessToken = user.accessToken;
+    let accessToken = getAccessToken(spotifyUser);
 
     const playUrl = deviceId
       ? `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`
       : 'https://api.spotify.com/v1/me/player/play';
 
     try {
-      await axios.put(playUrl,
-        { uris: [uri] },
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
+      await axios.put(playUrl, { uris: [uri] }, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
     } catch (err) {
       if (err.response?.status === 401) {
-        accessToken = await refreshAccessToken(user);
-        await axios.put(playUrl,
-          { uris: [uri] },
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-      } else {
-        throw err;
-      }
+        accessToken = await refreshAccessToken(spotifyUser);
+        await axios.put(playUrl, { uris: [uri] }, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } else throw err;
     }
 
     res.json({ success: true });

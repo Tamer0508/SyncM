@@ -268,7 +268,8 @@ class ApiService {
     headers: _headers,
     body: json.encode(body),
   ).timeout(timeout);
-  return res.statusCode == 200;
+  print('playTrack status: ${res.statusCode}, body: ${res.body}'); // добавь
+  return res.statusCode == 200 || res.statusCode == 204;
 }
 
   void setCookie(String cookie) {
