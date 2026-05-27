@@ -435,6 +435,26 @@ const googleWebCallback = async (req, res) => {
     console.error('Google web callback error:', error.response?.data || error.message);
     res.status(500).json({ error: 'Ошибка авторизации Google' });
   }
+  // Сохраняем токен для polling
+  const pendingTokens = global.pendingTokens || (global.pendingTokens = new Map());
+  const tempToken = require('crypto').randomBytes(16).toString('hex');
+  pendingTokens.set(tempToken, { userId: user.id, cookie: `connect.sid=${req.sessionID}` });
+  setTimeout(() => pendingTokens.delete(tempToken), 5 * 60 * 1000); // 5 минут
+
+  // Редиректим на страницу успеха
+  res.send(`<html><body><h2>Вход выполнен! Вернитесь в приложение.</h2><script>window.close();</script></body></html>`);
+};
+
+// Новый endpoint для polling
+const checkPendingAuth = (req, res) => {
+  const { token } = req.query;
+  const pendingTokens = global.pendingTokens || new Map();
+  const data = pendingTokens.get(token);
+  if (data) {
+    pendingTokens.delete(token);
+    return res.json({ success: true, userId: data.userId, cookie: data.cookie });
+  }
+  res.json({ success: false });
 };
 
 module.exports = { login, callback, getMe, logout, googleAuth, getSettings, updateSettings, updateProfile, googleWebLogin, googleWebCallback };
