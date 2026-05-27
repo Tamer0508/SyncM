@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import '../../providers/playback_provider.dart';
 
@@ -18,6 +19,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   Timer? _timer;
   int _positionMs = 0;
   bool _dragging = false;
+
+  bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
 
   @override
   void initState() {
@@ -85,7 +88,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 // Обложка
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 24),
-                  height: MediaQuery.of(context).size.width - 48,
+                  height: _isWindows
+                      ? MediaQuery.of(context).size.height * 0.35
+                      : MediaQuery.of(context).size.width - 48,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [

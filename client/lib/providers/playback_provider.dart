@@ -1,11 +1,17 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:spotify_sdk/models/player_state.dart';
 import 'package:spotify_sdk/models/image_uri.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import '../services/api_service.dart';
 
 class PlaybackProvider extends ChangeNotifier {
+  ApiService? _apiService;
+  bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
+
   Map<String, dynamic>? _currentTrack;
   bool _isPlaying = false;
   bool _isConnected = false;
@@ -13,6 +19,7 @@ class PlaybackProvider extends ChangeNotifier {
   int _positionMs = 0;
   Uint8List? _currentImageBytes;
   String? _lastImageUri;
+  Timer? _pollingTimer;
 
   IO.Socket? _socket;
   String? _currentSessionId;
@@ -29,14 +36,39 @@ class PlaybackProvider extends ChangeNotifier {
   static const _redirectUrl = 'syncm://callback';
   static const _serverUrl = 'http://YOUR_SERVER_IP:3000';
 
+  void setApiService(ApiService api) {
+    _apiService = api;
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (!_isWindows || !_isPlaying) return;
+      try {
+        final state = await _apiService?.getPlayerState();
+        if (state == null) return;
+        _isPlaying = state['is_playing'] ?? false;
+        _positionMs = state['progress_ms'] ?? 0;
+        _durationMs = state['item']?['duration_ms'] ?? 0;
+        final track = state['item'];
+        if (track != null) {
+          _currentTrack = {
+            'title': track['name'],
+            'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
+            'imageUrl': track['album']?['images']?[0]?['url'],
+            'uri': track['uri'],
+          };
+        }
+        notifyListeners();
+      } catch (_) {}
+    });
+  }
+
   void initSocket(String sessionId, String userId) {
-    // Если уже подключены — не создаём новый сокет
     if (_socket != null && _socket!.connected && _currentSessionId == sessionId) {
-      print('[Socket] Already connected to session $sessionId');
       return;
     }
 
-    // Закрываем старый сокет если есть
     _socket?.disconnect();
     _socket?.dispose();
 
@@ -53,18 +85,12 @@ class PlaybackProvider extends ChangeNotifier {
             .build());
 
     _socket!.onConnect((_) {
-      print('[Socket] Connected to WebSocket');
       _socket!.emit('authenticate', {'token': userId});
       _socket!.emit('join_session', {'sessionId': sessionId, 'userId': userId});
     });
 
-    _socket!.onDisconnect((_) {
-      print('[Socket] Disconnected');
-    });
-
-    _socket!.onConnectError((err) {
-      print('[Socket] Connect error: $err');
-    });
+    _socket!.onDisconnect((_) => print('[Socket] Disconnected'));
+    _socket!.onConnectError((err) => print('[Socket] Connect error: $err'));
 
     _socket!.on('play', (data) {
       if (data['spotifyUri'] != _currentTrack?['uri']) {
@@ -74,40 +100,28 @@ class PlaybackProvider extends ChangeNotifier {
 
     _socket!.on('pause', (_) async {
       if (_isPlaying) {
-        try {
-          await SpotifySdk.pause();
-        } catch (_) {}
+        try { await SpotifySdk.pause(); } catch (_) {}
         _isPlaying = false;
         notifyListeners();
       }
     });
 
-    _socket!.on('next_track', (data) {
-      playTrack({'uri': data['spotifyUri']});
-    });
-
-    _socket!.on('seek', (data) {
-      seekTo(data['position_ms']);
-    });
+    _socket!.on('next_track', (data) => playTrack({'uri': data['spotifyUri']}));
+    _socket!.on('seek', (data) => seekTo(data['position_ms']));
   }
 
   Future<bool> connect() async {
     try {
-      print('[Spotify] Requesting access token...');
       await SpotifySdk.getAccessToken(
         clientId: _clientId,
         redirectUrl: _redirectUrl,
-        scope:
-            'app-remote-control,user-modify-playback-state,user-read-playback-state,playlist-read-private,streaming',
+        scope: 'app-remote-control,user-modify-playback-state,user-read-playback-state,playlist-read-private,streaming',
       );
 
-      print('[Spotify] Connecting to Spotify Remote...');
       _isConnected = await SpotifySdk.connectToSpotifyRemote(
         clientId: _clientId,
         redirectUrl: _redirectUrl,
       );
-
-      print('[Spotify] Connected: $_isConnected');
 
       if (_isConnected) _subscribeToPlayerState();
       notifyListeners();
@@ -139,10 +153,7 @@ class PlaybackProvider extends ChangeNotifier {
         };
 
         if (trackChanged && _currentSessionId != null) {
-          _socket?.emit('next_track', {
-            'sessionId': _currentSessionId,
-            'spotifyUri': trackUri,
-          });
+          _socket?.emit('next_track', {'sessionId': _currentSessionId, 'spotifyUri': trackUri});
         }
 
         if (trackChanged && imageUriId != _lastImageUri) {
@@ -166,31 +177,43 @@ class PlaybackProvider extends ChangeNotifier {
       } else {
         notifyListeners();
       }
-    }, onError: (err) {
-      print('[Spotify] PlayerState stream error: $err');
-    });
+    }, onError: (err) => print('[Spotify] PlayerState stream error: $err'));
   }
 
   Future<void> playTrack(Map<String, dynamic> track,
       {String? playlistId, int? positionMs}) async {
     final uri = track['uri'] as String?;
-    if (uri == null) {
-      print('[Spotify] playTrack: uri is null');
-      return;
-    }
+    if (uri == null) return;
 
-    // КРИТИЧНО: убеждаемся что подключены к SDK
-    if (!_isConnected) {
-      print('[Spotify] Not connected, trying to connect...');
+    if (!_isConnected && !_isWindows) {
       final connected = await connect();
-      if (!connected) {
-        print('[Spotify] Failed to connect, cannot play');
-        return;
-      }
+      if (!connected) return;
     }
 
     try {
-      print('[Spotify] Playing track: $uri');
+      if (_isWindows) {
+        try {
+          final devices = await _apiService?.getDevices() ?? [];
+          String? deviceId;
+          if (devices.isNotEmpty) {
+            final active = devices.firstWhere(
+              (d) => d['is_active'] == true,
+              orElse: () => devices.first,
+            );
+            deviceId = active['id'] as String?;
+          }
+          final played = await _apiService?.playTrack(uri, deviceId: deviceId) ?? false;
+          if (played) {
+            _currentTrack = track;
+            _isPlaying = true;
+            notifyListeners();
+            _startPolling();
+          }
+        } catch (e) {
+          print('[Windows] Play error: $e');
+        }
+        return;
+      }
 
       if (playlistId != null) {
         final contextUri = playlistId.startsWith('spotify:')
@@ -214,7 +237,6 @@ class PlaybackProvider extends ChangeNotifier {
       _currentTrack = track;
       _isPlaying = true;
 
-      // Уведомляем других участников сессии
       if (_currentSessionId != null) {
         _socket?.emit('play', {
           'sessionId': _currentSessionId,
@@ -226,9 +248,7 @@ class PlaybackProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       print('[Spotify] Play error: $e');
-      // Пробуем переподключиться и сыграть ещё раз
       try {
-        print('[Spotify] Attempting reconnect...');
         _isConnected = false;
         final reconnected = await connect();
         if (reconnected) {
@@ -244,9 +264,23 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> togglePlay() async {
-    if (!_isConnected) {
-      await connect();
+    if (_isWindows) {
+      try {
+        if (_isPlaying) {
+          await _apiService?.pausePlayback();
+          _isPlaying = false;
+        } else {
+          await _apiService?.resumePlayback();
+          _isPlaying = true;
+        }
+        notifyListeners();
+      } catch (e) {
+        print('[Windows] Toggle error: $e');
+      }
+      return;
     }
+
+    if (!_isConnected) await connect();
     try {
       if (_isPlaying) {
         await SpotifySdk.pause();
@@ -268,6 +302,28 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> skipNext() async {
+    if (_isWindows) {
+      try {
+        await _apiService?.skipToNext();
+        await Future.delayed(const Duration(milliseconds: 500));
+        final state = await _apiService?.getPlayerState();
+        if (state != null) {
+          final track = state['item'];
+          if (track != null) {
+            _currentTrack = {
+              'title': track['name'],
+              'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
+              'imageUrl': track['album']?['images']?[0]?['url'],
+              'uri': track['uri'],
+            };
+          }
+          notifyListeners();
+        }
+      } catch (e) {
+        print('[Windows] Skip next error: $e');
+      }
+      return;
+    }
     try {
       await SpotifySdk.skipNext();
     } catch (e) {
@@ -276,6 +332,28 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> skipPrevious() async {
+    if (_isWindows) {
+      try {
+        await _apiService?.skipToPrevious();
+        await Future.delayed(const Duration(milliseconds: 500));
+        final state = await _apiService?.getPlayerState();
+        if (state != null) {
+          final track = state['item'];
+          if (track != null) {
+            _currentTrack = {
+              'title': track['name'],
+              'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
+              'imageUrl': track['album']?['images']?[0]?['url'],
+              'uri': track['uri'],
+            };
+          }
+          notifyListeners();
+        }
+      } catch (e) {
+        print('[Windows] Skip previous error: $e');
+      }
+      return;
+    }
     try {
       await SpotifySdk.skipPrevious();
     } catch (e) {
@@ -284,13 +362,20 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> seekTo(int ms) async {
+    if (_isWindows) {
+      try {
+        await _apiService?.seekToPosition(ms);
+        _positionMs = ms;
+        notifyListeners();
+      } catch (e) {
+        print('[Windows] Seek error: $e');
+      }
+      return;
+    }
     try {
       await SpotifySdk.seekTo(positionedMilliseconds: ms);
       _positionMs = ms;
-      _socket?.emit('seek', {
-        'sessionId': _currentSessionId,
-        'position_ms': ms
-      });
+      _socket?.emit('seek', {'sessionId': _currentSessionId, 'position_ms': ms});
       notifyListeners();
     } catch (e) {
       print('[Spotify] Seek error: $e');
@@ -298,11 +383,9 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   void stop() {
+    _pollingTimer?.cancel();
     if (_currentSessionId != null && _userId != null) {
-      _socket?.emit('leave_session', {
-        'sessionId': _currentSessionId,
-        'userId': _userId
-      });
+      _socket?.emit('leave_session', {'sessionId': _currentSessionId, 'userId': _userId});
     }
     _socket?.disconnect();
     _isPlaying = false;
@@ -311,5 +394,12 @@ class PlaybackProvider extends ChangeNotifier {
     _currentImageBytes = null;
     _lastImageUri = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    _socket?.disconnect();
+    super.dispose();
   }
 }

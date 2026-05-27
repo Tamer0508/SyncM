@@ -171,6 +171,39 @@ router.get('/status', async (req, res) => {
   }
 });
 
+router.get('/devices', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
+    const accessToken = getAccessToken(spotifyUser);
+    const response = await axios.get('https://api.spotify.com/v1/me/player/devices', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    res.json(response.data.devices);
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка получения устройств' });
+  }
+});
+
+router.get('/player', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
+    const accessToken = getAccessToken(spotifyUser);
+    const response = await axios.get('https://api.spotify.com/v1/me/player', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (response.status === 204) return res.json(null);
+    res.json(response.data);
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка получения плеера' });
+  }
+});
+
 router.post('/play', async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
@@ -242,6 +275,75 @@ router.get('/token-info', async (req, res) => {
     res.json({ spotifyUser: response.data, tokenPreview: accessToken.substring(0, 10) + '...' });
   } catch (error) {
     res.json({ error: error.message });
+  }
+});
+
+router.post('/next', async (req, res) => {
+  const userId = getUserId(req);
+  const spotifyUser = await getSpotifyUser(userId);
+  if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
+  try {
+    await axios.post('https://api.spotify.com/v1/me/player/next', {}, {
+      headers: { Authorization: `Bearer ${getAccessToken(spotifyUser)}` },
+    });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
+router.post('/previous', async (req, res) => {
+  const userId = getUserId(req);
+  const spotifyUser = await getSpotifyUser(userId);
+  if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
+  try {
+    await axios.post('https://api.spotify.com/v1/me/player/previous', {}, {
+      headers: { Authorization: `Bearer ${getAccessToken(spotifyUser)}` },
+    });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
+router.put('/seek', async (req, res) => {
+  const userId = getUserId(req);
+  const { position_ms } = req.query;
+  const spotifyUser = await getSpotifyUser(userId);
+  if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
+  try {
+    await axios.put(`https://api.spotify.com/v1/me/player/seek?position_ms=${position_ms}`, {}, {
+      headers: { Authorization: `Bearer ${getAccessToken(spotifyUser)}` },
+    });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
+router.put('/pause', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
+    const accessToken = getAccessToken(spotifyUser);
+    await axios.put('https://api.spotify.com/v1/me/player/pause', {}, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка паузы' });
+  }
+});
+
+router.put('/resume', async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
+    const accessToken = getAccessToken(spotifyUser);
+    await axios.put('https://api.spotify.com/v1/me/player/play', {}, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка возобновления' });
   }
 });
 

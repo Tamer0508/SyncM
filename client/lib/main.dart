@@ -8,6 +8,7 @@ import 'providers/session_provider.dart';
 import 'providers/playback_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/socket_service.dart';
+import 'services/api_service.dart';
 import 'theme.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/home/home_screen.dart';
@@ -46,9 +47,11 @@ class MyApp extends StatelessWidget {
             return session ?? SessionProvider();
           },
         ),
-        ChangeNotifierProvider(create: (_) => PlaybackProvider()),
+        ChangeNotifierProvider(
+          create: (_) => PlaybackProvider()..setApiService(ApiService()),
+        ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        Provider<SocketService>.value(value: SocketService()), 
+        Provider<SocketService>.value(value: SocketService()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, _) => MaterialApp(

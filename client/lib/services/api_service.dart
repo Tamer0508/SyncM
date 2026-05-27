@@ -271,6 +271,37 @@ class ApiService {
   print('playTrack status: ${res.statusCode}, body: ${res.body}'); // добавь
   return res.statusCode == 200 || res.statusCode == 204;
 }
+  Future<void> pausePlayback() async {
+  await http.put(_uri('/spotify/pause'), headers: _headers).timeout(timeout);
+}
+
+Future<void> resumePlayback() async {
+  await http.put(_uri('/spotify/resume'), headers: _headers).timeout(timeout);
+}
+
+Future<void> skipToNext() async {
+  await http.post(_uri('/spotify/next'), headers: _headers).timeout(timeout);
+}
+
+Future<void> skipToPrevious() async {
+  await http.post(_uri('/spotify/previous'), headers: _headers).timeout(timeout);
+}
+
+Future<void> seekToPosition(int ms) async {
+  await http.put(_uri('/spotify/seek?position_ms=$ms'), headers: _headers).timeout(timeout);
+}
+
+Future<List<dynamic>> getDevices() async {
+  final res = await http.get(_uri('/spotify/devices'), headers: _headers).timeout(timeout);
+  if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+  throw ApiException('Ошибка получения устройств', res.statusCode);
+}
+
+Future<Map<String, dynamic>?> getPlayerState() async {
+  final res = await http.get(_uri('/spotify/player'), headers: _headers).timeout(timeout);
+  if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
+  return null;
+}
 
   void setCookie(String cookie) {
     _cookie = cookie;
