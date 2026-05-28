@@ -309,14 +309,21 @@ router.get('/token-info', async (req, res) => {
 
 router.post('/next', async (req, res) => {
   const userId = getUserId(req);
+  console.log('Skip next, userId:', userId);
   const spotifyUser = await getSpotifyUser(userId);
   if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
   try {
-    await axios.post('https://api.spotify.com/v1/me/player/next', {}, {
-      headers: { Authorization: `Bearer ${getAccessToken(spotifyUser)}` },
+    const accessToken = getAccessToken(spotifyUser);
+    console.log('Calling Spotify next, token:', accessToken.substring(0, 10));
+    const result = await axios.post('https://api.spotify.com/v1/me/player/next', {}, {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
+    console.log('Skip next result:', result.status);
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+  } catch (e) {
+    console.error('Skip next error:', e.response?.data || e.message);
+    res.status(500).json({ error: 'Ошибка' });
+  }
 });
 
 router.post('/previous', async (req, res) => {

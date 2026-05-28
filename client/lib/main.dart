@@ -28,7 +28,6 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => FriendsProvider()),
         ChangeNotifierProxyProvider<AuthProvider, FriendsProvider>(
           create: (_) => FriendsProvider(),
           update: (_, auth, friends) {
@@ -48,14 +47,17 @@ class MyApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProxyProvider<AuthProvider, PlaybackProvider>(
-  create: (_) => PlaybackProvider(),
-  update: (_, auth, pb) {
-    if (auth.cookie != null) {
-      pb?.apiService?.setCookie(auth.cookie!);
-    }
-    return pb ?? PlaybackProvider();
-  },
-),
+          create: (_) => PlaybackProvider(),
+          update: (_, auth, playback) {
+            final pb = playback ?? PlaybackProvider();
+            if (auth.cookie != null) {
+              final api = ApiService();
+              api.setCookie(auth.cookie!);
+              pb.setApiService(api);
+            }
+            return pb;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         Provider<SocketService>.value(value: SocketService()),
       ],

@@ -42,12 +42,20 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   void _startPolling() {
-    _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      if (!_isWindows || !_isPlaying) return;
+  _pollingTimer?.cancel();
+  _pollingTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
+    if (!_isWindows || !_isPlaying) return;
+    
+    // Локально увеличиваем позицию каждые 500мс
+    if (_isPlaying && _durationMs > 0) {
+      _positionMs = (_positionMs + 500).clamp(0, _durationMs);
+      notifyListeners();
+    }
+    
+    // Раз в 3 секунды синхронизируемся с сервером
+    if (DateTime.now().second % 3 == 0) {
       try {
         final state = await _apiService?.getPlayerState();
-        print('[Polling] state: $state');
         if (state == null) return;
         _isPlaying = state['is_playing'] ?? false;
         _positionMs = state['progress_ms'] ?? 0;
@@ -62,9 +70,12 @@ class PlaybackProvider extends ChangeNotifier {
           };
         }
         notifyListeners();
-      } catch (_) {}
-    });
-  }
+      } catch (e) {
+        print('[Polling] error: $e');
+      }
+    }
+  });
+}
 
   void initSocket(String sessionId, String userId) {
     if (_socket != null && _socket!.connected && _currentSessionId == sessionId) {
@@ -311,34 +322,37 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> skipNext() async {
-    if (_isWindows) {
-      try {
-        await _apiService?.skipToNext();
-        await Future.delayed(const Duration(milliseconds: 500));
-        final state = await _apiService?.getPlayerState();
-        if (state != null) {
-          final track = state['item'];
-          if (track != null) {
-            _currentTrack = {
-              'title': track['name'],
-              'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
-              'imageUrl': track['album']?['images']?[0]?['url'],
-              'uri': track['uri'],
-            };
-          }
-          notifyListeners();
-        }
-      } catch (e) {
-        print('[Windows] Skip next error: $e');
-      }
-      return;
-    }
+  if (_isWindows) {
     try {
-      await SpotifySdk.skipNext();
+      await _apiService?.skipToNext();
+      await Future.delayed(const Duration(milliseconds: 800));
+      final state = await _apiService?.getPlayerState();
+      if (state != null) {
+        _isPlaying = state['is_playing'] ?? true;
+        _positionMs = state['progress_ms'] ?? 0;
+        _durationMs = state['item']?['duration_ms'] ?? 0;
+        final track = state['item'];
+        if (track != null) {
+          _currentTrack = {
+            'title': track['name'],
+            'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
+            'imageUrl': track['album']?['images']?[0]?['url'],
+            'uri': track['uri'],
+          };
+        }
+        notifyListeners();
+      }
     } catch (e) {
-      print('[Spotify] Skip next error: $e');
+      print('[Windows] Skip next error: $e');
     }
+    return;
   }
+  try {
+    await SpotifySdk.skipNext();
+  } catch (e) {
+    print('[Spotify] Skip next error: $e');
+  }
+}
 
   Future<void> skipPrevious() async {
     if (_isWindows) {

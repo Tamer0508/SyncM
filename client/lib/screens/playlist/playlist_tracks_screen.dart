@@ -51,45 +51,26 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   Future<void> _onTrackTap(Map<String, dynamic> track, int index) async {
   if (_isWindows) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final api = auth.api;
     final uri = track['uri'] as String?;
     if (uri == null) return;
 
     if (auth.user?.spotifyConnected != true) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Подключите Spotify аккаунт в профиле'),
-            duration: Duration(seconds: 3),
-          ),
+          const SnackBar(content: Text('Подключите Spotify аккаунт в профиле')),
         );
       }
       return;
     }
 
-    bool played = false;
-    try {
-      played = await api.playTrack(uri);
-      print('played: $played');
-    } catch (e) {
-      print('playTrack error: $e');
-    }
-
-    if (!played) {
-      final spotifyUri = Uri.parse(uri);
-      if (await canLaunchUrl(spotifyUri)) {
-        await launchUrl(spotifyUri);
-        return;
-      }
-      final parts = uri.split(':');
-      if (parts.length >= 3) {
-        await launchUrl(
-          Uri.parse('https://open.spotify.com/track/${parts[2]}'),
-          mode: LaunchMode.externalApplication,
-        );
-      }
-      return;
-    }
+    final pb = Provider.of<PlaybackProvider>(context, listen: false);
+    await pb.playTrack({
+      'title': track['name'],
+      'artist': track['artist'],
+      'imageUrl': track['imageUrl'],
+      'uri': uri,
+      'index': index,
+    });
 
     if (mounted) {
       Navigator.of(context).push(MaterialPageRoute(
