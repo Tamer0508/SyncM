@@ -274,16 +274,22 @@ class ApiService {
   throw ApiException('Ошибка загрузки аватарки', res.statusCode, _extractError(res));
 }
 
-  Future<bool> playTrack(String uri, {String? deviceId}) async {
-  final body = <String, dynamic>{'uri': uri};
+  Future<bool> playTrack(String uri, {String? deviceId, String? contextUri, int? offset}) async {
+  final body = <String, dynamic>{};
+  if (contextUri != null) {
+    body['contextUri'] = contextUri;
+    if (offset != null) body['offset'] = offset;
+  } else {
+    body['uri'] = uri;
+  }
   if (deviceId != null) body['deviceId'] = deviceId;
   final res = await http.post(_uri('/spotify/play'),
     headers: _headers,
     body: json.encode(body),
   ).timeout(timeout);
-  print('playTrack status: ${res.statusCode}, body: ${res.body}'); // добавь
   return res.statusCode == 200 || res.statusCode == 204;
 }
+
   Future<void> pausePlayback() async {
   await http.put(_uri('/spotify/pause'), headers: _headers).timeout(timeout);
 }

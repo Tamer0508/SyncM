@@ -206,29 +206,20 @@ class PlaybackProvider extends ChangeNotifier {
     try {
       if (_isWindows) {
   try {
-    final devices = await _apiService?.getDevices() ?? [];
-    String? deviceId;
-    if (devices.isNotEmpty) {
-      final active = devices.firstWhere(
-        (d) => d['is_active'] == true,
-        orElse: () => devices.first,
-      );
-      deviceId = active['id'] as String?;
-    }
+    final contextUri = playlistId != null
+        ? (playlistId.startsWith('spotify:') ? playlistId : 'spotify:playlist:$playlistId')
+        : null;
     
-    // Пробуем с deviceId, если не получилось — без него
-    bool played = false;
-    if (deviceId != null) {
-      played = await _apiService?.playTrack(uri, deviceId: deviceId) ?? false;
-    }
-    if (!played) {
-      played = await _apiService?.playTrack(uri) ?? false;
-    }
-    
+    bool played = await _apiService?.playTrack(
+      uri,
+      contextUri: contextUri,
+      offset: track['index'] as int?,
+    ) ?? false;
+
     _currentTrack = track;
     _isPlaying = true;
     notifyListeners();
-    _startPolling(); // запускаем всегда
+    _startPolling();
   } catch (e) {
     print('[Windows] Play error: $e');
   }
@@ -325,22 +316,26 @@ class PlaybackProvider extends ChangeNotifier {
   if (_isWindows) {
     try {
       await _apiService?.skipToNext();
-      await Future.delayed(const Duration(milliseconds: 800));
-      final state = await _apiService?.getPlayerState();
-      if (state != null) {
-        _isPlaying = state['is_playing'] ?? true;
-        _positionMs = state['progress_ms'] ?? 0;
-        _durationMs = state['item']?['duration_ms'] ?? 0;
+      final oldUri = _currentTrack?['uri'];
+      for (int i = 0; i < 5; i++) {
+        await Future.delayed(const Duration(milliseconds: 600));
+        final state = await _apiService?.getPlayerState();
+        if (state == null) continue;
         final track = state['item'];
-        if (track != null) {
+        final newUri = track?['uri'];
+        if (newUri != null && newUri != oldUri) {
+          _isPlaying = state['is_playing'] ?? true;
+          _positionMs = state['progress_ms'] ?? 0;
+          _durationMs = track?['duration_ms'] ?? 0;
           _currentTrack = {
             'title': track['name'],
             'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
             'imageUrl': track['album']?['images']?[0]?['url'],
-            'uri': track['uri'],
+            'uri': newUri,
           };
+          notifyListeners();
+          break;
         }
-        notifyListeners();
       }
     } catch (e) {
       print('[Windows] Skip next error: $e');
@@ -354,35 +349,42 @@ class PlaybackProvider extends ChangeNotifier {
   }
 }
 
-  Future<void> skipPrevious() async {
-    if (_isWindows) {
-      try {
-        await _apiService?.skipToPrevious();
-        await Future.delayed(const Duration(milliseconds: 500));
-        final state = await _apiService?.getPlayerState();
-        if (state != null) {
-          final track = state['item'];
-          if (track != null) {
-            _currentTrack = {
-              'title': track['name'],
-              'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
-              'imageUrl': track['album']?['images']?[0]?['url'],
-              'uri': track['uri'],
-            };
-          }
-          notifyListeners();
-        }
-      } catch (e) {
-        print('[Windows] Skip previous error: $e');
-      }
-      return;
-    }
+Future<void> skipPrevious() async {
+  if (_isWindows) {
     try {
-      await SpotifySdk.skipPrevious();
+      await _apiService?.skipToPrevious();
+      final oldUri = _currentTrack?['uri'];
+      for (int i = 0; i < 5; i++) {
+        await Future.delayed(const Duration(milliseconds: 600));
+        final state = await _apiService?.getPlayerState();
+        if (state == null) continue;
+        final track = state['item'];
+        final newUri = track?['uri'];
+        if (newUri != null && newUri != oldUri) {
+          _isPlaying = state['is_playing'] ?? true;
+          _positionMs = state['progress_ms'] ?? 0;
+          _durationMs = track?['duration_ms'] ?? 0;
+          _currentTrack = {
+            'title': track['name'],
+            'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
+            'imageUrl': track['album']?['images']?[0]?['url'],
+            'uri': newUri,
+          };
+          notifyListeners();
+          break;
+        }
+      }
     } catch (e) {
-      print('[Spotify] Skip previous error: $e');
+      print('[Windows] Skip previous error: $e');
     }
+    return;
   }
+  try {
+    await SpotifySdk.skipPrevious();
+  } catch (e) {
+    print('[Spotify] Skip previous error: $e');
+  }
+}
 
   Future<void> seekTo(int ms) async {
     if (_isWindows) {

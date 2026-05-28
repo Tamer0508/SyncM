@@ -209,38 +209,26 @@ router.post('/play', async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const { uri, deviceId, contextUri, positionMs } = req.body;
-  if (!uri) return res.status(400).json({ error: 'Missing uri' });
+  const { uri, deviceId, contextUri, offset } = req.body;
+  if (!uri && !contextUri) return res.status(400).json({ error: 'Missing uri or contextUri' });
 
   try {
     const spotifyUser = await getSpotifyUser(userId);
     if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена Spotify' });
 
     let accessToken = getAccessToken(spotifyUser);
-
-    let targetDeviceId = deviceId;
-    if (!targetDeviceId) {
-      try {
-        const devicesRes = await axios.get('https://api.spotify.com/v1/me/player/devices', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const devices = devicesRes.data.devices || [];
-        const device = devices.find(d => d.is_active) || devices[0];
-        if (device) targetDeviceId = device.id;
-      } catch (e) {
-        console.log('Failed to get devices:', e.message);
-      }
-    }
-
-    const playUrl = targetDeviceId
-      ? `https://api.spotify.com/v1/me/player/play?device_id=${targetDeviceId}`
+    const playUrl = deviceId
+      ? `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`
       : 'https://api.spotify.com/v1/me/player/play';
 
-    // Если передан contextUri (плейлист) — играем с контекстом
-    // Это позволяет кнопкам next/previous работать правильно
-    const body = contextUri
-      ? { context_uri: contextUri, offset: { uri }, position_ms: positionMs || 0 }
-      : { uris: [uri] };
+    // Формируем тело запроса
+    let body;
+    if (contextUri) {
+      body = { context_uri: contextUri };
+      if (offset !== undefined) body.offset = { position: offset };
+    } else {
+      body = { uris: [uri] };
+    }
 
     try {
       await axios.put(playUrl, body, {
