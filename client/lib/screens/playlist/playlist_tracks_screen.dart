@@ -70,7 +70,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       'imageUrl': track['imageUrl'],
       'uri': uri,
       'index': index,
-    });
+    }, playlistId: widget.playlistId);
 
     if (mounted) {
       Navigator.of(context).push(MaterialPageRoute(

@@ -209,7 +209,7 @@ router.post('/play', async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const { uri, deviceId } = req.body;
+  const { uri, deviceId, contextUri, positionMs } = req.body;
   if (!uri) return res.status(400).json({ error: 'Missing uri' });
 
   try {
@@ -218,7 +218,6 @@ router.post('/play', async (req, res) => {
 
     let accessToken = getAccessToken(spotifyUser);
 
-    // Если deviceId не передан — получаем список устройств и берём активное
     let targetDeviceId = deviceId;
     if (!targetDeviceId) {
       try {
@@ -226,18 +225,8 @@ router.post('/play', async (req, res) => {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         const devices = devicesRes.data.devices || [];
-        
-        // Сначала берём активное, потом первое доступное
-        const active = devices.find(d => d.is_active);
-        const first = devices[0];
-        const device = active || first;
-        
-        if (device) {
-          targetDeviceId = device.id;
-          console.log(`Auto-selected device: ${device.name} (${device.type})`);
-        } else {
-          console.log('No devices available');
-        }
+        const device = devices.find(d => d.is_active) || devices[0];
+        if (device) targetDeviceId = device.id;
       } catch (e) {
         console.log('Failed to get devices:', e.message);
       }
@@ -247,20 +236,23 @@ router.post('/play', async (req, res) => {
       ? `https://api.spotify.com/v1/me/player/play?device_id=${targetDeviceId}`
       : 'https://api.spotify.com/v1/me/player/play';
 
+    // Если передан contextUri (плейлист) — играем с контекстом
+    // Это позволяет кнопкам next/previous работать правильно
+    const body = contextUri
+      ? { context_uri: contextUri, offset: { uri }, position_ms: positionMs || 0 }
+      : { uris: [uri] };
+
     try {
-      await axios.put(playUrl, { uris: [uri] }, {
+      await axios.put(playUrl, body, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
     } catch (err) {
       if (err.response?.status === 401) {
         accessToken = await refreshAccessToken(spotifyUser);
-        await axios.put(playUrl, { uris: [uri] }, {
+        await axios.put(playUrl, body, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-      } else {
-        console.error('Play error:', err.response?.data || err.message);
-        throw err;
-      }
+      } else throw err;
     }
 
     res.json({ success: true });
