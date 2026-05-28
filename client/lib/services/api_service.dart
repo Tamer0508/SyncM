@@ -274,6 +274,82 @@ class ApiService {
   throw ApiException('Ошибка загрузки аватарки', res.statusCode, _extractError(res));
 }
 
+  Future<Map<String, dynamic>> createCustomPlaylist(String name, {String? description, String? imageUrl}) async {
+    final res = await http.post(
+      _uri('/playlists/custom'),
+      headers: _headers,
+      body: json.encode({'name': name, 'description': description, 'imageUrl': imageUrl}),
+    ).timeout(timeout);
+    if (res.statusCode == 201) return _decode(res.body) as Map<String, dynamic>;
+    throw ApiException('Ошибка создания плейлиста', res.statusCode, _extractError(res));
+  }
+
+  Future<List<dynamic>> getMyPlaylists() async {
+    final res = await http.get(_uri('/playlists'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+    throw ApiException('Ошибка получения плейлистов', res.statusCode, _extractError(res));
+  }
+
+  Future<void> deletePlaylist(String playlistId) async {
+    final res = await http.delete(_uri('/playlists/$playlistId'), headers: _headers).timeout(timeout);
+    if (res.statusCode != 200) throw ApiException('Ошибка удаления', res.statusCode, _extractError(res));
+  }
+
+  Future<Map<String, dynamic>> addTrackToPlaylist(String playlistId, String trackUri, String trackName, String artistName, {int? durationMs}) async {
+    final res = await http.post(
+      _uri('/playlists/$playlistId/tracks'),
+      headers: _headers,
+      body: json.encode({
+        'trackUri': trackUri,
+        'trackName': trackName,
+        'artistName': artistName,
+        'durationMs': durationMs,
+      }),
+    ).timeout(timeout);
+    if (res.statusCode == 201) return _decode(res.body) as Map<String, dynamic>;
+    throw ApiException('Ошибка добавления трека', res.statusCode, _extractError(res));
+  }
+
+  Future<List<dynamic>> getPlaylistTracksById(String playlistId) async {
+    final res = await http.get(_uri('/playlists/$playlistId/tracks'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+    throw ApiException('Ошибка загрузки треков', res.statusCode, _extractError(res));
+  }
+
+  Future<bool> toggleLike(String spotifyUri, String trackName, String artistName) async {
+    final res = await http.post(
+      _uri('/playlists/liked/toggle'),
+      headers: _headers,
+      body: json.encode({
+        'spotifyUri': spotifyUri,
+        'trackName': trackName,
+        'artistName': artistName,
+      }),
+    ).timeout(timeout);
+    if (res.statusCode == 200) return (_decode(res.body) as Map)['liked'] == true;
+    throw ApiException('Ошибка лайка', res.statusCode, _extractError(res));
+  }
+
+  Future<List<dynamic>> getLikedTracks() async {
+    final res = await http.get(_uri('/playlists/liked'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+    throw ApiException('Ошибка загрузки избранного', res.statusCode, _extractError(res));
+  }
+
+  Future<void> logPlay(String spotifyUri, String trackName, String artistName) async {
+    try {
+      await http.post(
+        _uri('/playlists/history'),
+        headers: _headers,
+        body: json.encode({
+          'spotifyUri': spotifyUri,
+          'trackName': trackName,
+          'artistName': artistName,
+        }),
+      ).timeout(timeout);
+    } catch (_) { /* тихо игнорируем ошибки ну если чо да) */ }
+  }
+
   Future<bool> playTrack(String uri, {String? deviceId, String? contextUri, int? offset}) async {
   final body = <String, dynamic>{};
   if (contextUri != null) {

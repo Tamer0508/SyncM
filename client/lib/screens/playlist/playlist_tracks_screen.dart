@@ -11,12 +11,14 @@ class PlaylistTracksScreen extends StatefulWidget {
   final String playlistId;
   final String playlistName;
   final String? imageUrl;
+  final bool isCustom;
 
   const PlaylistTracksScreen({
     Key? key,
     required this.playlistId,
     required this.playlistName,
     this.imageUrl,
+    this.isCustom = false,
   }) : super(key: key);
 
   @override
@@ -39,7 +41,15 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   Future<void> _loadTracks() async {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
-      final tracks = await api.getPlaylistTracks(widget.playlistId);
+      List<dynamic> tracks;
+
+      // Проверяем, является ли плейлист пользовательским (можно передавать параметр isCustom)
+      if (widget.isCustom) {
+        tracks = await api.getPlaylistTracksById(widget.playlistId);
+      } else {
+        tracks = await api.getPlaylistTracks(widget.playlistId); // старый метод для Spotify
+      }
+
       if (mounted) setState(() => _tracks = tracks);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -51,8 +61,21 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   Future<void> _onTrackTap(Map<String, dynamic> track, int index) async {
   if (_isWindows) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
+    final api = auth.api;
     final uri = track['uri'] as String?;
-    if (uri == null) return;
+
+    if (uri == null || uri.isEmpty) {
+      return;
+    }
+
+    final trackName = track['name'] as String? ?? '';
+    final artistName = track['artist'] as String? ?? '';
+      if (uri != null) {
+        try {
+          final api = Provider.of<AuthProvider>(context, listen: false).api;
+          await api.logPlay(uri, trackName, artistName);
+        } catch (_) {}
+      }
 
     if (auth.user?.spotifyConnected != true) {
       if (mounted) {
@@ -170,17 +193,46 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
                     final t = _tracks[i];
-                    final isCurrentTrack = !_isWindows && pb.currentTrack?['uri'] == t['uri'];
+                    final isCurrentTrack =
+                        !_isWindows && pb.currentTrack?['uri'] == t['uri'];
 
-                    return TrackCard(
-                      id: t['id'] ?? '',
-                      title: t['name'] ?? '',
-                      artist: t['artist'] ?? '',
-                      artworkUrl: t['imageUrl'] as String?,
-                      durationMs: t['durationMs'] as int?,
-                      isLiked: false,
-                      onPlay: () => _onTrackTap(Map<String, dynamic>.from(t), i),
-                      onLike: () {},
+                    final trackUri = t['uri'] as String? ?? '';
+
+                    return StatefulBuilder(
+                      builder: (context, setLocalState) {
+                        bool liked =
+                            false;
+
+                        return TrackCard(
+                          id: t['id'] ?? '',
+                          title: t['name'] ?? '',
+                          artist: t['artist'] ?? '',
+                          artworkUrl: t['imageUrl'] as String?,
+                          durationMs: t['durationMs'] as int?,
+                          isLiked: liked,
+                          onPlay: () =>
+                              _onTrackTap(Map<String, dynamic>.from(t), i),
+                          onLike: () async {
+                            try {
+                              final api = Provider.of<AuthProvider>(context,
+                                      listen: false)
+                                  .api;
+                              final newLiked = await api.toggleLike(
+                                trackUri,
+                                t['name'] ?? '',
+                                t['artist'] ?? '',
+                              );
+                              setLocalState(() => liked = newLiked);
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Ошибка: $e')),
+                                );
+                              }
+                            }
+                          },
+                        );
+                      },
                     );
                   },
                   childCount: _tracks.length,

@@ -84,15 +84,17 @@ class _HomeScreenState extends State<HomeScreen> {
       }
   }
 
-  Future<void> _loadPlaylists() async {
+    Future<void> _loadPlaylists() async {
     if (mounted) setState(() => _loadingPlaylists = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
-      final playlists = await api.getPlaylists();
+      final playlists = await api.getMyPlaylists(); 
       if (mounted) setState(() => _playlists = playlists);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка загрузки плейлистов: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка загрузки плейлистов: $e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _loadingPlaylists = false);
@@ -140,41 +142,57 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        Text('Мои плейлисты', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+        Text('Мои плейлисты',
+            style: theme.textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
         SizedBox(
-          height: 170,
+          height: 220, 
           child: _loadingPlaylists
-              ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
+              ? Center(
+                  child: CircularProgressIndicator(
+                      color: theme.colorScheme.primary))
               : _playlists.isEmpty
                   ? Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(22)),
                       child: Center(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 18),
-                          child: Text('Плейлисты еще не загружены или их нет в вашей библиотеке.', style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.8)), textAlign: TextAlign.center),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 24, horizontal: 18),
+                          child: Text(
+                              'Плейлисты ещё не загружены или их нет в вашей библиотеке.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.textTheme.bodySmall?.color
+                                      ?.withOpacity(0.8)),
+                              textAlign: TextAlign.center),
                         ),
                       ),
                     )
-                  : ScrollablePlaylistRow(
-                      itemCount: _playlists.length,
-                      itemBuilder: (_, i) {
-                        final p = _playlists[i];
-                        return PlaylistCard(
-                          name: p['name'] ?? '',
-                          description: p['description'] ?? '',
-                          imageUrl: p['imageUrl'],
-                          onTap: () {
-                            Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => PlaylistTracksScreen(
-                                playlistId: p['id'] ?? '',
-                                playlistName: p['name'] ?? '',
-                                imageUrl: p['imageUrl'],
-                              ),
-                            ));
-                          },
-                        );
-                      },
+                  : DefaultTabController(
+                      length: 3,
+                      child: Column(
+                        children: [
+                          TabBar(
+                            isScrollable: true,
+                            tabAlignment: TabAlignment.start,
+                            tabs: const [
+                              Tab(text: 'Свои'),
+                              Tab(text: 'Spotify'),
+                              Tab(text: 'Другие'),
+                            ],
+                          ),
+                          Expanded(
+                            child: TabBarView(
+                              children: [
+                                _buildCustomPlaylistsTab(),
+                                _buildSpotifyPlaylistsTab(),
+                                _buildOtherPlaylistsTab(),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
         ),
         const SizedBox(height: 24),
@@ -315,6 +333,140 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildCustomPlaylistsTab() {
+    final custom = _playlists.where((p) => p['isCustom'] == true).toList();
+    if (custom.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Нет своих плейлистов',
+                style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.add),
+              label: const Text('Создать плейлист'),
+              onPressed: () => _createCustomPlaylist(),
+            ),
+          ],
+        ),
+      );
+    }
+    return ScrollablePlaylistRow(
+      itemCount: custom.length,
+      itemBuilder: (_, i) {
+        final p = custom[i];
+        return PlaylistCard(
+          name: p['name'] ?? '',
+          description: p['description'] ?? '',
+          imageUrl: p['imageUrl'],
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => PlaylistTracksScreen(
+              playlistId: p['id'] ?? '',
+              playlistName: p['name'] ?? '',
+              imageUrl: p['imageUrl'],
+            ),
+          )),
+        );
+      },
+    );
+  }
+
+  Widget _buildSpotifyPlaylistsTab() {
+    final spotify = _playlists.where((p) => p['spotifyId'] != null).toList();
+    if (spotify.isEmpty) {
+      return Center(
+        child: Text('Нет Spotify-плейлистов',
+            style: Theme.of(context).textTheme.bodyMedium),
+      );
+    }
+    return ScrollablePlaylistRow(
+      itemCount: spotify.length,
+      itemBuilder: (_, i) {
+        final p = spotify[i];
+        return PlaylistCard(
+          name: p['name'] ?? '',
+          description: p['description'] ?? '',
+          imageUrl: p['imageUrl'],
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => PlaylistTracksScreen(
+              playlistId: p['id'] ?? '',
+              playlistName: p['name'] ?? '',
+              imageUrl: p['imageUrl'],
+            ),
+          )),
+        );
+      },
+    );
+  }
+
+  Widget _buildOtherPlaylistsTab() {
+    final other = _playlists
+        .where((p) => p['isCustom'] != true && p['spotifyId'] == null)
+        .toList();
+    if (other.isEmpty) {
+      return Center(
+        child: Text('Нет других плейлистов',
+            style: Theme.of(context).textTheme.bodyMedium),
+      );
+    }
+    return ScrollablePlaylistRow(
+      itemCount: other.length,
+      itemBuilder: (_, i) {
+        final p = other[i];
+        return PlaylistCard(
+          name: p['name'] ?? '',
+          description: p['description'] ?? '',
+          imageUrl: p['imageUrl'],
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => PlaylistTracksScreen(
+              playlistId: p['id'] ?? '',
+              playlistName: p['name'] ?? '',
+              imageUrl: p['imageUrl'],
+            ),
+          )),
+        );
+      },
+    );
+  }
+
+  Future<void> _createCustomPlaylist() async {
+    final nameController = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Новый плейлист'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(labelText: 'Название'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(nameController.text.trim()),
+            child: const Text('Создать'),
+          ),
+        ],
+      ),
+    );
+    if (name != null && name.isNotEmpty) {
+      try {
+        final api = Provider.of<AuthProvider>(context, listen: false).api;
+        await api.createCustomPlaylist(name);
+        await _loadPlaylists(); 
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildDesktopHeader() {

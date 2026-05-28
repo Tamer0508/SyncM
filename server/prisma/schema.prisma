@@ -33,7 +33,9 @@ model User {
   sessionMembers   SessionMember[]
   ratings          TrackRating[]
   playlists        Playlist[]
+  likedTracks      LikedTrack[]
   addedTracks      SessionTrack[]  @relation("trackAdder")
+  playHistory      PlayHistory[]
   
   spotifyUser      SpotifyUser?
 
@@ -81,16 +83,45 @@ model Friendship {
 model Playlist {
   id          String   @id @default(uuid())
   userId      String
-  spotifyId   String   @unique
+  spotifyId   String? 
   name        String
   description String?
   imageUrl    String?
+  isCustom    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  playlistTracks      PlaylistTrack[]
 
   user        User     @relation(fields: [userId], references: [id])
   
   @@index([userId])
+}
+
+model PlaylistTrack {
+  id          String   @id @default(uuid())
+  playlistId  String
+  spotifyUri  String
+  trackName   String
+  artistName  String
+  durationMs  Int?
+  addedAt     DateTime @default(now())
+
+  playlist    Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, spotifyUri])
+}
+
+model LikedTrack {
+  id          String   @id @default(uuid())
+  userId      String
+  spotifyUri  String 
+  trackName   String
+  artistName  String
+  likedAt     DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, spotifyUri])
 }
 
 model Session {
@@ -137,6 +168,19 @@ model SessionTrack {
   ratings    TrackRating[]
 
   @@index([sessionId, addedAt])
+}
+
+model PlayHistory {
+  id         String   @id @default(uuid())
+  userId     String
+  spotifyUri String
+  trackName  String
+  artistName String
+  playedAt   DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, playedAt])
 }
 
 model TrackRating {
