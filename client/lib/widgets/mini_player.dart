@@ -19,7 +19,8 @@ class MiniPlayer extends StatelessWidget {
 
     return Container(
       height: 72,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      // Важно: фиксируем ширину, чтобы избежать бесконечных ограничений
+      width: double.infinity,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
@@ -33,7 +34,7 @@ class MiniPlayer extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Левая часть — обложка + текст — открывает большой плеер
+          // Левая часть: обложка + текст – открывает плеер
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -52,47 +53,33 @@ class MiniPlayer extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: imageBytes != null
-                        ? Image.memory(
-                            imageBytes,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                          )
-                        : imageUrl != null &&
-                                imageUrl.isNotEmpty &&
-                                !imageUrl.startsWith('data:')
-                            ? Image.network(
-                                imageUrl,
-                                width: 48,
-                                height: 48,
-                                fit: BoxFit.cover,
-                              )
+                        ? Image.memory(imageBytes, width: 48, height: 48, fit: BoxFit.cover)
+                        : imageUrl != null && imageUrl.isNotEmpty && !imageUrl.startsWith('data:')
+                            ? Image.network(imageUrl, width: 48, height: 48, fit: BoxFit.cover)
                             : Container(
                                 width: 48,
                                 height: 48,
                                 color: theme.colorScheme.primary.withOpacity(0.2),
-                                child: Icon(Icons.music_note,
-                                    color: theme.colorScheme.primary),
+                                child: Icon(Icons.music_note, color: theme.colorScheme.primary),
                               ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
+                  // Текстовая часть – используем Flexible, а не Expanded, чтобы избежать ошибок
+                  Flexible(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           track['title'] ?? '',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           track['artist'] ?? '',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.textTheme.bodySmall?.color
-                                ?.withOpacity(0.7),
+                            color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -104,8 +91,7 @@ class MiniPlayer extends StatelessWidget {
               ),
             ),
           ),
-
-          // Правая часть — кнопки управления (не открывают плеер)
+          // Кнопки управления
           IconButton(
             icon: Icon(
               pb.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
@@ -115,11 +101,7 @@ class MiniPlayer extends StatelessWidget {
             onPressed: () => pb.togglePlay(),
           ),
           IconButton(
-            icon: Icon(
-              Icons.skip_next_rounded,
-              size: 28,
-              color: theme.colorScheme.onSurface,
-            ),
+            icon: Icon(Icons.skip_next_rounded, size: 28, color: theme.colorScheme.onSurface),
             onPressed: () => pb.skipNext(),
           ),
           const SizedBox(width: 4),

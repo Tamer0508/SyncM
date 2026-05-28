@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-class TrackCard extends StatelessWidget {
+class TrackCard extends StatefulWidget {
   final String id;
   final String title;
   final String artist;
@@ -23,6 +23,49 @@ class TrackCard extends StatelessWidget {
     this.onLike,
   }) : super(key: key);
 
+  @override
+  State<TrackCard> createState() => _TrackCardState();
+}
+
+class _TrackCardState extends State<TrackCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _bounceController;
+  late final Animation<double> _scaleAnimation;
+  bool _isLiked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isLiked = widget.isLiked;
+
+    _bounceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _scaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: 1.25, end: 0.9), weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 0.9, end: 1.0), weight: 30),
+    ]).animate(_bounceController);
+  }
+
+  @override
+  void didUpdateWidget(TrackCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isLiked != widget.isLiked) {
+      setState(() {
+        _isLiked = widget.isLiked;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _bounceController.dispose();
+    super.dispose();
+  }
+
   String _formatDuration(int ms) {
     final totalSeconds = ms ~/ 1000;
     final minutes = totalSeconds ~/ 60;
@@ -30,17 +73,28 @@ class TrackCard extends StatelessWidget {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
+  void _handleLike() {
+    setState(() {
+      _isLiked = !_isLiked;
+    });
+    widget.onLike?.call();
+
+    _bounceController
+      ..reset()
+      ..forward();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListTile(
-      onTap: onPlay,
+      onTap: widget.onPlay,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        child: artworkUrl != null && artworkUrl!.isNotEmpty
+        child: widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty
             ? CachedNetworkImage(
-                imageUrl: artworkUrl!,
+                imageUrl: widget.artworkUrl!,
                 width: 56,
                 height: 56,
                 fit: BoxFit.cover,
@@ -53,7 +107,8 @@ class TrackCard extends StatelessWidget {
                   color: theme.colorScheme.surfaceVariant,
                   width: 56,
                   height: 56,
-                  child: Icon(Icons.music_note, color: theme.colorScheme.primary),
+                  child: Icon(Icons.music_note,
+                      color: theme.colorScheme.primary),
                 ),
               )
             : Container(
@@ -63,17 +118,19 @@ class TrackCard extends StatelessWidget {
                   color: theme.colorScheme.surfaceVariant,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Icon(Icons.music_note, color: theme.colorScheme.primary),
+                child: Icon(Icons.music_note,
+                    color: theme.colorScheme.primary),
               ),
       ),
       title: Text(
-        title,
+        widget.title,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+        style:
+            theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
       ),
       subtitle: Text(
-        artist,
+        widget.artist,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: theme.textTheme.bodySmall?.copyWith(
@@ -83,25 +140,38 @@ class TrackCard extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (durationMs != null)
+          if (widget.durationMs != null)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Text(
-                _formatDuration(durationMs!),
+                _formatDuration(widget.durationMs!),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.textTheme.bodySmall?.color?.withOpacity(0.5),
                 ),
               ),
             ),
           GestureDetector(
-            onTap: onLike,
-            child: AnimatedScale(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutBack,
-              scale: isLiked ? 1.12 : 1.0,
-              child: Icon(
-                isLiked ? Icons.favorite : Icons.favorite_border,
-                color: isLiked ? theme.colorScheme.primary : theme.iconTheme.color,
+            onTap: _handleLike,
+            child: AnimatedBuilder(
+              animation: _scaleAnimation,
+              builder: (context, child) => Transform.scale(
+                scale: _scaleAnimation.value,
+                child: child,
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (child, animation) {
+                  // Только затухание, без дополнительного масштаба
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                child: Icon(
+                  _isLiked ? Icons.favorite : Icons.favorite_border,
+                  key: ValueKey(_isLiked),
+                  color: _isLiked
+                      ? theme.colorScheme.primary
+                      : theme.iconTheme.color,
+                  size: 24,
+                ),
               ),
             ),
           ),

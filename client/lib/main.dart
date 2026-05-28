@@ -12,7 +12,6 @@ import 'services/api_service.dart';
 import 'theme.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/home/home_screen.dart';
-import 'widgets/mini_player.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -70,12 +69,6 @@ class MyApp extends StatelessWidget {
           navigatorKey: navigatorKey,
           home: const _AuthGate(),
           onGenerateRoute: generateRoute,
-          builder: (context, child) {
-            return Scaffold(
-              body: SafeArea(child: child ?? const SizedBox.shrink()),
-              bottomNavigationBar: const MiniPlayer(),
-            );
-          },
         ),
       ),
     );

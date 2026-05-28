@@ -45,6 +45,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   @override
   Widget build(BuildContext context) {
     final prov = Provider.of<FriendsProvider>(context);
+    final isMobile = MediaQuery.of(context).size.width < 900;   // ← ключевая проверка
 
     Widget bodyContent = prov.friends.isEmpty
         ? Padding(
@@ -53,12 +54,26 @@ class _FriendsScreenState extends State<FriendsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('У вас пока нет друзей', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  Text('У вас пока нет друзей',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 10),
-                  Text('Нажмите на кнопку ниже, чтобы найти людей и начать общение.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.78))),
+                  Text(
+                    'Нажмите на кнопку ниже, чтобы найти людей и начать общение.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.color
+                            ?.withOpacity(0.78)),
+                  ),
                   const SizedBox(height: 18),
                   ElevatedButton.icon(
-                    onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+                    onPressed: () =>
+                        Navigator.of(context).pushNamed('/friends/search'),
                     icon: const Icon(Icons.person_add),
                     label: const Text('Найти друзей'),
                   ),
@@ -73,7 +88,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             itemBuilder: (_, i) {
               if (i >= prov.friends.length) {
                 if (prov.friendsLoading) {
-                  return Center(child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator());
                 }
                 return Center(
                   child: TextButton(
@@ -93,17 +108,24 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   final shouldDelete = await _confirmRemove(context, f.name);
                   if (!shouldDelete) return;
 
-                  final prov = Provider.of<FriendsProvider>(context, listen: false);
+                  final prov =
+                      Provider.of<FriendsProvider>(context, listen: false);
 
                   String? friendshipId = f.friendshipId;
                   if (friendshipId == null) {
                     try {
                       await prov.fetchFriends(refresh: true);
-                      final matches = prov.friends.where((x) => x.id == f.id).toList();
-                      if (matches.isNotEmpty) friendshipId = matches.first.friendshipId;
+                      final matches = prov.friends
+                          .where((x) => x.id == f.id)
+                          .toList();
+                      if (matches.isNotEmpty) {
+                        friendshipId = matches.first.friendshipId;
+                      }
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Ошибка обновления списка: $e')),
+                        SnackBar(
+                            content:
+                                Text('Ошибка обновления списка: $e')),
                       );
                       return;
                     }
@@ -111,33 +133,62 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
                   if (friendshipId == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Ошибка: идентификатор связи отсутствует. Обновите список и повторите попытку.')),
+                      const SnackBar(
+                          content: Text(
+                              'Ошибка: идентификатор связи отсутствует. Обновите список и повторите попытку.')),
                     );
                     return;
                   }
 
                   try {
                     final success = await prov.removeFriend(friendshipId);
-
                     if (success) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Друг удален')),
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Не удалось удалить друга')),
+                        const SnackBar(
+                            content: Text('Не удалось удалить друга')),
                       );
                     }
                   } catch (e) {
-                      final msg = (e is ApiException) ? e.userMessage : 'Ошибка удаления: $e';
-                      ScaffoldMessenger.of(context).showSnackBar(
+                    final msg = (e is ApiException)
+                        ? e.userMessage
+                        : 'Ошибка удаления: $e';
+                    ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text(msg)),
-                      );
+                    );
                   }
                 },
               );
             },
           );
+
+    if (widget.embedded && isMobile) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Друзья'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.person_add_alt_1),
+              onPressed: () =>
+                  Navigator.of(context).pushNamed('/friends/search'),
+            ),
+            IconButton(
+              icon: const Icon(Icons.notifications_none),
+              onPressed: () =>
+                  Navigator.of(context).pushNamed('/friends/requests'),
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () async => await prov.fetchFriends(refresh: true),
+            ),
+          ],
+        ),
+        body: bodyContent,
+      );
+    }
 
     if (widget.embedded) {
       return bodyContent;
@@ -149,11 +200,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.person_add_alt_1),
-            onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+            onPressed: () =>
+                Navigator.of(context).pushNamed('/friends/search'),
           ),
           IconButton(
             icon: const Icon(Icons.notifications_none),
-            onPressed: () => Navigator.of(context).pushNamed('/friends/requests'),
+            onPressed: () =>
+                Navigator.of(context).pushNamed('/friends/requests'),
           ),
           IconButton(
             onPressed: () async {

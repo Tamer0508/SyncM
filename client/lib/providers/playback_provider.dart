@@ -5,7 +5,7 @@ import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:spotify_sdk/models/player_state.dart';
 import 'package:spotify_sdk/models/image_uri.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import '../services/api_service.dart';
 
 class PlaybackProvider extends ChangeNotifier {
@@ -42,40 +42,47 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   void _startPolling() {
-  _pollingTimer?.cancel();
-  _pollingTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
-    if (!_isWindows || !_isPlaying) return;
-    
-    // Локально увеличиваем позицию каждые 500мс
-    if (_isPlaying && _durationMs > 0) {
-      _positionMs = (_positionMs + 500).clamp(0, _durationMs);
-      notifyListeners();
-    }
-    
-    // Раз в 3 секунды синхронизируемся с сервером
-    if (DateTime.now().second % 3 == 0) {
-      try {
-        final state = await _apiService?.getPlayerState();
-        if (state == null) return;
-        _isPlaying = state['is_playing'] ?? false;
-        _positionMs = state['progress_ms'] ?? 0;
-        _durationMs = state['item']?['duration_ms'] ?? 0;
-        final track = state['item'];
-        if (track != null) {
-          _currentTrack = {
-            'title': track['name'],
-            'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
-            'imageUrl': track['album']?['images']?[0]?['url'],
-            'uri': track['uri'],
-          };
-        }
+
+    if (kIsWeb || !_isWindows || _apiService == null) return;
+
+    _pollingTimer?.cancel();
+    _pollingTimer =
+        Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      if (!_isWindows || !_isPlaying) return;
+
+      // Локально увеличиваем позицию каждые 500мс
+      if (_isPlaying && _durationMs > 0) {
+        _positionMs = (_positionMs + 500).clamp(0, _durationMs);
         notifyListeners();
-      } catch (e) {
-        print('[Polling] error: $e');
       }
-    }
-  });
-}
+
+      // Раз в 3 секунды синхронизируемся с сервером
+      if (DateTime.now().second % 3 == 0) {
+        try {
+          final state = await _apiService?.getPlayerState();
+          if (state == null) return;
+          _isPlaying = state['is_playing'] ?? false;
+          _positionMs = state['progress_ms'] ?? 0;
+          _durationMs = state['item']?['duration_ms'] ?? 0;
+          final track = state['item'];
+          if (track != null) {
+            _currentTrack = {
+              'title': track['name'],
+              'artist': (track['artists'] as List?)
+                      ?.map((a) => a['name'])
+                      .join(', ') ??
+                  '',
+              'imageUrl': track['album']?['images']?[0]?['url'],
+              'uri': track['uri'],
+            };
+          }
+          notifyListeners();
+        } catch (e) {
+          print('[Polling] error: $e');
+        }
+      }
+    });
+  }
 
   void initSocket(String sessionId, String userId) {
     if (_socket != null && _socket!.connected && _currentSessionId == sessionId) {

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../providers/theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
@@ -21,7 +22,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String? _displayId; // ID пользователя, чей профиль показываем
+  String? _displayId;
   Map<String, dynamic>? _profileData;
   bool _loading = false;
 
@@ -74,6 +75,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 900;
 
     final displayName = isOwnProfile
         ? (auth.user?.displayName ?? 'Пользователь')
@@ -127,7 +129,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 40),
 
-            // Информация
             if (isOwnProfile)
               Card(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -165,7 +166,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 20),
 
-            // Друзья
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               child: Padding(
@@ -186,7 +186,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 20),
 
-            // Spotify – только для своего профиля
             if (isOwnProfile)
               Card(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -282,8 +281,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
 
-    if (widget.embedded) return content;
+    if (widget.embedded && isMobile && isOwnProfile) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Профиль'),
+          actions: [
+            IconButton(
+              icon: Icon(theme.brightness == Brightness.dark
+                  ? Icons.dark_mode
+                  : Icons.light_mode),
+              onPressed: () =>
+                  Provider.of<ThemeProvider>(context, listen: false).toggleTheme(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => Navigator.of(context).pushNamed('/settings'),
+            ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : content,
+      );
+    }
 
+    if (widget.embedded) {
+      return _loading
+          ? const Center(child: CircularProgressIndicator())
+          : content;
+    }
+
+    // Отдельная страница профиля (не встроенная)
     return Scaffold(
       appBar: AppBar(
         title: Text(isOwnProfile ? 'Профиль' : displayName),

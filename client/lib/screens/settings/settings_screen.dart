@@ -10,236 +10,410 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = DefaultTabController(
-      length: 2,
-      child: Column(
-        children: const [
-          TabBar(
-            tabs: [
-              Tab(text: 'Внешний вид'),
-              Tab(text: 'Приватность'),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _AppearanceTab(),
-                _PrivacyTab(),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    final body = _SettingsBody();
 
-    if (embedded) return content;
+    if (embedded) return body;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Настройки')),
-      body: content,
+      body: body,
     );
   }
 }
 
-class _AppearanceTab extends StatelessWidget {
-  const _AppearanceTab({Key? key}) : super(key: key);
+class _SettingsBody extends StatefulWidget {
+  @override
+  State<_SettingsBody> createState() => _SettingsBodyState();
+}
+
+class _SettingsBodyState extends State<_SettingsBody> {
+  bool _isUploading = false;
+
+  Future<void> _pickAndUploadAvatar() async {
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+    );
+    if (image == null) return;
+
+    setState(() => _isUploading = true);
+    try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      await auth.uploadAvatar(image.path);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка загрузки: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
     final auth = Provider.of<AuthProvider>(context);
-    final theme = Theme.of(context);
+    final user = auth.user;
+    final avatarUrl = user?.avatarUrl;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       children: [
-        Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Оформление',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 16),
-                ListTile(
-                  title: const Text('Системная'),
-                  leading: Radio<ThemeMode>(
-                    value: ThemeMode.system,
-                    groupValue: themeProvider.themeMode,
-                    onChanged: (v) => themeProvider.setThemeMode(v!),
-                  ),
+        // -------- Профиль: аватар и имя --------
+        Center(
+          child: Column(
+            children: [
+              GestureDetector(
+                onTap: _isUploading ? null : _pickAndUploadAvatar,
+                child: Stack(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.shadowColor.withOpacity(0.3),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                        image: avatarUrl != null && avatarUrl.isNotEmpty
+                            ? DecorationImage(
+                                image: NetworkImage(avatarUrl),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                        color: avatarUrl == null || avatarUrl.isEmpty
+                            ? theme.colorScheme.primaryContainer
+                            : null,
+                      ),
+                      child: avatarUrl == null || avatarUrl.isEmpty
+                          ? Center(
+                              child: Icon(
+                                Icons.person,
+                                size: 56,
+                                color: theme.colorScheme.onPrimaryContainer,
+                              ),
+                            )
+                          : null,
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: theme.colorScheme.primary,
+                          border: Border.all(
+                            color: theme.scaffoldBackgroundColor,
+                            width: 3,
+                          ),
+                        ),
+                        child: _isUploading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.edit,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
-                ListTile(
-                  title: const Text('Светлая'),
-                  leading: Radio<ThemeMode>(
-                    value: ThemeMode.light,
-                    groupValue: themeProvider.themeMode,
-                    onChanged: (v) => themeProvider.setThemeMode(v!),
-                  ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                user?.displayName ?? 'Пользователь',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-                ListTile(
-                  title: const Text('Тёмная'),
-                  leading: Radio<ThemeMode>(
-                    value: ThemeMode.dark,
-                    groupValue: themeProvider.themeMode,
-                    onChanged: (v) => themeProvider.setThemeMode(v!),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Профиль',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 16),
-                TextFormField(
-                  initialValue: auth.user?.displayName ?? '',
-                  decoration: const InputDecoration(labelText: 'Имя'),
-                  onFieldSubmitted: (val) async {
-                    try {
-                      await auth.updateProfile(username: val.trim());
-                    } catch (e) {
+              ),
+              const SizedBox(height: 12),
+              // Редактор имени
+              _NameEditor(
+                currentName: user?.displayName ?? '',
+                onSaved: (newName) async {
+                  try {
+                    await auth.updateProfile(username: newName.trim());
+                  } catch (e) {
+                    if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Ошибка: $e')),
                       );
                     }
-                  },
-                ),
-                const SizedBox(height: 16),
-                // Замена URL поля на кнопку загрузки
-                InkWell(
-                  onTap: () async {
-                    final picker = ImagePicker();
-                    final XFile? image = await picker.pickImage(
-                      source: ImageSource.gallery,
-                      maxWidth: 512,
-                      maxHeight: 512,
-                    );
-                    if (image != null) {
-                      try {
-                        await auth.uploadAvatar(image.path);
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Ошибка: $e')),
-                        );
-                      }
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: theme.colorScheme.primary),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.photo_camera, size: 20),
-                        SizedBox(width: 8),
-                        Text('Выбрать фото'),
-                      ],
-                    ),
-                  ),
-                ),
-                if (auth.user?.avatarUrl != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: CircleAvatar(
-                      radius: 30,
-                      backgroundImage: NetworkImage(auth.user!.avatarUrl!),
-                    ),
-                  ),
-              ],
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 32),
+
+        // -------- Тема оформления --------
+        Text(
+          'Тема',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SegmentedButton<ThemeMode>(
+          segments: const [
+            ButtonSegment(
+              value: ThemeMode.system,
+              label: Text('Системная'),
+              icon: Icon(Icons.settings_brightness),
+            ),
+            ButtonSegment(
+              value: ThemeMode.light,
+              label: Text('Светлая'),
+              icon: Icon(Icons.light_mode),
+            ),
+            ButtonSegment(
+              value: ThemeMode.dark,
+              label: Text('Тёмная'),
+              icon: Icon(Icons.dark_mode),
+            ),
+          ],
+          selected: {themeProvider.themeMode},
+          onSelectionChanged: (selected) {
+            themeProvider.setThemeMode(selected.first);
+          },
+          style: ButtonStyle(
+            visualDensity: VisualDensity.comfortable,
+            tapTargetSize: MaterialTapTargetSize.padded,
+            shape: MaterialStateProperty.all(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
+
+        const SizedBox(height: 32),
+
+        // -------- Приватность --------
+        Text(
+          'Приватность',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _PrivacySwitchTile(
+          icon: Icons.people_outline,
+          title: 'Скрыть количество друзей',
+          subtitle: 'Никто не увидит количество ваших друзей и общих друзей',
+          value: user?.isFriendsHidden ?? false,
+          onChanged: (val) async {
+            try {
+              await auth.updateSettings({'isFriendsHidden': val});
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Ошибка: $e')),
+              );
+            }
+          },
+        ),
+        const Divider(height: 1),
+        _PrivacySwitchTile(
+          icon: Icons.timeline,
+          title: 'Скрыть активность',
+          subtitle: 'Ваша активность в сессиях не будет видна другим',
+          value: user?.isActivityHidden ?? false,
+          onChanged: (val) async {
+            try {
+              await auth.updateSettings({'isActivityHidden': val});
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Ошибка: $e')),
+              );
+            }
+          },
+        ),
+        const Divider(height: 1),
+        _PrivacySwitchTile(
+          icon: Icons.visibility_off,
+          title: 'Скрыть онлайн-статус',
+          subtitle: 'Друзья не увидят, когда вы в сети',
+          value: user?.isOnlineHidden ?? false,
+          onChanged: (val) async {
+            try {
+              await auth.updateSettings({'isOnlineHidden': val});
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Ошибка: $e')),
+              );
+            }
+          },
+        ),
+
+        const SizedBox(height: 32),
+
+        // Здесь можно добавлять новые разделы, например:
+        // Text('Уведомления', ...),
+        // ... переключатели для уведомлений ...
       ],
     );
   }
 }
 
-class _PrivacyTab extends StatelessWidget {
-  const _PrivacyTab({Key? key}) : super(key: key);
+// -------- Виджет редактирования имени --------
+class _NameEditor extends StatefulWidget {
+  final String currentName;
+  final Future<void> Function(String) onSaved;
+
+  const _NameEditor({Key? key, required this.currentName, required this.onSaved})
+      : super(key: key);
+
+  @override
+  State<_NameEditor> createState() => _NameEditorState();
+}
+
+class _NameEditorState extends State<_NameEditor> {
+  late TextEditingController _controller;
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.currentName);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final newName = _controller.text.trim();
+    if (newName.isEmpty || newName == widget.currentName) {
+      setState(() => _editing = false);
+      return;
+    }
+    await widget.onSaved(newName);
+    setState(() => _editing = false);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context);
-    final user = auth.user;
     final theme = Theme.of(context);
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: _editing
+          ? Row(
               children: [
-                Text('Приватность',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 16),
-                SwitchListTile(
-                  title: const Text('Скрыть количество друзей'),
-                  subtitle: const Text('Никто не увидит количество ваших друзей и общих друзей'),
-                  value: user?.isFriendsHidden ?? false,
-                  onChanged: (val) async {
-                    try {
-                      await auth.updateSettings({'isFriendsHidden': val});
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Ошибка: $e')),
-                      );
-                    }
-                  },
-                  contentPadding: EdgeInsets.zero,
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    style: theme.textTheme.bodyLarge,
+                    onSubmitted: (_) => _save(),
+                  ),
                 ),
-                SwitchListTile(
-                  title: const Text('Скрыть активность'),
-                  subtitle: const Text('Ваша активность в сессиях не будет видна другим'),
-                  value: user?.isActivityHidden ?? false,
-                  onChanged: (val) async {
-                    try {
-                      await auth.updateSettings({'isActivityHidden': val});
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Ошибка: $e')),
-                      );
-                    }
-                  },
-                  contentPadding: EdgeInsets.zero,
+                const SizedBox(width: 12),
+                IconButton(
+                  icon: const Icon(Icons.check, color: Colors.green),
+                  onPressed: _save,
                 ),
-                SwitchListTile(
-                  title: const Text('Скрыть онлайн-статус'),
-                  subtitle: const Text('Друзья не увидят, когда вы в сети'),
-                  value: user?.isOnlineHidden ?? false,
-                  onChanged: (val) async {
-                    try {
-                      await auth.updateSettings({'isOnlineHidden': val});
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Ошибка: $e')),
-                      );
-                    }
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.redAccent),
+                  onPressed: () {
+                    _controller.text = widget.currentName;
+                    setState(() => _editing = false);
                   },
-                  contentPadding: EdgeInsets.zero,
                 ),
               ],
+            )
+          : InkWell(
+              onTap: () => setState(() => _editing = true),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.edit, size: 18, color: theme.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Редактировать имя',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
+    );
+  }
+}
+
+// -------- Стилизованный переключатель для приватности --------
+class _PrivacySwitchTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _PrivacySwitchTile({
+    Key? key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: SwitchListTile(
+        secondary: Icon(icon, color: theme.colorScheme.primary),
+        title: Text(title),
+        subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
+        value: value,
+        onChanged: onChanged,
+        activeColor: theme.colorScheme.primary,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
-      ],
+      ),
     );
   }
 }

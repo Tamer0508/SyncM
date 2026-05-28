@@ -219,24 +219,31 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                           onPlay: () =>
                               _onTrackTap(Map<String, dynamic>.from(t), i),
                           onLike: () async {
-                            try {
-                              final api = Provider.of<AuthProvider>(context,
-                                      listen: false)
-                                  .api;
-                              final newLiked = await api.toggleLike(
-                                trackUri,
-                                t['name'] ?? '',
-                                t['artist'] ?? '',
-                              );
-                              setLocalState(() => liked = newLiked);
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Ошибка: $e')),
+                              try {
+                                final api = Provider.of<AuthProvider>(context,
+                                        listen: false)
+                                    .api;
+                                final newLiked = await api.toggleLike(
+                                  trackUri,
+                                  t['name'] ?? '',
+                                  t['artist'] ?? '',
                                 );
+                                setState(() {
+                                  if (newLiked) {
+                                    _likedMap[trackUri] = true;
+                                  } else {
+                                    _likedMap.remove(trackUri);
+                                  }
+                                });
+                                setLocalState(() => liked = newLiked);
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Ошибка: $e')),
+                                  );
+                                }
                               }
                             }
-                          },
                         );
                       },
                     );

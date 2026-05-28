@@ -1,7 +1,6 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import '../../providers/playback_provider.dart';
 
@@ -21,7 +20,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   int _positionMs = 0;
   bool _dragging = false;
 
-  bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
+  // Определяем десктоп/планшет по ширине, а не по платформе
+  bool _isDesktop(BuildContext context) => MediaQuery.of(context).size.width >= 900;
 
   @override
   void initState() {
@@ -35,8 +35,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       if (!mounted) return;
       final pb = Provider.of<PlaybackProvider>(context, listen: false);
       if (pb.isPlaying && !_dragging) {
-        if (_isWindows) {
-          // На Windows берём позицию из провайдера (обновляется через polling)
+        if (_isDesktop(context)) {
+          // На широких экранах берём позицию из провайдера (polling или Spotify SDK)
           setState(() => _positionMs = pb.positionMs);
         } else {
           setState(() {
@@ -63,6 +63,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDesktop = _isDesktop(context);
+
     return Consumer<PlaybackProvider>(
       builder: (ctx, pb, _) {
         final title = pb.currentTrack?['title'] ?? widget.title ?? 'Unknown Title';
@@ -71,8 +73,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         final imageBytes = pb.currentImageBytes;
         final imageUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
 
-        // Синхронизируем позицию на Windows когда провайдер обновляется
-        if (_isWindows && !_dragging && pb.positionMs > 0 && (pb.positionMs - _positionMs).abs() > 2000) {
+        // Синхронизируем позицию на широких экранах, когда провайдер обновляется
+        if (isDesktop && !_dragging && pb.positionMs > 0 && (pb.positionMs - _positionMs).abs() > 2000) {
           SchedulerBinding.instance.addPostFrameCallback((_) {
             if (mounted) setState(() => _positionMs = pb.positionMs);
           });
@@ -101,7 +103,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 // Обложка
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 24),
-                  height: _isWindows
+                  height: isDesktop
                       ? MediaQuery.of(context).size.height * 0.35
                       : MediaQuery.of(context).size.width - 48,
                   decoration: BoxDecoration(
