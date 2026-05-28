@@ -29,6 +29,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   List<dynamic> _tracks = [];
   bool _loading = true;
   String? _error;
+  Map<String, bool> _likedMap = {};
 
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
 
@@ -42,15 +43,24 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
       List<dynamic> tracks;
-
-      // Проверяем, является ли плейлист пользовательским (можно передавать параметр isCustom)
       if (widget.isCustom) {
         tracks = await api.getPlaylistTracksById(widget.playlistId);
       } else {
-        tracks = await api.getPlaylistTracks(widget.playlistId); // старый метод для Spotify
+        tracks = await api.getPlaylistTracks(widget.playlistId);
       }
 
-      if (mounted) setState(() => _tracks = tracks);
+      final likedTracks = await api.getLikedTracks();
+      final Map<String, bool> likedMap = {};
+      for (var t in likedTracks) {
+        likedMap[t['spotifyUri']] = true;
+      }
+
+      if (mounted) {
+        setState(() {
+          _tracks = tracks;
+          _likedMap = likedMap;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -59,41 +69,74 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   }
 
   Future<void> _onTrackTap(Map<String, dynamic> track, int index) async {
-  if (_isWindows) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final api = auth.api;
     final uri = track['uri'] as String?;
-
-    if (uri == null || uri.isEmpty) {
-      return;
-    }
-
     final trackName = track['name'] as String? ?? '';
     final artistName = track['artist'] as String? ?? '';
-      if (uri != null) {
-        try {
-          final api = Provider.of<AuthProvider>(context, listen: false).api;
-          await api.logPlay(uri, trackName, artistName);
-        } catch (_) {}
+    if (uri == null || uri.isEmpty) return;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final api = auth.api;
+    final pb = Provider.of<PlaybackProvider>(context, listen: false);
+
+    // Логируем прослушивание для всех платформ
+    await api.logPlay(uri, trackName, artistName);
+
+    if (_isWindows) {
+      // Windows: проверяем подключение Spotify
+      if (auth.user?.spotifyConnected != true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Подключите Spotify аккаунт в профиле')),
+          );
+        }
+        return;
       }
 
-    if (auth.user?.spotifyConnected != true) {
+      await pb.playTrack(
+        {
+          'title': track['name'],
+          'artist': track['artist'],
+          'imageUrl': track['imageUrl'],
+          'uri': uri,
+          'index': index,
+        },
+        playlistId: widget.isCustom ? null : widget.playlistId,
+      );
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Подключите Spotify аккаунт в профиле')),
-        );
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => NowPlayingScreen(
+            title: track['name'] as String?,
+            artist: track['artist'] as String?,
+            artworkUrl: track['imageUrl'] as String?,
+          ),
+        ));
       }
       return;
     }
 
-    final pb = Provider.of<PlaybackProvider>(context, listen: false);
-    await pb.playTrack({
-      'title': track['name'],
-      'artist': track['artist'],
-      'imageUrl': track['imageUrl'],
-      'uri': uri,
-      'index': index,
-    }, playlistId: widget.playlistId);
+    // Мобильные: через Spotify SDK
+    if (!pb.isConnected) {
+      final connected = await pb.connect();
+      if (!connected && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось подключиться к Spotify')),
+        );
+        return;
+      }
+    }
+
+    await pb.playTrack(
+      {
+        'title': track['name'],
+        'artist': track['artist'],
+        'imageUrl': track['imageUrl'],
+        'uri': uri,
+        'index': index,
+      },
+      playlistId: widget.isCustom ? null : widget.playlistId,
+    );
 
     if (mounted) {
       Navigator.of(context).push(MaterialPageRoute(
@@ -104,43 +147,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         ),
       ));
     }
-    return;
   }
-
-  // На мобильных — через Spotify SDK
-  final pb = Provider.of<PlaybackProvider>(context, listen: false);
-
-  if (!pb.isConnected) {
-    final connected = await pb.connect();
-    if (!connected && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось подключиться к Spotify')),
-      );
-      return;
-    }
-  }
-
-  await pb.playTrack(
-    {
-      'title': track['name'],
-      'artist': track['artist'],
-      'imageUrl': track['imageUrl'],
-      'uri': track['uri'],
-      'index': index,
-    },
-    playlistId: widget.playlistId,
-  );
-
-  if (mounted) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => NowPlayingScreen(
-        title: track['name'] as String?,
-        artist: track['artist'] as String?,
-        artworkUrl: track['imageUrl'] as String?,
-      ),
-    ));
-  }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -200,8 +207,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
 
                     return StatefulBuilder(
                       builder: (context, setLocalState) {
-                        bool liked =
-                            false;
+                        bool liked = _likedMap[trackUri] ?? false;
 
                         return TrackCard(
                           id: t['id'] ?? '',
