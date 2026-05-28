@@ -10,6 +10,7 @@ import '../services/api_service.dart';
 
 class PlaybackProvider extends ChangeNotifier {
   ApiService? _apiService;
+  ApiService? get apiService => _apiService;
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
 
   Map<String, dynamic>? _currentTrack;
@@ -46,6 +47,7 @@ class PlaybackProvider extends ChangeNotifier {
       if (!_isWindows || !_isPlaying) return;
       try {
         final state = await _apiService?.getPlayerState();
+        print('[Polling] state: $state');
         if (state == null) return;
         _isPlaying = state['is_playing'] ?? false;
         _positionMs = state['progress_ms'] ?? 0;

@@ -218,8 +218,33 @@ router.post('/play', async (req, res) => {
 
     let accessToken = getAccessToken(spotifyUser);
 
-    const playUrl = deviceId
-      ? `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`
+    // Если deviceId не передан — получаем список устройств и берём активное
+    let targetDeviceId = deviceId;
+    if (!targetDeviceId) {
+      try {
+        const devicesRes = await axios.get('https://api.spotify.com/v1/me/player/devices', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const devices = devicesRes.data.devices || [];
+        
+        // Сначала берём активное, потом первое доступное
+        const active = devices.find(d => d.is_active);
+        const first = devices[0];
+        const device = active || first;
+        
+        if (device) {
+          targetDeviceId = device.id;
+          console.log(`Auto-selected device: ${device.name} (${device.type})`);
+        } else {
+          console.log('No devices available');
+        }
+      } catch (e) {
+        console.log('Failed to get devices:', e.message);
+      }
+    }
+
+    const playUrl = targetDeviceId
+      ? `https://api.spotify.com/v1/me/player/play?device_id=${targetDeviceId}`
       : 'https://api.spotify.com/v1/me/player/play';
 
     try {
@@ -232,7 +257,10 @@ router.post('/play', async (req, res) => {
         await axios.put(playUrl, { uris: [uri] }, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-      } else throw err;
+      } else {
+        console.error('Play error:', err.response?.data || err.message);
+        throw err;
+      }
     }
 
     res.json({ success: true });

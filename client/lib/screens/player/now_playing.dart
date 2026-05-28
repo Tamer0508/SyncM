@@ -1,5 +1,6 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import '../../providers/playback_provider.dart';
@@ -34,9 +35,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       if (!mounted) return;
       final pb = Provider.of<PlaybackProvider>(context, listen: false);
       if (pb.isPlaying && !_dragging) {
-        setState(() {
-          _positionMs = (_positionMs + 1000).clamp(0, pb.durationMs);
-        });
+        if (_isWindows) {
+          // На Windows берём позицию из провайдера (обновляется через polling)
+          setState(() => _positionMs = pb.positionMs);
+        } else {
+          setState(() {
+            _positionMs = (_positionMs + 1000).clamp(0, pb.durationMs);
+          });
+        }
       }
     });
   }
@@ -64,6 +70,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         final duration = pb.durationMs;
         final imageBytes = pb.currentImageBytes;
         final imageUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
+
+        // Синхронизируем позицию на Windows когда провайдер обновляется
+        if (_isWindows && !_dragging && pb.positionMs > 0 && (pb.positionMs - _positionMs).abs() > 2000) {
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _positionMs = pb.positionMs);
+          });
+        }
 
         return Scaffold(
           backgroundColor: theme.scaffoldBackgroundColor,
@@ -106,7 +119,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     child: imageBytes != null
                         ? Image.memory(imageBytes, fit: BoxFit.cover, width: double.infinity)
                         : imageUrl != null && imageUrl.isNotEmpty && !imageUrl.startsWith('data:')
-                            ? Image.network(imageUrl, fit: BoxFit.cover, width: double.infinity)
+                            ? Image.network(
+                                imageUrl,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: theme.colorScheme.surfaceVariant,
+                                  child: Icon(Icons.music_note, size: 96, color: theme.colorScheme.primary),
+                                ),
+                              )
                             : Container(
                                 color: theme.colorScheme.surfaceVariant,
                                 child: Icon(Icons.music_note, size: 96, color: theme.colorScheme.primary),

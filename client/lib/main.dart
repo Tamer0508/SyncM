@@ -47,9 +47,15 @@ class MyApp extends StatelessWidget {
             return session ?? SessionProvider();
           },
         ),
-        ChangeNotifierProvider(
-          create: (_) => PlaybackProvider()..setApiService(ApiService()),
-        ),
+        ChangeNotifierProxyProvider<AuthProvider, PlaybackProvider>(
+  create: (_) => PlaybackProvider(),
+  update: (_, auth, pb) {
+    if (auth.cookie != null) {
+      pb?.apiService?.setCookie(auth.cookie!);
+    }
+    return pb ?? PlaybackProvider();
+  },
+),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         Provider<SocketService>.value(value: SocketService()),
       ],
