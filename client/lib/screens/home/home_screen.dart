@@ -15,7 +15,8 @@ import '../../providers/friends_provider.dart';
 import '../friends/friends_screen.dart';
 import '../profile/profile_screen.dart';
 import '../playlist/playlist_tracks_screen.dart';
-
+import '../../utils/notifications.dart';
+  
 class _RailIconWidget extends StatefulWidget {
   final IconData icon;
   final bool selected;
@@ -100,9 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _customPlaylists = custom);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки своих плейлистов: $e')),
-        );
+        showAppNotification(context, message: 'Ошибка загрузки своих плейлистов: $e', type: NotificationType.error);
       }
     } finally {
       if (mounted) setState(() => _loadingCustom = false);
@@ -113,9 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _spotifyPlaylists = spotify);
     } catch (e) {
       if (mounted && e.toString().contains('Spotify не подключен') == false) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки Spotify плейлистов: $e')),
-        );
+        showAppNotification(context, message: 'Ошибка загрузки Spotify плейлистов: $e', type: NotificationType.error);
       }
     } finally {
       if (mounted) setState(() => _loadingSpotify = false);
@@ -383,9 +380,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await _loadAllPlaylists();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка: $e')),
-          );
+          showAppNotification(context, message: 'Ошибка создания плейлиста: $e', type: NotificationType.error);
         }
       }
     }

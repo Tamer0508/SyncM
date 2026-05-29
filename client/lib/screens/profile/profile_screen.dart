@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:url_launcher/url_launcher.dart';
+import '../../utils/notifications.dart';
 import 'spotify_webview_screen.dart'
     if (dart.library.html) 'spotify_webview_stub.dart';
 
@@ -57,9 +58,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _profileData = data);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки профиля: $e')),
-        );
+        showAppNotification(context, message: 'Ошибка загрузки профиля: $e', type: NotificationType.error);
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -434,16 +433,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
         await auth.fetchMe();
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Spotify успешно подключён!')),
-          );
+          showAppNotification(context, message: 'Spotify успешно подключён!', type: NotificationType.success);
         }
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка подключения: $e')),
-        );
+      if (context.mounted) { 
+        showAppNotification(context, message: 'Ошибка подключения: $e', type: NotificationType.error);
       }
     }
     return;
@@ -464,9 +459,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
     await auth.fetchMe();
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Spotify успешно подключён!')),
-      );
+      showAppNotification(context, message: 'Spotify успешно подключён!', type: NotificationType.success);
     }
   }
 }
@@ -491,15 +484,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 final auth = Provider.of<AuthProvider>(context, listen: false);
                 await auth.fetchMe();
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Spotify отключен')),
-                  );
+                  showAppNotification(context, message: 'Spotify отключен', type: NotificationType.success);
                 }
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Ошибка: $e')),
-                  );
+                  showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
                 }
               }
             },
@@ -527,6 +516,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.of(ctx).pop();
               final auth = Provider.of<AuthProvider>(context, listen: false);
               auth.logout();
+              showAppNotification(context, message: 'Вы успешно вышли из аккаунта', type: NotificationType.success);
               Navigator.of(context).pushReplacementNamed('/');
             },
             style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),

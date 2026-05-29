@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../services/api_service.dart';
 import '../../models/friend.dart';
+import '../../utils/notifications.dart';
+
 
 class SearchUsersScreen extends StatefulWidget {
   const SearchUsersScreen({Key? key}) : super(key: key);
@@ -45,9 +47,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
     } catch (e) {
       if (mounted) {
         final msg = (e is ApiException) ? e.userMessage : 'Ошибка поиска: $e';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg))
-        );
+        showAppNotification(context, message: msg, type: NotificationType.error);
       }
     } finally {
       if (mounted) {
@@ -67,13 +67,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       
       if (!mounted) return;
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Заявка отправлена!'),
-          backgroundColor: Theme.of(context).colorScheme.secondary,
-          duration: const Duration(seconds: 2),
-        )
-      );
+      showAppNotification(context, message: 'Заявка отправлена!', type: NotificationType.success);
       
       setState(() {
         _results.removeWhere((user) => user.id == userId);
@@ -85,12 +79,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       setState(() => _pendingRequests.remove(userId));
       
       final msg = (e is ApiException) ? e.userMessage : 'Ошибка при отправке заявки';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        )
-      );
+      showAppNotification(context, message: msg, type: NotificationType.error);
     }
   }
 

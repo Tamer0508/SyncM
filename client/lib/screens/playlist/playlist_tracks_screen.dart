@@ -6,6 +6,8 @@ import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../widgets/track_card.dart';
 import '../player/now_playing.dart';
+import '../../utils/notifications.dart';
+
 
 class PlaylistTracksScreen extends StatefulWidget {
   final String playlistId;
@@ -85,10 +87,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       // Windows: проверяем подключение Spotify
       if (auth.user?.spotifyConnected != true) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Подключите Spotify аккаунт в профиле')),
-          );
+          showAppNotification(context, message: 'Подключите Spotify аккаунт в профиле', type: NotificationType.error);
         }
         return;
       }
@@ -120,9 +119,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     if (!pb.isConnected) {
       final connected = await pb.connect();
       if (!connected && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось подключиться к Spotify')),
-        );
+        showAppNotification(context, message: 'Не удалось подключиться к Spotify', type: NotificationType.error);
         return;
       }
     }
@@ -238,9 +235,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                                 setLocalState(() => liked = newLiked);
                               } catch (e) {
                                 if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Ошибка: $e')),
-                                  );
+                                  showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
                                 }
                               }
                             }

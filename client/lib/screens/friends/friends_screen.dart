@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:syncm/services/api_service.dart';
 import '../../providers/friends_provider.dart';
 import '../../widgets/friend_tile.dart';
-
+import '../../utils/notifications.dart';
+  
 class FriendsScreen extends StatefulWidget {
   final bool embedded;
   const FriendsScreen({Key? key, this.embedded = false}) : super(key: key);
@@ -122,43 +123,30 @@ class _FriendsScreenState extends State<FriendsScreen> {
                         friendshipId = matches.first.friendshipId;
                       }
                     } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content:
-                                Text('Ошибка обновления списка: $e')),
-                      );
+                      showAppNotification(context, message: 'Ошибка обновления списка: $e', type: NotificationType.error);
+
                       return;
                     }
                   }
 
                   if (friendshipId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'Ошибка: идентификатор связи отсутствует. Обновите список и повторите попытку.')),
-                    );
+                    showAppNotification(context, message: 'Ошибка: идентификатор связи отсутствует. Обновите список и повторите попытку.'
+                    , type: NotificationType.error);
                     return;
                   }
 
                   try {
                     final success = await prov.removeFriend(friendshipId);
                     if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Друг удален')),
-                      );
+                      showAppNotification(context, message: 'Друг удалён', type: NotificationType.success);
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Не удалось удалить друга')),
-                      );
+                      showAppNotification(context, message: 'Не удалось удалить друга', type: NotificationType.error);
                     }
                   } catch (e) {
                     final msg = (e is ApiException)
                         ? e.userMessage
                         : 'Ошибка удаления: $e';
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(msg)),
-                    );
+                    showAppNotification(context, message: msg, type: NotificationType.error);
                   }
                 },
               );

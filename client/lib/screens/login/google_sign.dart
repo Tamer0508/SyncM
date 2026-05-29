@@ -7,6 +7,8 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import 'dart:async';
 import 'dart:io';
+import '../../utils/notifications.dart';
+
 
 import 'google_sign_stub.dart'
     if (dart.library.html) 'google_sign_web.dart';
@@ -102,9 +104,7 @@ class GoogleSignInButton extends StatelessWidget {
   } catch (e) {
     print('Windows Google Sign-In error: $e');
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка входа: $e')),
-      );
+      showAppNotification(context, message: 'Ошибка входа: $e', type: NotificationType.error);
     }
   }
 }
@@ -124,9 +124,7 @@ class GoogleSignInButton extends StatelessWidget {
 
       if (idToken == null) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Не удалось получить токен Google')),
-          );
+          showAppNotification(context, message: 'Ошибка: не удалось получить ID токен от Google', type: NotificationType.error);
         }
         return;
       }
@@ -153,9 +151,7 @@ class GoogleSignInButton extends StatelessWidget {
     } catch (e) {
       print('Google Sign-In error: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка входа: $e')),
-        );
+        showAppNotification(context, message: 'Ошибка входа: $e', type: NotificationType.error);
       }
     }
   }

@@ -9,6 +9,8 @@ import '../../providers/auth_provider.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../login/google_sign.dart';
+import '../../utils/notifications.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -305,9 +307,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } catch (e) {
         print('onGoogleSignInSuccess error: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Google Sign-In error: $e')),
-          );
+          showAppNotification(context, message: 'Google Sign-In error: $e', type: NotificationType.error);
         }
       }
     }
@@ -321,9 +321,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       print('_signInWithGoogle error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Google Sign-In error: $e')),
-        );
+        showAppNotification(context, message: 'Google Sign-In error: $e', type: NotificationType.error);
       }
     }
   }

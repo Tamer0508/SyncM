@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../services/api_service.dart';
+import '../../utils/notifications.dart';
 
 class FriendRequestsScreen extends StatefulWidget {
   const FriendRequestsScreen({Key? key}) : super(key: key);
@@ -107,9 +108,8 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                                   final msg = (e is ApiException)
                                       ? e.userMessage
                                       : 'Ошибка принятия заявки';
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(msg)),
-                                  );
+                                  
+                                  showAppNotification(context, message: msg, type: NotificationType.error);
                                 }
                               },
                               icon: Icon(Icons.check_circle, color: theme.colorScheme.primary),
@@ -123,9 +123,8 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                                   final msg = (e is ApiException)
                                       ? e.userMessage
                                       : 'Ошибка отклонения заявки';
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(msg)),
-                                  );
+                                  
+                                  showAppNotification(context, message: msg, type: NotificationType.error);
                                 }
                               },
                               icon: Icon(Icons.close, color: theme.colorScheme.error),

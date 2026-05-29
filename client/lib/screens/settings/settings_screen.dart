@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../utils/notifications.dart';
 
 class SettingsScreen extends StatelessWidget {
   final bool embedded;
@@ -44,9 +45,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
       await auth.uploadAvatar(image.path);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки: $e')),
-        );
+        showAppNotification(context, message: 'Ошибка загрузки: $e', type: NotificationType.error);
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
@@ -154,9 +153,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
                     await auth.updateProfile(username: newName.trim());
                   } catch (e) {
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Ошибка: $e')),
-                      );
+                      showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
                     }
                   }
                 },
@@ -228,9 +225,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             try {
               await auth.updateSettings({'isFriendsHidden': val});
             } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Ошибка: $e')),
-              );
+              showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
             }
           },
         ),
@@ -244,9 +239,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             try {
               await auth.updateSettings({'isActivityHidden': val});
             } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Ошибка: $e')),
-              );
+              showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
             }
           },
         ),
@@ -260,9 +253,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             try {
               await auth.updateSettings({'isOnlineHidden': val});
             } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Ошибка: $e')),
-              );
+              showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
             }
           },
         ),
@@ -311,29 +302,19 @@ class _NameEditorState extends State<_NameEditor> {
       return;
     }
     if (newName.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Имя должно содержать минимум 2 символа')),
-      );
+      showAppNotification(context, message: 'Имя должно содержать минимум 2 символа', type: NotificationType.error);
       return;
     }
     if (newName.length > 50) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Имя должно содержать не более 50 символов')),
-      );
+      showAppNotification(context, message: 'Имя должно содержать не более 50 символов', type: NotificationType.error);
       return;
     }
     if (RegExp(r'^\s+$').hasMatch(newName)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Имя не может состоять только из пробелов')),
-      );
+      showAppNotification(context, message: 'Имя не может состоять только из пробелов', type: NotificationType.error);
       return;
     }
     if (!RegExp(r'^[\p{L}\p{N} _\-\.]+$', unicode: true).hasMatch(newName)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Имя содержит недопустимые символы')),
-      );
+      showAppNotification(context, message: 'Имя содержит недопустимые символы', type: NotificationType.error);
       return;
     }
 

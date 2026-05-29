@@ -1,5 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import '../../widgets/track_card.dart';
+import '../../utils/notifications.dart';
+
 
 class SessionScreen extends StatefulWidget {
   const SessionScreen({Key? key}) : super(key: key);
@@ -18,7 +20,7 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   void _rate(String trackId, int rating) async {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Голос сохранён')));
+    showAppNotification(context, message: 'Голос сохранён', type: NotificationType.success);
   }
 
   @override
