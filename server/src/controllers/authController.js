@@ -198,11 +198,24 @@ const googleAuth = async (req, res) => {
     });
     const payload = ticket.getPayload();
 
-    const user = await prisma.user.upsert({
-      where: { email: payload.email },
-      update: { username: payload.name },
-      create: { username: payload.name, email: payload.email, passwordHash: '' },
-    });
+    let user = await prisma.user.findUnique({ where: { email: payload.email } });
+
+    if (user) {
+      if (!user.usernameChangedByUser) {
+        user = await prisma.user.update({
+          where: { email: payload.email },
+          data: { username: payload.name },
+        });
+      }
+    } else {
+      user = await prisma.user.create({
+        data: {
+          username: payload.name,
+          email: payload.email,
+          passwordHash: '',
+        },
+      });
+    }
 
     req.session.userId = user.id;
     await req.session.save();
@@ -287,10 +300,19 @@ const updateProfile = async (req, res) => {
 
   const { username, customAvatarUrl } = req.body;
   const dataToUpdate = {};
-  if (typeof username === 'string' && username.trim().length > 0) {
-    if (username.trim().length < 2) return res.status(400).json({ error: 'Имя должно содержать минимум 2 символа' });
-    dataToUpdate.username = username.trim();
+
+  if (typeof username === 'string') {
+    const trimmed = username.trim();
+    if (trimmed.length > 0) {
+      if (trimmed.length < 2) return res.status(400).json({ error: 'Имя должно содержать минимум 2 символа' });
+      if (trimmed.length > 50) return res.status(400).json({ error: 'Имя должно содержать не более 50 символов' });
+      if (/^\s+$/.test(trimmed)) return res.status(400).json({ error: 'Имя не может состоять только из пробелов' });
+      if (!/^[\p{L}\p{N} _\-\.]+$/u.test(trimmed)) return res.status(400).json({ error: 'Имя содержит недопустимые символы' });
+      dataToUpdate.username = trimmed;
+      dataToUpdate.usernameChangedByUser = true;
+    }
   }
+
   if (typeof customAvatarUrl === 'string') {
     dataToUpdate.customAvatarUrl = customAvatarUrl.trim() || null;
   }
@@ -370,11 +392,24 @@ const googleWebCallback = async (req, res) => {
     });
     const payload = ticket.getPayload();
 
-    const user = await prisma.user.upsert({
-      where: { email: payload.email },
-      update: { username: payload.name },
-      create: { username: payload.name, email: payload.email, passwordHash: '' },
-    });
+    let user = await prisma.user.findUnique({ where: { email: payload.email } });
+
+    if (user) {
+      if (!user.usernameChangedByUser) {
+        user = await prisma.user.update({
+          where: { email: payload.email },
+          data: { username: payload.name },
+        });
+      }
+    } else {
+      user = await prisma.user.create({
+        data: {
+          username: payload.name,
+          email: payload.email,
+          passwordHash: '',
+        },
+      });
+    }
 
     req.session.userId = user.id;
     await req.session.save();

@@ -277,7 +277,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 }
 
-// -------- Виджет редактирования имени --------
 class _NameEditor extends StatefulWidget {
   final String currentName;
   final Future<void> Function(String) onSaved;
@@ -305,12 +304,39 @@ class _NameEditorState extends State<_NameEditor> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+    Future<void> _save() async {
     final newName = _controller.text.trim();
     if (newName.isEmpty || newName == widget.currentName) {
       setState(() => _editing = false);
       return;
     }
+    if (newName.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Имя должно содержать минимум 2 символа')),
+      );
+      return;
+    }
+    if (newName.length > 50) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Имя должно содержать не более 50 символов')),
+      );
+      return;
+    }
+    if (RegExp(r'^\s+$').hasMatch(newName)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Имя не может состоять только из пробелов')),
+      );
+      return;
+    }
+    if (!RegExp(r'^[\p{L}\p{N} _\-\.]+$', unicode: true).hasMatch(newName)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Имя содержит недопустимые символы')),
+      );
+      return;
+    }
+
     await widget.onSaved(newName);
     setState(() => _editing = false);
   }
@@ -380,7 +406,6 @@ class _NameEditorState extends State<_NameEditor> {
   }
 }
 
-// -------- Стилизованный переключатель для приватности --------
 class _PrivacySwitchTile extends StatelessWidget {
   final IconData icon;
   final String title;

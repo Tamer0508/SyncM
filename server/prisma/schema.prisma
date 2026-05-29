@@ -12,6 +12,7 @@ model User {
   username         String
   email            String          @unique
   passwordHash     String
+  usernameChangedByUser Boolean    @default(false)
   customAvatarUrl  String?
   createdAt        DateTime        @default(now())
   isEmailVerified  Boolean         @default(false)
