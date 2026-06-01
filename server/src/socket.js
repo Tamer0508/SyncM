@@ -52,6 +52,7 @@ const setupSocket = (io) => {
       if (!token) return;
       userId = token;
       socket.data.userId = userId;
+      socket.join(userId);
 
       // Отменяем "выход в оффлайн" если был запланирован
       if (offlineTimers.has(userId)) {

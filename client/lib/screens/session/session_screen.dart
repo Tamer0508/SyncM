@@ -94,27 +94,49 @@ class _SessionScreenState extends State<SessionScreen> {
             Text('Участники', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             Row(
-              children: members.map<Widget>((m) {
-                final user = m['user'] as Map<String, dynamic>?;
-                final avatarUrl = user?['spotifyUser']?['avatarUrl'] as String?;
-                final name = user?['username'] as String? ?? '?';
-                return Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 24,
-                        backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-                        backgroundColor: theme.colorScheme.surfaceVariant,
-                        child: avatarUrl == null ? Text(name[0].toUpperCase()) : null,
+  children: members.map<Widget>((m) {
+    final user = m['user'] as Map<String, dynamic>?;
+    final avatarUrl = user?['spotifyUser']?['avatarUrl'] as String?;
+    final name = user?['username'] as String? ?? '?';
+    final isPending = m['status'] == 'pending';
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: Column(
+        children: [
+          Opacity(
+            opacity: isPending ? 0.4 : 1.0,
+            child: Stack(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                  backgroundColor: theme.colorScheme.surfaceVariant,
+                  child: avatarUrl == null ? Text(name[0].toUpperCase()) : null,
+                ),
+                if (isPending)
+                  Positioned(
+                    right: 0, bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        shape: BoxShape.circle,
                       ),
-                      const SizedBox(height: 4),
-                      Text(name, style: theme.textTheme.bodySmall),
-                    ],
+                      child: const Icon(Icons.hourglass_empty, size: 12),
+                    ),
                   ),
-                );
-              }).toList(),
+              ],
             ),
+          ),
+          const SizedBox(height: 4),
+          Text(isPending ? '$name (ожидает)' : name,
+              style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }).toList(),
+),
             const SizedBox(height: 20),
             // Треки
             Row(
@@ -122,10 +144,27 @@ class _SessionScreenState extends State<SessionScreen> {
               children: [
                 Text('Треки', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                 TextButton.icon(
-                  onPressed: () => Navigator.of(context).pushNamed('/playlist/pick', arguments: _session!['id']),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Добавить'),
-                ),
+  onPressed: () async {
+    final result = await Navigator.of(context).pushNamed(
+      '/playlist/pick',
+      arguments: _session!['id'],
+    );
+    if (result == true && mounted) {
+      // Перезагружаем сессию
+      final api = Provider.of<AuthProvider>(context, listen: false).api;
+      final sessions = await api.getMySessions();
+      final updated = (sessions as List).firstWhere(
+        (s) => s['id'] == _session!['id'],
+        orElse: () => null,
+      );
+      if (updated != null && mounted) {
+        setState(() => _session = Map<String, dynamic>.from(updated));
+      }
+    }
+  },
+  icon: const Icon(Icons.add),
+  label: const Text('Добавить'),
+),
               ],
             ),
             const SizedBox(height: 8),

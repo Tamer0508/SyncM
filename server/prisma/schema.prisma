@@ -144,6 +144,7 @@ model SessionMember {
   id        String   @id @default(uuid())
   sessionId String
   userId    String
+  status    String   @default("pending") // pending | accepted | declined
   joinedAt  DateTime @default(now())
 
   session   Session  @relation(fields: [sessionId], references: [id])

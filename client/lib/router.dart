@@ -10,6 +10,7 @@ import 'screens/session/session_results_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/player/now_playing.dart';
 import 'screens/settings/settings_screen.dart';
+import 'screens/session/pick_playlist_screen.dart';
 
 Route<dynamic> generateRoute(RouteSettings settings) {
   switch (settings.name) {
@@ -42,6 +43,11 @@ Route<dynamic> generateRoute(RouteSettings settings) {
       );
     case '/settings':
       return MaterialPageRoute(builder: (_) => const SettingsScreen());
+    case '/playlist/pick':
+      return MaterialPageRoute(
+        builder: (_) => const PickPlaylistScreen(),
+        settings: settings,
+      );
     case '/player':
       final args = settings.arguments as Map<String, dynamic>?;
       return MaterialPageRoute(

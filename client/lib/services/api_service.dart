@@ -392,6 +392,22 @@ Future<List<dynamic>> getDevices() async {
   throw ApiException('Ошибка получения устройств', res.statusCode);
 }
 
+Future<List<dynamic>> getMyInvites() async {
+  final res = await http.get(_uri('/sessions/invites'), headers: _headers).timeout(timeout);
+  if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+  return [];
+}
+
+Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) async {
+  final res = await http.post(
+    _uri('/sessions/$sessionId/respond'),
+    headers: _headers,
+    body: json.encode({'accept': accept}),
+  ).timeout(timeout);
+  if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
+  return null;
+}
+
 Future<Map<String, dynamic>?> getPlayerState() async {
   final res = await http.get(_uri('/spotify/player'), headers: _headers).timeout(timeout);
   if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
