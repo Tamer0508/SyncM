@@ -46,4 +46,5 @@ class SocketService {
     _socket?.disconnect();
     _socket = null;
   }
+  
 }

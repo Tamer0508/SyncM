@@ -408,6 +408,16 @@ Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) asy
   return null;
 }
 
+// Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) async {
+//   final res = await http.post(
+//     _uri('/sessions/$sessionId/respond'),
+//     headers: _headers,
+//     body: json.encode({'accept': accept}),
+//   ).timeout(timeout);
+//   if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
+//   throw ApiException('Ошибка ответа на приглашение', res.statusCode);
+// }
+
 Future<Map<String, dynamic>?> getPlayerState() async {
   final res = await http.get(_uri('/spotify/player'), headers: _headers).timeout(timeout);
   if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
