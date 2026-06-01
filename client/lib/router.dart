@@ -6,10 +6,10 @@ import 'screens/friends/friend_requests_screen.dart';
 import 'screens/friends/search_users_screen.dart';
 import 'screens/session/create_session_screen.dart';
 import 'screens/session/session_screen.dart';
+import 'screens/session/session_results_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/player/now_playing.dart';
 import 'screens/settings/settings_screen.dart';
-
 
 Route<dynamic> generateRoute(RouteSettings settings) {
   switch (settings.name) {
@@ -26,7 +26,15 @@ Route<dynamic> generateRoute(RouteSettings settings) {
     case '/session/create':
       return MaterialPageRoute(builder: (_) => const CreateSessionScreen());
     case '/session':
-      return MaterialPageRoute(builder: (_) => const SessionScreen());
+      return MaterialPageRoute(
+        builder: (_) => const SessionScreen(),
+        settings: settings,
+      );
+    case '/session/results':
+      return MaterialPageRoute(
+        builder: (_) => const SessionResultsScreen(),
+        settings: settings,
+      );
     case '/profile':
       return MaterialPageRoute(
         builder: (_) => const ProfileScreen(),
@@ -37,11 +45,12 @@ Route<dynamic> generateRoute(RouteSettings settings) {
     case '/player':
       final args = settings.arguments as Map<String, dynamic>?;
       return MaterialPageRoute(
-          builder: (_) => NowPlayingScreen(
-                title: args?['title'] as String?,
-                artist: args?['artist'] as String?,
-                artworkUrl: args?['artworkUrl'] as String?,
-              ));
+        builder: (_) => NowPlayingScreen(
+          title: args?['title'] as String?,
+          artist: args?['artist'] as String?,
+          artworkUrl: args?['artworkUrl'] as String?,
+        ),
+      );
     default:
       return MaterialPageRoute(
         builder: (_) => const Scaffold(

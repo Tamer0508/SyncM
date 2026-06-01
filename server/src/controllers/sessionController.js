@@ -3,11 +3,16 @@ const { getIo } = require('../socket');
 
 const createSession = async (req, res) => {
   const { name, friendId } = req.body;
-  const userId = req.session?.userId;
+  
+  // Проверяем и сессию и заголовок
+  let userId = req.session?.userId;
+  if (!userId) {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
+  }
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
   if (!friendId) return res.status(400).json({ error: 'friendId обязателен' });
-
   try {
     const session = await prisma.$transaction(async (tx) => {
       const newSession = await tx.session.create({
@@ -48,7 +53,11 @@ const createSession = async (req, res) => {
 };
 
 const getMySessions = async (req, res) => {
-  const userId = req.session?.userId;
+  let userId = req.session?.userId;
+  if (!userId) {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
+  } 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   try {
@@ -76,7 +85,11 @@ const getMySessions = async (req, res) => {
 const addTracks = async (req, res) => {
   const { sessionId } = req.params;
   const { tracks } = req.body;
-  const userId = req.session?.userId;
+  let userId = req.session?.userId;
+  if (!userId) {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
+  }
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
@@ -110,7 +123,11 @@ const addTracks = async (req, res) => {
 const rateTrack = async (req, res) => {
   const { trackId } = req.params;
   const { rating } = req.body;
-  const userId = req.session?.userId;
+  let userId = req.session?.userId;
+  if (!userId) {
+    const auth = req.headers.authorization;
+    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
+  }
 
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
