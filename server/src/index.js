@@ -16,6 +16,7 @@ const friendsRoutes = require('./routes/friends');
 const sessionRoutes = require('./routes/sessions'); 
 const spotifyRoutes = require('./routes/spotify');
 const playlistRoutes = require('./routes/playlists');
+const healthRoutes = require('./routes/health');
 const setupSocket = require('./socket');
 
 const pool = new Pool({
@@ -75,6 +76,7 @@ app.use('/friends', friendsRoutes);
 app.use('/sessions', sessionRoutes);
 app.use('/spotify', spotifyRoutes);
 app.use('/playlists', playlistRoutes);
+app.use('/health', healthRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'SyncM server is running' });
@@ -91,21 +93,64 @@ process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error.message);
 });
 
-async function shutdown() {
-  console.log('Shutting down gracefully...');
-  const redisModule = require('./infrastructure/redis');
-  if (redisModule.redisClient) {
-    await redisModule.redisClient.quit().catch(() => {});
-    console.log('Redis disconnected');
+async function shutdown(signal) {
+  console.log(`Received ${signal || 'shutdown'} - shutting down gracefully...`);
+
+  // Force exit after 10 seconds
+  const forceTimeout = setTimeout(() => {
+    console.error('Could not close connections in time, forcing shutdown');
+    process.exit(1);
+  }, 10000);
+
+  try {
+    // Stop accepting new connections
+    await new Promise((resolve) => {
+      httpServer.close((err) => {
+        if (err) console.error('HTTP server close error:', err);
+        else console.log('HTTP server closed');
+        resolve();
+      });
+    });
+  } catch (err) {
+    console.error('Error while closing HTTP server:', err?.message || err);
   }
-  httpServer.close(() => {
-    console.log('HTTP server closed');
-    process.exit(0);
-  });
+
+  try {
+    // Close socket.io if present
+    if (io && typeof io.close === 'function') {
+      try {
+        io.close();
+        console.log('Socket.io closed');
+      } catch (e) {
+        console.error('Error closing socket.io:', e?.message || e);
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const prisma = require('./db/prisma');
+    await prisma.$disconnect();
+    console.log('Prisma disconnected');
+  } catch (err) {
+    console.error('Prisma disconnect error:', err?.message || err);
+  }
+
+  try {
+    const redisModule = require('./infrastructure/redis');
+    if (redisModule && redisModule.redisClient) {
+      await redisModule.redisClient.quit().catch(() => {});
+      console.log('Redis disconnected');
+    }
+  } catch (err) {
+    console.error('Redis quit error:', err?.message || err);
+  }
+
+  clearTimeout(forceTimeout);
+  process.exit(0);
 }
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
