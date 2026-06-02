@@ -21,6 +21,8 @@ dependencies:
   spotify_sdk: ^3.0.0
   image_picker: ^1.0.7
   palette_generator: ^0.3.3+2
+  uuid: ^4.5.3
+  rxdart: ^0.27.0
 
 dev_dependencies:
   flutter_test:

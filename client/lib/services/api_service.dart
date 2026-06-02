@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 import '../models/user.dart';
 import '../models/friend.dart';
+import '../utils/retry.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -30,6 +32,9 @@ class ApiService {
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
   Map<String, String> get _jsonHeaders => {'Content-Type': 'application/json'};
+  final Uuid _uuid = const Uuid();
+  final Map<String, String> _idempotencyKeys = {};
+
   Map<String, String> get _headers {
     final h = Map<String, String>.from(_jsonHeaders);
     if (_cookie != null && _cookie!.isNotEmpty) {
@@ -39,6 +44,35 @@ class ApiService {
       h['Authorization'] = 'Bearer $token';
     }
     return h;
+  }
+
+  String _getIdempotencyKey(String operation) =>
+      _idempotencyKeys.putIfAbsent(operation, () => _uuid.v4());
+
+  Map<String, String> _headersWithIdempotency(String operation) {
+    final headers = Map<String, String>.from(_headers);
+    headers['Idempotency-Key'] = _getIdempotencyKey(operation);
+    return headers;
+  }
+
+  bool _shouldRetry(Exception error) {
+    if (error is ApiException) {
+      return error.statusCode == null || (error.statusCode ?? 0) >= 500;
+    }
+    return true;
+  }
+
+  Future<T> _retryMutable<T>(String operation, Future<T> Function() fn) async {
+    try {
+      final result = await retryWithBackoff(
+        fn,
+        shouldRetry: _shouldRetry,
+      );
+      _idempotencyKeys.remove(operation);
+      return result;
+    } catch (e) {
+      rethrow;
+    }
   }
 
   dynamic _decode(String body) {
@@ -70,15 +104,18 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> updatePrivacySettings(Map<String, bool> settings) async {
-    final res = await http.patch(
-      _uri('/auth/settings'),
-      headers: _headers,
-      body: json.encode(settings),
-    ).timeout(timeout);
-    if (res.statusCode == 200) {
-      return _decode(res.body) as Map<String, dynamic>;
-    }
-    throw ApiException('Ошибка обновления настроек', res.statusCode, _extractError(res));
+    const operation = 'updatePrivacySettings';
+    return _retryMutable(operation, () async {
+      final res = await http.patch(
+        _uri('/auth/settings'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode(settings),
+      ).timeout(timeout);
+      if (res.statusCode == 200) {
+        return _decode(res.body);
+      }
+      throw ApiException('Ошибка обновления настроек', res.statusCode, _extractError(res));
+    });
   }
 
   Future<List<Friend>> searchUsers(String query) async {
@@ -93,33 +130,58 @@ class ApiService {
   Future<Map<String, dynamic>> getUserProfile(String userId) async {
     final res = await http.get(_uri('/friends/user/$userId'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) {
-      return _decode(res.body) as Map<String, dynamic>;
+      return _decode(res.body);
     }
     throw ApiException('Ошибка загрузки профиля', res.statusCode, _extractError(res));
   }
 
   Future<bool> sendFriendRequest(String receiverId) async {
-    final res = await http.post(_uri('/friends/request'), headers: _headers, body: json.encode({'receiverId': receiverId})).timeout(timeout);
-    if (res.statusCode == 200 || res.statusCode == 201) return true;
-    throw ApiException('Ошибка отправки заявки', res.statusCode, _extractError(res));
+    final operation = 'sendFriendRequest:$receiverId';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/friends/request'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({'receiverId': receiverId}),
+      ).timeout(timeout);
+      if (res.statusCode == 200 || res.statusCode == 201) return true;
+      throw ApiException('Ошибка отправки заявки', res.statusCode, _extractError(res));
+    });
   }
 
   Future<bool> acceptRequest(String friendshipId) async {
-    final res = await http.patch(_uri('/friends/$friendshipId/accept'), headers: _headers).timeout(timeout);
-    if (res.statusCode == 200) return true;
-    throw ApiException('Ошибка принятия заявки', res.statusCode, _extractError(res));
+    final operation = 'acceptRequest:$friendshipId';
+    return _retryMutable(operation, () async {
+      final res = await http.patch(
+        _uri('/friends/$friendshipId/accept'),
+        headers: _headersWithIdempotency(operation),
+      ).timeout(timeout);
+      if (res.statusCode == 200) return true;
+      throw ApiException('Ошибка принятия заявки', res.statusCode, _extractError(res));
+    });
   }
 
   Future<bool> deleteRequest(String friendshipId) async {
-    final res = await http.delete(_uri('/friends/$friendshipId'), headers: _headers).timeout(timeout);
-    if (res.statusCode == 200) return true;
-    throw ApiException('Ошибка удаления заявки', res.statusCode, _extractError(res));
+    final operation = 'deleteRequest:$friendshipId';
+    return _retryMutable(operation, () async {
+      final res = await http.delete(
+        _uri('/friends/$friendshipId'),
+        headers: _headersWithIdempotency(operation),
+      ).timeout(timeout);
+      if (res.statusCode == 200) return true;
+      throw ApiException('Ошибка удаления заявки', res.statusCode, _extractError(res));
+    });
   }
 
   Future<bool> deleteFriendByUserId(String friendId) async {
-    final res = await http.delete(_uri('/friends/by-user/$friendId'), headers: _headers).timeout(timeout);
-    if (res.statusCode == 200) return true;
-    throw ApiException('Ошибка удаления друга', res.statusCode, _extractError(res));
+    final operation = 'deleteFriendByUserId:$friendId';
+    return _retryMutable(operation, () async {
+      final res = await http.delete(
+        _uri('/friends/by-user/$friendId'),
+        headers: _headersWithIdempotency(operation),
+      ).timeout(timeout);
+      if (res.statusCode == 200) return true;
+      throw ApiException('Ошибка удаления друга', res.statusCode, _extractError(res));
+    });
   }
 
   Future<Map<String, dynamic>> getFriends({String? cursor, int? limit}) async {
@@ -137,7 +199,7 @@ class ApiService {
         itemsRaw = decoded['items'] is List ? decoded['items'] as List<dynamic> : [];
         nextCursor = decoded['nextCursor']?.toString();
       } else if (decoded is List) {
-        itemsRaw = decoded as List<dynamic>;
+        itemsRaw = decoded;
         nextCursor = null;
       } else {
         itemsRaw = [];
@@ -165,7 +227,7 @@ class ApiService {
         itemsRaw = decoded['items'] is List ? decoded['items'] as List<dynamic> : [];
         nextCursor = decoded['nextCursor']?.toString();
       } else if (decoded is List) {
-        itemsRaw = decoded as List<dynamic>;
+        itemsRaw = decoded;
         nextCursor = null;
       } else {
         itemsRaw = [];
@@ -177,11 +239,18 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>?> createSession(String name, String friendId) async {
-    final res = await http.post(_uri('/sessions'), headers: _headers, body: json.encode({'name': name, 'friendId': friendId})).timeout(timeout);
-    if (res.statusCode == 200 || res.statusCode == 201) {
-      return _decode(res.body) as Map<String, dynamic>;
-    }
-    throw ApiException('Ошибка создания сессии', res.statusCode, _extractError(res));
+    final operation = 'createSession:$name:$friendId';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/sessions'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({'name': name, 'friendId': friendId}),
+      ).timeout(timeout);
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        return _decode(res.body);
+      }
+      throw ApiException('Ошибка создания сессии', res.statusCode, _extractError(res));
+    });
   }
 
   Future<List<dynamic>> getMySessions() async {
@@ -193,36 +262,59 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> updateProfile({String? username, String? customAvatarUrl}) async {
-    final body = <String, dynamic>{};
-    if (username != null) body['username'] = username;
-    if (customAvatarUrl != null) body['customAvatarUrl'] = customAvatarUrl;
-    final res = await http.patch(
-      _uri('/auth/profile'),
-      headers: _headers,
-      body: json.encode(body),
-    ).timeout(timeout);
-    if (res.statusCode == 200) {
-      return _decode(res.body) as Map<String, dynamic>;
-    }
-    throw ApiException('Ошибка обновления профиля', res.statusCode, _extractError(res));
+    final operation = 'updateProfile:${username ?? ''}:${customAvatarUrl ?? ''}';
+    return _retryMutable(operation, () async {
+      final body = <String, dynamic>{};
+      if (username != null) body['username'] = username;
+      if (customAvatarUrl != null) body['customAvatarUrl'] = customAvatarUrl;
+      final res = await http.patch(
+        _uri('/auth/profile'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode(body),
+      ).timeout(timeout);
+      if (res.statusCode == 200) {
+        return _decode(res.body);
+      }
+      throw ApiException('Ошибка обновления профиля', res.statusCode, _extractError(res));
+    });
   }
 
   Future<bool> addTracks(String sessionId, List<Map<String, dynamic>> tracks) async {
-    final res = await http.post(_uri('/sessions/$sessionId/tracks'), headers: _headers, body: json.encode({'tracks': tracks})).timeout(timeout);
-    if (res.statusCode == 200 || res.statusCode == 201) return true;
-    throw ApiException('Ошибка добавления треков', res.statusCode, _extractError(res));
+    final operation = 'addTracks:$sessionId';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/sessions/$sessionId/tracks'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({'tracks': tracks}),
+      ).timeout(timeout);
+      if (res.statusCode == 200 || res.statusCode == 201) return true;
+      throw ApiException('Ошибка добавления треков', res.statusCode, _extractError(res));
+    });
   }
 
   Future<bool> rateTrack(String trackId, int rating) async {
-    final res = await http.post(_uri('/sessions/tracks/$trackId/rate'), headers: _headers, body: json.encode({'rating': rating})).timeout(timeout);
-    if (res.statusCode == 200 || res.statusCode == 201) return true;
-    throw ApiException('Ошибка оценки трека', res.statusCode, _extractError(res));
+    final operation = 'rateTrack:$trackId';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/sessions/tracks/$trackId/rate'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({'rating': rating}),
+      ).timeout(timeout);
+      if (res.statusCode == 200 || res.statusCode == 201) return true;
+      throw ApiException('Ошибка оценки трека', res.statusCode, _extractError(res));
+    });
   }
 
   Future<Map<String, dynamic>?> endSession(String sessionId) async {
-    final res = await http.patch(_uri('/sessions/$sessionId/end'), headers: _headers).timeout(timeout);
-    if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
-    throw ApiException('Ошибка завершения сессии', res.statusCode, _extractError(res));
+    final operation = 'endSession:$sessionId';
+    return _retryMutable(operation, () async {
+      final res = await http.patch(
+        _uri('/sessions/$sessionId/end'),
+        headers: _headersWithIdempotency(operation),
+      ).timeout(timeout);
+      if (res.statusCode == 200) return _decode(res.body);
+      throw ApiException('Ошибка завершения сессии', res.statusCode, _extractError(res));
+    });
   }
 
   Future<List<dynamic>> getPlaylists() async {
@@ -242,46 +334,66 @@ class ApiService {
   Future<Map<String, dynamic>> getSpotifyStatus() async {
     final res = await http.get(_uri('/spotify/status'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) {
-      return _decode(res.body) as Map<String, dynamic>;
+      return _decode(res.body);
     }
     throw ApiException('Ошибка статуса Spotify', res.statusCode, _extractError(res));
   }
 
   Future<bool> disconnectSpotify() async {
-    final res = await http.post(_uri('/spotify/disconnect'), headers: _headers).timeout(timeout);
-    if (res.statusCode == 200) return true;
-    throw ApiException('Ошибка отключения Spotify', res.statusCode, _extractError(res));
+    const operation = 'disconnectSpotify';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/spotify/disconnect'),
+        headers: _headersWithIdempotency(operation),
+      ).timeout(timeout);
+      if (res.statusCode == 200) return true;
+      throw ApiException('Ошибка отключения Spotify', res.statusCode, _extractError(res));
+    });
   }
 
   Future<Map<String, dynamic>> googleLogin(String idToken) async {
-    final res = await http.post(_uri('/auth/google'), headers: _jsonHeaders, body: json.encode({'idToken': idToken})).timeout(timeout);
-    if (res.statusCode == 200) {
-      return _decode(res.body) as Map<String, dynamic>;
-    }
-    throw ApiException('Ошибка входа через Google', res.statusCode, _extractError(res));
+    const operation = 'googleLogin';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/auth/google'),
+        headers: _jsonHeaders..['Idempotency-Key'] = _getIdempotencyKey(operation),
+        body: json.encode({'idToken': idToken}),
+      ).timeout(timeout);
+      if (res.statusCode == 200) {
+        return _decode(res.body);
+      }
+      throw ApiException('Ошибка входа через Google', res.statusCode, _extractError(res));
+    });
   }
 
   Future<Map<String, dynamic>> uploadAvatar(String filePath) async {
-  final uri = _uri('/auth/avatar');
-  final request = http.MultipartRequest('POST', uri);
-  request.headers['Authorization'] = _headers['Authorization'] ?? '';
-  request.files.add(await http.MultipartFile.fromPath('avatar', filePath));
-  final streamed = await request.send().timeout(timeout);
-  final res = await http.Response.fromStream(streamed);
-  if (res.statusCode == 200) {
-    return _decode(res.body) as Map<String, dynamic>;
+    const operation = 'uploadAvatar';
+    return _retryMutable(operation, () async {
+      final uri = _uri('/auth/avatar');
+      final request = http.MultipartRequest('POST', uri);
+      request.headers['Authorization'] = _headers['Authorization'] ?? '';
+      request.headers['Idempotency-Key'] = _getIdempotencyKey(operation);
+      request.files.add(await http.MultipartFile.fromPath('avatar', filePath));
+      final streamed = await request.send().timeout(timeout);
+      final res = await http.Response.fromStream(streamed);
+      if (res.statusCode == 200) {
+        return _decode(res.body);
+      }
+      throw ApiException('Ошибка загрузки аватарки', res.statusCode, _extractError(res));
+    });
   }
-  throw ApiException('Ошибка загрузки аватарки', res.statusCode, _extractError(res));
-}
 
   Future<Map<String, dynamic>> createCustomPlaylist(String name, {String? description, String? imageUrl}) async {
-    final res = await http.post(
-      _uri('/playlists/custom'),
-      headers: _headers,
-      body: json.encode({'name': name, 'description': description, 'imageUrl': imageUrl}),
-    ).timeout(timeout);
-    if (res.statusCode == 201) return _decode(res.body) as Map<String, dynamic>;
-    throw ApiException('Ошибка создания плейлиста', res.statusCode, _extractError(res));
+    final operation = 'createCustomPlaylist:$name:${description ?? ''}:${imageUrl ?? ''}';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/playlists/custom'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({'name': name, 'description': description, 'imageUrl': imageUrl}),
+      ).timeout(timeout);
+      if (res.statusCode == 201) return _decode(res.body);
+      throw ApiException('Ошибка создания плейлиста', res.statusCode, _extractError(res));
+    });
   }
 
   Future<List<dynamic>> getMyPlaylists() async {
@@ -291,23 +403,32 @@ class ApiService {
   }
 
   Future<void> deletePlaylist(String playlistId) async {
-    final res = await http.delete(_uri('/playlists/$playlistId'), headers: _headers).timeout(timeout);
-    if (res.statusCode != 200) throw ApiException('Ошибка удаления', res.statusCode, _extractError(res));
+    final operation = 'deletePlaylist:$playlistId';
+    return _retryMutable(operation, () async {
+      final res = await http.delete(
+        _uri('/playlists/$playlistId'),
+        headers: _headersWithIdempotency(operation),
+      ).timeout(timeout);
+      if (res.statusCode != 200) throw ApiException('Ошибка удаления', res.statusCode, _extractError(res));
+    });
   }
 
   Future<Map<String, dynamic>> addTrackToPlaylist(String playlistId, String trackUri, String trackName, String artistName, {int? durationMs}) async {
-    final res = await http.post(
-      _uri('/playlists/$playlistId/tracks'),
-      headers: _headers,
-      body: json.encode({
-        'trackUri': trackUri,
-        'trackName': trackName,
-        'artistName': artistName,
-        'durationMs': durationMs,
-      }),
-    ).timeout(timeout);
-    if (res.statusCode == 201) return _decode(res.body) as Map<String, dynamic>;
-    throw ApiException('Ошибка добавления трека', res.statusCode, _extractError(res));
+    final operation = 'addTrackToPlaylist:$playlistId:$trackUri';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/playlists/$playlistId/tracks'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({
+          'trackUri': trackUri,
+          'trackName': trackName,
+          'artistName': artistName,
+          'durationMs': durationMs,
+        }),
+      ).timeout(timeout);
+      if (res.statusCode == 201) return _decode(res.body) as Map<String, dynamic>;
+      throw ApiException('Ошибка добавления трека', res.statusCode, _extractError(res));
+    });
   }
 
   Future<List<dynamic>> getPlaylistTracksById(String playlistId) async {
@@ -317,17 +438,20 @@ class ApiService {
   }
 
   Future<bool> toggleLike(String spotifyUri, String trackName, String artistName) async {
-    final res = await http.post(
-      _uri('/playlists/liked/toggle'),
-      headers: _headers,
-      body: json.encode({
-        'spotifyUri': spotifyUri,
-        'trackName': trackName,
-        'artistName': artistName,
-      }),
-    ).timeout(timeout);
-    if (res.statusCode == 200) return (_decode(res.body) as Map)['liked'] == true;
-    throw ApiException('Ошибка лайка', res.statusCode, _extractError(res));
+    final operation = 'toggleLike:$spotifyUri';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/playlists/liked/toggle'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({
+          'spotifyUri': spotifyUri,
+          'trackName': trackName,
+          'artistName': artistName,
+        }),
+      ).timeout(timeout);
+      if (res.statusCode == 200) return (_decode(res.body) as Map)['liked'] == true;
+      throw ApiException('Ошибка лайка', res.statusCode, _extractError(res));
+    });
   }
 
   Future<List<dynamic>> getLikedTracks() async {
@@ -338,45 +462,69 @@ class ApiService {
 
   Future<void> logPlay(String spotifyUri, String trackName, String artistName) async {
     try {
-      await http.post(
-        _uri('/playlists/history'),
-        headers: _headers,
-        body: json.encode({
-          'spotifyUri': spotifyUri,
-          'trackName': trackName,
-          'artistName': artistName,
-        }),
-      ).timeout(timeout);
-    } catch (_) { /* тихо игнорируем ошибки ну если чо да) */ }
+      await _retryMutable('logPlay:$spotifyUri', () async {
+        final res = await http.post(
+          _uri('/playlists/history'),
+          headers: _headersWithIdempotency('logPlay:$spotifyUri'),
+          body: json.encode({
+            'spotifyUri': spotifyUri,
+            'trackName': trackName,
+            'artistName': artistName,
+          }),
+        ).timeout(timeout);
+        return res;
+      });
+    } catch (_) {
+      /* тихо игнорируем ошибки ну если чо да) */
+    }
   }
 
   Future<bool> playTrack(String uri, {String? deviceId, String? contextUri, int? offset}) async {
-  final body = <String, dynamic>{};
-  if (contextUri != null) {
-    body['contextUri'] = contextUri;
-    if (offset != null) body['offset'] = offset;
-  } else {
-    body['uri'] = uri;
+    final operation = 'playTrack:$uri:${contextUri ?? ''}:${deviceId ?? ''}:$offset';
+    final body = <String, dynamic>{};
+    if (contextUri != null) {
+      body['contextUri'] = contextUri;
+      if (offset != null) body['offset'] = offset;
+    } else {
+      body['uri'] = uri;
+    }
+    if (deviceId != null) body['deviceId'] = deviceId;
+    final res = await _retryMutable(operation, () async {
+      return await http.post(
+        _uri('/spotify/play'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode(body),
+      ).timeout(timeout);
+    });
+    return res.statusCode == 200 || res.statusCode == 204;
   }
-  if (deviceId != null) body['deviceId'] = deviceId;
-  final res = await http.post(_uri('/spotify/play'),
-    headers: _headers,
-    body: json.encode(body),
-  ).timeout(timeout);
-  return res.statusCode == 200 || res.statusCode == 204;
-}
 
   Future<void> pausePlayback() async {
-  await http.put(_uri('/spotify/pause'), headers: _headers).timeout(timeout);
-}
+    await _retryMutable('pausePlayback', () async {
+      return await http.put(
+        _uri('/spotify/pause'),
+        headers: _headersWithIdempotency('pausePlayback'),
+      ).timeout(timeout);
+    });
+  }
 
-Future<void> resumePlayback() async {
-  await http.put(_uri('/spotify/resume'), headers: _headers).timeout(timeout);
-}
+  Future<void> resumePlayback() async {
+    await _retryMutable('resumePlayback', () async {
+      return await http.put(
+        _uri('/spotify/resume'),
+        headers: _headersWithIdempotency('resumePlayback'),
+      ).timeout(timeout);
+    });
+  }
 
-Future<void> skipToNext() async {
-  await http.post(_uri('/spotify/next'), headers: _headers).timeout(timeout);
-}
+  Future<void> skipToNext() async {
+    await _retryMutable('skipToNext', () async {
+      return await http.post(
+        _uri('/spotify/next'),
+        headers: _headersWithIdempotency('skipToNext'),
+      ).timeout(timeout);
+    });
+  }
 
 Future<void> skipToPrevious() async {
   await http.post(_uri('/spotify/previous'), headers: _headers).timeout(timeout);

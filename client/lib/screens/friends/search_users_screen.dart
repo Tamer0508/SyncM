@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:rxdart/rxdart.dart';
 import '../../providers/friends_provider.dart';
 import '../../services/api_service.dart';
 import '../../models/friend.dart';
@@ -15,13 +18,27 @@ class SearchUsersScreen extends StatefulWidget {
 
 class _SearchUsersScreenState extends State<SearchUsersScreen> {
   final _controller = TextEditingController();
+  final _searchSubject = PublishSubject<String>();
+  late final StreamSubscription<void> _searchSubscription;
   List<Friend> _results = [];
   bool _loading = false;
   bool _searched = false;
   final Set<String> _pendingRequests = {};
 
   @override
+  void initState() {
+    super.initState();
+    _searchSubscription = _searchSubject
+        .debounceTime(const Duration(milliseconds: 300))
+        .distinct()
+        .switchMap((query) => Stream.fromFuture(_search(query)).onErrorResume((_, __) => Stream<void>.empty()))
+        .listen((_) {}, onError: (_) {});
+  }
+
+  @override
   void dispose() {
+    _searchSubscription.cancel();
+    _searchSubject.close();
     _controller.dispose();
     super.dispose();
   }
@@ -108,6 +125,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                           prefixIcon: Icon(Icons.search),
                           border: InputBorder.none,
                         ),
+                        onChanged: _searchSubject.add,
                         onSubmitted: _search,
                       ),
                     ),

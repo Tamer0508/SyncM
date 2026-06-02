@@ -20,8 +20,12 @@ const sessionRoutes = require('./routes/sessions');
 const spotifyRoutes = require('./routes/spotify');
 const playlistRoutes = require('./routes/playlists');
 const healthRoutes = require('./routes/health');
-const setupSocket = require('./socket');
-require('./infrastructure/queue');
+const setupSocketModule = require('./socket');
+const { closeQueues } = require('./infrastructure/queue');
+
+// Правильный импорт setupSocket и closeSocket
+const setupSocket = setupSocketModule.setupSocket || setupSocketModule;
+const { closeSocket } = setupSocketModule;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -42,22 +46,25 @@ const app = express();
 app.set('trust proxy', 1);
 const httpServer = createServer(app);
 
-// СОЗДАЁМ io ПРАВИЛЬНО:
 const io = new Server(httpServer, {
-  cors: { origin: '*' }
+  cors: { 
+    origin: true,
+    credentials: true
+  }
 });
+
+global.io = io;
 
 app.use(cors({
   origin: true,
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Cookie', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Cookie', 'Authorization', 'Idempotency-Key'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use(express.json());
 
-// Attach or generate a request id for tracing
 app.use(requestId);
 app.use(pinoHttp({
   logger,
@@ -84,7 +91,6 @@ app.use(session({
   }
 }));
 
-// Attach per-request logger (after session so we can include userId)
 app.use((req, res, next) => {
   try {
     const auth = req.headers.authorization;
@@ -109,7 +115,6 @@ app.get('/', (req, res) => {
   res.json({ message: 'SyncM server is running' });
 });
 
-// Подключаем твой setupSocket
 setupSocket(io);
 
 process.on('unhandledRejection', (reason) => {
@@ -123,14 +128,12 @@ process.on('uncaughtException', (error) => {
 async function shutdown(signal) {
   logger.info({ signal }, 'Received shutdown signal, shutting down gracefully...');
 
-  // Force exit after 10 seconds
   const forceTimeout = setTimeout(() => {
     logger.error('Could not close connections in time, forcing shutdown');
     process.exit(1);
   }, 10000);
 
   try {
-    // Stop accepting new connections
     await new Promise((resolve) => {
       httpServer.close((err) => {
         if (err) logger.error({ err }, 'HTTP server close error');
@@ -143,16 +146,18 @@ async function shutdown(signal) {
   }
 
   try {
-    // Close socket.io if present
-    if (io && typeof io.close === 'function') {
-      try {
-        io.close();
-        logger.info('Socket.io closed');
-      } catch (e) {
-        logger.error({ err: e }, 'Error closing socket.io');
-      }
-    }
-  } catch (e) {}
+    await closeQueues();
+    logger.info('BullMQ queues closed');
+  } catch (err) {
+    logger.error({ err }, 'Error closing BullMQ queues');
+  }
+
+  try {
+    await closeSocket();  // ← используем функцию из socket.js
+    logger.info('Socket.io closed');
+  } catch (err) {
+    logger.error({ err }, 'Error closing socket.io');
+  }
 
   try {
     const prisma = require('./db/prisma');
@@ -165,7 +170,7 @@ async function shutdown(signal) {
   try {
     const redisModule = require('./infrastructure/redis');
     if (redisModule && redisModule.redisClient) {
-      await redisModule.redisClient.quit().catch(() => {});
+      await redisModule.redisClient.quit();
       logger.info('Redis disconnected');
     }
   } catch (err) {
@@ -181,5 +186,5 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
-  logger.info({ port: PORT }, 'Server running');
+  logger.info({ port: PORT, env: process.env.NODE_ENV }, 'Server running');
 });
