@@ -12,7 +12,7 @@ let isRedisReady = false;
 
 if (REDIS_URL) {
   redisClient = new Redis(REDIS_URL, {
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: null, 
     retryStrategy(times) {
       const delay = Math.min(times * 50, 2000);
       logger.info({ attempt: times, delay }, `Redis reconnecting attempt ${times}, delay ${delay}ms`);
