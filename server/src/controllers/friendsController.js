@@ -63,7 +63,9 @@ const searchUsers = async (req, res) => {
 
     res.json(users);
   } catch (error) {
-    console.error('Search error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Search error:', error);
+    }
     res.status(500).json({ error: 'Ошибка поиска', details: error.message });
   }
 };
@@ -125,6 +127,9 @@ const sendRequest = async (req, res) => {
       });
     });
   } catch (error) {
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Send request error:', error);
+    }
     res.status(500).json({ error: 'Ошибка отправки заявки', details: error.message });
   }
 };
@@ -186,7 +191,9 @@ const acceptRequest = async (req, res) => {
       });
     });
   } catch (error) {
-    console.error('Accept request error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Accept request error:', error);
+    }
     res.status(500).json({ error: 'Ошибка принятия заявки', details: error.message });
   }
 };
@@ -233,7 +240,9 @@ const getFriends = async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error('Get friends error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Get friends error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения друзей', details: error.message });
   }
 };
@@ -267,7 +276,9 @@ const getUserById = async (req, res) => {
 
     res.json(user);
   } catch (error) {
-    console.error('Get user by id error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Get user by id error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения пользователя' });
   }
 };
@@ -305,7 +316,9 @@ const getIncomingRequests = async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error('Get incoming requests error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Get incoming requests error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения заявок' });
   }
 };
@@ -336,6 +349,9 @@ const deleteRequest = async (req, res) => {
       res.json({ message: 'Удалено' });
     });
   } catch (error) {
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Delete request error:', error);
+    }
     res.status(500).json({ error: 'Ошибка удаления' });
   }
 };
@@ -371,6 +387,9 @@ const deleteFriendByUserId = async (req, res) => {
       res.json({ message: 'Друг удален' });
     });
   } catch (error) {
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Delete friend error:', error);
+    }
     res.status(500).json({ error: 'Ошибка удаления' });
   }
 };

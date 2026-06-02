@@ -4,6 +4,8 @@ require('./infrastructure/redis');
 const { rateLimitMiddleware } = require('./infrastructure/rateLimiter');
 const express = require('express');
 const cors = require('cors');
+const logger = require('./infrastructure/logger');
+const requestId = require('./middleware/requestId');
 const session = require('express-session');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
@@ -53,6 +55,9 @@ app.use(cors({
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use(express.json());
 
+// Attach or generate a request id for tracing
+app.use(requestId);
+
 app.use(session({
   store: new pgSession({
     pool: pool, 
@@ -68,6 +73,19 @@ app.use(session({
     maxAge: 7 * 24 * 60 * 60 * 1000
   }
 }));
+
+// Attach per-request logger (after session so we can include userId)
+app.use((req, res, next) => {
+  try {
+    const auth = req.headers.authorization;
+    const userId = req.session?.userId || (auth && auth.startsWith('Bearer ') ? auth.replace('Bearer ', '') : null);
+    // create child logger with requestId and userId
+    req.log = (req.log || logger).child({ requestId: req.id || null, userId: userId || null });
+  } catch (e) {
+    // ignore
+  }
+  next();
+});
 
 app.use(rateLimitMiddleware(100, 60));
 

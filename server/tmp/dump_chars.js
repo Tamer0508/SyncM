@@ -1,0 +1,1 @@
+const fs=require('fs');const s=fs.readFileSync('server/src/controllers/authController.js','utf8');for(let i=0;i<50;i++){const c=s.charCodeAt(i);console.log(i, c, String.fromCharCode(c))}

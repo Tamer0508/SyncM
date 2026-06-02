@@ -80,7 +80,9 @@ const createSession = async (req, res) => {
       res.status(201).json(session);
     });
   } catch (error) {
-    console.error('Create session error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Create session error:', error);
+    }
     res.status(500).json({ error: 'Ошибка создания сессии', details: error.message });
   }
 };
@@ -114,7 +116,9 @@ const getMySessions = async (req, res) => {
     });
     res.json(sessions);
   } catch (error) {
-    console.error('Get sessions error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Get sessions error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения сессий' });
   }
 };
@@ -174,7 +178,9 @@ const addTracks = async (req, res) => {
       res.json({ message: `Добавлено ${createdTracks.length} треков`, tracks: createdTracks });
     });
   } catch (error) {
-    console.error('Add tracks error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Add tracks error:', error);
+    }
     res.status(500).json({ error: 'Ошибка добавления треков' });
   }
 };
@@ -212,7 +218,9 @@ const rateTrack = async (req, res) => {
       res.json(result);
     });
   } catch (error) {
-    console.error('Rate track error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Rate track error:', error);
+    }
     res.status(500).json({ error: 'Ошибка оценки' });
   }
 };
@@ -266,7 +274,9 @@ const endSession = async (req, res) => {
       res.json({ message: 'Сессия завершена', mutualLikes });
     });
   } catch (error) {
-    console.error('End session error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('End session error:', error);
+    }
     res.status(500).json({ error: 'Ошибка завершения сессии' });
   }
 };
@@ -318,6 +328,9 @@ const respondToInvite = async (req, res) => {
       res.json({ status, session });
     });
   } catch (error) {
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Respond to invite error:', error);
+    }
     res.status(500).json({ error: 'Ошибка ответа на приглашение' });
   }
 };
@@ -352,7 +365,9 @@ const getMyInvites = async (req, res) => {
     });
     res.json(invites);
   } catch (error) {
-    console.error('Get invites error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Get invites error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения приглашений' });
   }
 };

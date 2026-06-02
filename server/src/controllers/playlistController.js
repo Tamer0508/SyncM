@@ -32,7 +32,9 @@ exports.createCustomPlaylist = async (req, res) => {
 
     res.status(201).json(playlist);
   } catch (error) {
-    console.error('Create custom playlist error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Create custom playlist error:', error);
+    }
     res.status(500).json({ error: 'Ошибка создания плейлиста' });
   }
 };
@@ -51,7 +53,9 @@ exports.getUserPlaylists = async (req, res) => {
     });
     res.status(200).json(playlists);
   } catch (error) {
-    console.error('Fetch playlists error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Fetch playlists error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения плейлистов' });
   }
 };
@@ -80,7 +84,9 @@ exports.toggleLike = async (req, res) => {
       return res.json({ liked: true });
     }
   } catch (error) {
-    console.error('Toggle like error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Toggle like error:', error);
+    }
     res.status(500).json({ error: 'Ошибка лайка' });
   }
 };
@@ -99,7 +105,9 @@ exports.getLikedTracks = async (req, res) => {
     });
     res.json(tracks);
   } catch (error) {
-    console.error('Get liked tracks error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Get liked tracks error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения избранного' });
   }
 };
@@ -137,7 +145,9 @@ exports.importPlaylist = async (req, res) => {
     await invalidateUserDB(userId);
     res.status(200).json(playlist);
   } catch (error) {
-    console.error('Import playlist error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Import playlist error:', error);
+    }
     res.status(500).json({ error: 'Ошибка импорта плейлиста' });
   }
 };
@@ -159,7 +169,9 @@ exports.deletePlaylist = async (req, res) => {
     await invalidateUserDB(userId);
     res.json({ message: 'Плейлист удалён' });
   } catch (error) {
-    console.error('Delete playlist error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Delete playlist error:', error);
+    }
     res.status(500).json({ error: 'Ошибка удаления' });
   }
 };
@@ -192,7 +204,9 @@ exports.addTrackToPlaylist = async (req, res) => {
     if (error.code === 'P2002') {
       return res.status(400).json({ error: 'Трек уже есть в этом плейлисте' });
     }
-    console.error('Add track to playlist error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Add track to playlist error:', error);
+    }
     res.status(500).json({ error: 'Ошибка добавления трека' });
   }
 };
@@ -213,7 +227,9 @@ exports.removeTrackFromPlaylist = async (req, res) => {
     await invalidateUserDB(userId);
     res.json({ message: 'Трек удалён' });
   } catch (error) {
-    console.error('Remove track error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Remove track error:', error);
+    }
     res.status(500).json({ error: 'Ошибка удаления трека' });
   }
 };
@@ -242,7 +258,9 @@ exports.getPlaylistTracks = async (req, res) => {
     });
     res.json(tracks);
   } catch (error) {
-    console.error('Get playlist tracks error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Get playlist tracks error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения треков' });
   }
 };
@@ -260,7 +278,9 @@ exports.logPlay = async (req, res) => {
     });
     res.status(201).json({ success: true });
   } catch (error) {
-    console.error('Log play error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Log play error:', error);
+    }
     res.status(500).json({ error: 'Ошибка сохранения истории' });
   }
 };

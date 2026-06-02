@@ -83,15 +83,12 @@ const callback = async (req, res) => {
 
     let returnTo = null;
     let pendingLinkUserId = null;
-
-    if (state) {
-      try {
-        const decoded = Buffer.from(state, 'base64').toString('utf8');
-        const parsed = JSON.parse(decoded);
-        returnTo = parsed?.returnTo;
-        pendingLinkUserId = parsed?.userId;
-      } catch (_) {}
-    }
+    try {
+      const decoded = Buffer.from(state || '', 'base64').toString('utf8');
+      const parsed = JSON.parse(decoded);
+      returnTo = parsed?.returnTo;
+      pendingLinkUserId = parsed?.userId;
+    } catch (_) {}
 
     const userId = pendingLinkUserId || req.session?.userId;
 
@@ -135,7 +132,6 @@ const callback = async (req, res) => {
     }
 
     req.session.userId = finalUserId;
-    
     await req.session.save();
 
     await invalidateUserDB(req.session.userId);
@@ -156,7 +152,11 @@ const callback = async (req, res) => {
       cookie,
     });
   } catch (error) {
-    console.error('OAuth error:', error.response?.data || error.message);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('OAuth error:', error.response?.data || error.message);
+    } else {
+      console.error('OAuth error:', error.response?.data || error.message);
+    }
     res.status(500).json({ error: 'Ошибка авторизации Spotify' });
   }
 };
@@ -268,10 +268,13 @@ const googleAuth = async (req, res) => {
       user: { id: user.id, displayName: user.username, email: user.email, spotifyConnected: false },
       cookie: `connect.sid=${req.sessionID}`,
     });
-  } catch (error) {
+    } catch (error) {
     console.error('Google auth error:', error);
     res.status(401).json({ error: 'Invalid token' });
-  }
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Google auth error:', error);   // также поправьте сообщение
+    }
+  }   // ← закрывающая скобка catch
 };
 
 const logout = async (req, res) => { 
@@ -314,7 +317,6 @@ const updateSettings = async (req, res) => {
     if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
   }
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-
   const { isOnlineHidden, isFriendsHidden, isActivityHidden } = req.body;
 
   try {
@@ -333,7 +335,7 @@ const updateSettings = async (req, res) => {
       select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true },
     });
 
-    await invalidateUserDB(userId);
+    // success
 
     res.json(updated);
   } catch (error) {
@@ -349,7 +351,6 @@ const updateProfile = async (req, res) => {
     if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
   }
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-
   const { username, customAvatarUrl } = req.body;
   const dataToUpdate = {};
 
@@ -404,7 +405,9 @@ const updateProfile = async (req, res) => {
       customAvatarUrl: updated.customAvatarUrl
     });
   } catch (error) {
-    console.error('Update profile error:', error);
+      if (req && req.log && typeof req.log.error === 'function') {
+        req.log.error('Update profile error:', error);
+      }
     res.status(500).json({ error: 'Ошибка обновления профиля' });
   }
 };
@@ -594,7 +597,9 @@ const uploadAvatar = async (req, res) => {
         customAvatarUrl: updated.customAvatarUrl
       });
     } catch (error) {
-      console.error('Upload avatar error:', error);
+        if (req && req.log && typeof req.log.error === 'function') {
+          req.log.error('Upload avatar error:', error);
+        }
       res.status(500).json({ error: 'Ошибка сохранения аватарки' });
     }
   });
