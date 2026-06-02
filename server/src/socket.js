@@ -1,5 +1,6 @@
 const prisma = require('./db/prisma');
 const cookie = require('cookie');
+const { invalidateUserDB } = require('../infrastructure/spotify/cache');
 
 const onlineUsers = new Map();
 const offlineTimers = new Map(); // userId -> Timeout
@@ -38,6 +39,13 @@ async function getFriendIds(userId) {
   } catch (err) {
     return [];
   }
+}
+
+async function isSessionMember(sessionId, userId) {
+  const member = await prisma.sessionMember.findUnique({
+    where: { sessionId_userId: { sessionId, userId } },
+  });
+  return member && member.status === 'accepted';
 }
 
 const setupSocket = (io) => {
@@ -90,37 +98,59 @@ const setupSocket = (io) => {
       }
     });
 
-    socket.on('join_session', ({ sessionId, userId: joinUserId }) => {
+    socket.on('join_session', async ({ sessionId }) => {
+      const uid = socket.data.userId;
+      if (!uid) {
+        socket.emit('error', { message: 'Не авторизован' });
+        return;
+      }
+
+      const member = await prisma.sessionMember.findUnique({
+        where: { sessionId_userId: { sessionId, userId: uid } },
+      });
+      if (!member || member.status !== 'accepted') {
+        socket.emit('error', { message: 'Нет доступа к сессии' });
+        return;
+      }
+
       socket.join(sessionId);
-      socket.data.userId = joinUserId || userId;
       socket.data.sessionId = sessionId;
-      io.to(sessionId).emit('user_joined', { userId: socket.data.userId });
-      console.log(`User ${socket.data.userId} joined session ${sessionId}`);
+      io.to(sessionId).emit('user_joined', { userId: uid });
+      console.log(`User ${uid} joined session ${sessionId}`);
     });
 
-    socket.on('play', ({ sessionId, spotifyUri, position_ms }) => {
+    socket.on('play', async ({ sessionId, spotifyUri, position_ms }) => {
+      if (!await isSessionMember(sessionId, socket.data.userId)) {
+        return socket.emit('error', { message: 'Нет доступа' });
+      }
       socket.to(sessionId).emit('play', { spotifyUri, position_ms });
     });
 
-    socket.on('pause', ({ sessionId }) => {
+    socket.on('pause', async ({ sessionId }) => {
+      if (!await isSessionMember(sessionId, socket.data.userId)) return socket.emit('error', { message: 'Нет доступа' });
       socket.to(sessionId).emit('pause');
     });
 
-    socket.on('next_track', ({ sessionId, spotifyUri }) => {
+    socket.on('next_track', async ({ sessionId, spotifyUri }) => {
+      if (!await isSessionMember(sessionId, socket.data.userId)) return socket.emit('error', { message: 'Нет доступа' });
       socket.to(sessionId).emit('next_track', { spotifyUri });
     });
 
-    socket.on('seek', ({ sessionId, position_ms }) => {
+    socket.on('seek', async ({ sessionId, position_ms }) => {
+      if (!await isSessionMember(sessionId, socket.data.userId)) return socket.emit('error', { message: 'Нет доступа' });
       socket.to(sessionId).emit('seek', { position_ms });
     });
 
-    socket.on('rate_track', async ({ sessionId, trackId, rating, userId: rUserId }) => {
+    socket.on('rate_track', async ({ sessionId, trackId, rating }) => {
+      const uid = socket.data.userId;
+      if (!uid || !await isSessionMember(sessionId, uid)) {
+        return socket.emit('error', { message: 'Нет доступа' });
+      }
       try {
-        const uid = rUserId || socket.data.userId;
         await prisma.trackRating.upsert({
           where: { trackId_userId: { trackId, userId: uid } },
           update: { rating },
-          create: { trackId, userId: uid, rating }
+          create: { trackId, userId: uid, rating },
         });
         io.to(sessionId).emit('track_rated', { trackId, userId: uid, rating });
       } catch (error) {
@@ -128,8 +158,8 @@ const setupSocket = (io) => {
       }
     });
 
-    socket.on('leave_session', ({ sessionId, userId: lUserId }) => {
-      const uid = lUserId || socket.data.userId;
+    socket.on('leave_session', ({ sessionId }) => {
+      const uid = socket.data.userId;
       socket.leave(sessionId);
       io.to(sessionId).emit('user_left', { userId: uid });
     });
@@ -157,6 +187,7 @@ const setupSocket = (io) => {
               if (onlineUsers.has(uid)) return;
 
               await updateOnlineStatus(uid, false);
+              await invalidateUserDB(uid);
 
               const settings = await prisma.user.findUnique({
                 where: { id: uid },

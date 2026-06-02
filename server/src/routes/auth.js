@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { rateLimitMiddleware, ipRateLimitMiddleware } = require('../infrastructure/rateLimiter');
 const {
   login,
   callback,
@@ -15,19 +16,18 @@ const {
   uploadAvatar,
 } = require('../controllers/authController');
 
-router.get('/login', login);
-router.get('/callback', callback);
-router.get('/me', getMe);
-router.get('/logout', logout);
-router.post('/google', googleAuth);
-router.post('/avatar', uploadAvatar);
+router.get('/login',       ipRateLimitMiddleware(10, 60), login);
+router.get('/callback',    ipRateLimitMiddleware(10, 60), callback);
+router.post('/google',     ipRateLimitMiddleware(10, 60), googleAuth);
+router.get('/google-web',  ipRateLimitMiddleware(10, 60), googleWebLogin);
+router.get('/google-callback', ipRateLimitMiddleware(10, 60), googleWebCallback);
+router.get('/check-pending',   ipRateLimitMiddleware(10, 60), checkPendingAuth);
 
-router.get('/google-web', googleWebLogin);
-router.get('/google-callback', googleWebCallback);
-router.get('/check-pending', checkPendingAuth);
-
-router.get('/settings', getSettings);
-router.patch('/settings', updateSettings);
-router.patch('/profile', updateProfile);
+router.get('/me',          rateLimitMiddleware(15, 60), getMe);
+router.get('/logout',      rateLimitMiddleware(10, 60), logout);
+router.post('/avatar',     rateLimitMiddleware(10, 60), uploadAvatar);
+router.get('/settings',    rateLimitMiddleware(15, 60), getSettings);
+router.patch('/settings',  rateLimitMiddleware(10, 60), updateSettings);
+router.patch('/profile',   rateLimitMiddleware(10, 60), updateProfile);
 
 module.exports = router;

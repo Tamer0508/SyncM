@@ -3,10 +3,30 @@ const router = express.Router();
 const axios = require('axios');
 const prisma = require('../db/prisma');
 const { encrypt, decrypt } = require('../utils/crypto');
+const { getOrSet } = require('../infrastructure/spotify/cache');
+const { acquireLock, releaseLock } = require('../infrastructure/redis');
+const { rateLimitMiddleware } = require('../infrastructure/rateLimiter');
 
 const refreshAccessToken = async (spotifyUser) => {
+  const lockKey = `spotify:refresh_lock:${spotifyUser.id}`;
+  // Пытаемся захватить блокировку на 5 секунд
+  const locked = await acquireLock(lockKey, 5);
+  if (!locked) {
+    // Если не удалось захватить блокировку – ждём чуть-чуть и читаем новый токен из БД
+    console.log(` Refresh token already in progress for user ${spotifyUser.id}, waiting...`);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    // Повторно получаем пользователя из БД – возможно, токен уже обновлён другим процессом
+    const freshSpotifyUser = await prisma.spotifyUser.findUnique({
+      where: { id: spotifyUser.id }
+    });
+    if (freshSpotifyUser && freshSpotifyUser.accessToken) {
+      const newToken = decrypt(freshSpotifyUser.accessToken);
+      if (newToken) return newToken;
+    }
+    throw new Error('Could not obtain fresh token');
+  }
+
   try {
-    // Расшифровываем refresh-токен перед использованием
     const decryptedRefreshToken = decrypt(spotifyUser.refreshToken);
     if (!decryptedRefreshToken) {
       throw new Error('Не удалось расшифровать refresh token');
@@ -30,7 +50,6 @@ const refreshAccessToken = async (spotifyUser) => {
 
     const newAccessToken = response.data.access_token;
     
-    // Шифруем новый токен перед сохранением
     await prisma.spotifyUser.update({
       where: { id: spotifyUser.id },
       data: {
@@ -39,10 +58,12 @@ const refreshAccessToken = async (spotifyUser) => {
       },
     });
 
-    return newAccessToken; // Возвращаем уже расшифрованный для использования
+    return newAccessToken;
   } catch (error) {
     console.error('Refresh token error:', error.response?.data || error.message);
     throw error;
+  } finally {
+    await releaseLock(lockKey);
   }
 };
 
@@ -68,144 +89,178 @@ const getSpotifyUser = async (userId) => {
 
 const extractTrack = (item) => item.item || item.track || null;
 
-router.get('/playlists', async (req, res) => {
+router.get('/playlists', rateLimitMiddleware(30, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
+  const cacheKey = `spotify:user-playlists:${userId}`;
+
   try {
-    const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser || !spotifyUser.accessToken) {
-      return res.status(401).json({ error: 'Spotify не подключен' });
-    }
+    const playlists = await getOrSet(cacheKey, null, async () => {
+      const spotifyUser = await getSpotifyUser(userId);
+      if (!spotifyUser || !spotifyUser.accessToken) {
+        throw new Error('Spotify не подключен');
+      }
 
-    let accessToken = getAccessToken(spotifyUser);
-    let response;
+      let accessToken = getAccessToken(spotifyUser);
+      let response;
 
-    try {
-      response = await axios.get('https://api.spotify.com/v1/me/playlists?limit=20', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-    } catch (err) {
-      if (err.response?.status === 401) {
-        accessToken = await refreshAccessToken(spotifyUser);
+      try {
         response = await axios.get('https://api.spotify.com/v1/me/playlists?limit=20', {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-      } else throw err;
-    }
+      } catch (err) {
+        if (err.response?.status === 401) {
+          accessToken = await refreshAccessToken(spotifyUser);
+          response = await axios.get('https://api.spotify.com/v1/me/playlists?limit=20', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+        } else throw err;
+      }
 
-    const playlists = response.data.items.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      imageUrl: p.images?.[0]?.url || null,
-      trackCount: p.tracks?.total ?? 0,
-      owner: p.owner?.display_name,
-      isPublic: p.public,
-    }));
+      return response.data.items.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        imageUrl: p.images?.[0]?.url || null,
+        trackCount: p.tracks?.total ?? 0,
+        owner: p.owner?.display_name,
+        isPublic: p.public,
+      }));
+    });
 
     res.json(playlists);
   } catch (error) {
+    console.error('Error in /playlists:', error.message);
     res.status(500).json({ error: 'Ошибка получения плейлистов' });
   }
 });
 
-router.get('/playlists/:playlistId/tracks', async (req, res) => {
+router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
+  const { playlistId } = req.params;
+  const cacheKey = `spotify:playlist:${playlistId}:items`;
+
   try {
-    const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser) return res.status(401).json({ error: 'Spotify не подключен' });
+    const tracks = await getOrSet(cacheKey, null, async () => {
+      const spotifyUser = await getSpotifyUser(userId);
+      if (!spotifyUser) throw new Error('Spotify не подключен');
 
-    let accessToken = getAccessToken(spotifyUser);
-    let response;
+      let accessToken = getAccessToken(spotifyUser);
+      let response;
 
-    try {
-      response = await axios.get(
-        `https://api.spotify.com/v1/playlists/${req.params.playlistId}/items?limit=50&market=from_token`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-    } catch (err) {
-      if (err.response?.status === 401) {
-        accessToken = await refreshAccessToken(spotifyUser);
+      try {
         response = await axios.get(
-          `https://api.spotify.com/v1/playlists/${req.params.playlistId}/items?limit=50&market=from_token`,
+          `https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50&market=from_token`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
         );
-      } else throw err;
-    }
+      } catch (err) {
+        if (err.response?.status === 401) {
+          accessToken = await refreshAccessToken(spotifyUser);
+          response = await axios.get(
+            `https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50&market=from_token`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+        } else throw err;
+      }
 
-    const tracks = response.data.items
-      .map((item) => extractTrack(item))
-      .filter((track) => track !== null)
-      .map((track) => ({
-        id: track.id,
-        name: track.name,
-        artist: track.artists?.map((a) => a.name).join(', ') ?? '',
-        imageUrl: track.album?.images?.[0]?.url || null,
-        uri: track.uri,
-        durationMs: track.duration_ms,
-        album: track.album?.name ?? '',
-      }));
+      return response.data.items
+        .map((item) => extractTrack(item))
+        .filter((track) => track !== null)
+        .map((track) => ({
+          id: track.id,
+          name: track.name,
+          artist: track.artists?.map((a) => a.name).join(', ') ?? '',
+          imageUrl: track.album?.images?.[0]?.url || null,
+          uri: track.uri,
+          durationMs: track.duration_ms,
+          album: track.album?.name ?? '',
+        }));
+    });
 
     res.json(tracks);
   } catch (error) {
+    console.error('Error fetching tracks:', error.message);
     res.status(500).json({ error: 'Ошибка получения треков' });
   }
 });
 
-router.get('/status', async (req, res) => {
+router.get('/status', rateLimitMiddleware(30, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
+  const cacheKey = `spotify:status:${userId}`;
+
   try {
-    const spotifyUser = await getSpotifyUser(userId);
-    res.json({
-      connected: !!spotifyUser,
-      spotifyId: spotifyUser?.spotifyId || null,
-      displayName: spotifyUser?.displayName || null,
-      avatarUrl: spotifyUser?.avatarUrl || null,
+    const status = await getOrSet(cacheKey, 300, async () => {
+      const spotifyUser = await getSpotifyUser(userId);
+      return {
+        connected: !!spotifyUser,
+        spotifyId: spotifyUser?.spotifyId || null,
+        displayName: spotifyUser?.displayName || null,
+        avatarUrl: spotifyUser?.avatarUrl || null,
+      };
     });
+    res.json(status);
   } catch (error) {
     res.status(500).json({ error: 'Ошибка проверки статуса' });
   }
 });
 
-router.get('/devices', async (req, res) => {
+router.get('/devices', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const cacheKey = `spotify:devices:${userId}`;
+
   try {
-    const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
-    const accessToken = getAccessToken(spotifyUser);
-    const response = await axios.get('https://api.spotify.com/v1/me/player/devices', {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const devices = await getOrSet(cacheKey, null, async () => {
+      const spotifyUser = await getSpotifyUser(userId);
+      if (!spotifyUser?.accessToken) throw new Error('Нет токена');
+
+      const accessToken = getAccessToken(spotifyUser);
+      const response = await axios.get('https://api.spotify.com/v1/me/player/devices', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      return response.data.devices;
     });
-    res.json(response.data.devices);
+
+    res.json(devices);
   } catch (e) {
+    console.error('Devices error:', e.message);
     res.status(500).json({ error: 'Ошибка получения устройств' });
   }
 });
 
-router.get('/player', async (req, res) => {
+router.get('/player', rateLimitMiddleware(30, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const cacheKey = `spotify:player:${userId}`;
+
   try {
-    const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
-    const accessToken = getAccessToken(spotifyUser);
-    const response = await axios.get('https://api.spotify.com/v1/me/player', {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const playerState = await getOrSet(cacheKey, 10, async () => {
+      const spotifyUser = await getSpotifyUser(userId);
+      if (!spotifyUser?.accessToken) throw new Error('Нет токена');
+
+      const accessToken = getAccessToken(spotifyUser);
+      const response = await axios.get('https://api.spotify.com/v1/me/player', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (response.status === 204) return null;
+      return response.data;
     });
-    if (response.status === 204) return res.json(null);
-    res.json(response.data);
+
+    res.json(playerState);
   } catch (e) {
+    console.error('Player state error:', e.message);
     res.status(500).json({ error: 'Ошибка получения плеера' });
   }
 });
 
-router.post('/play', async (req, res) => {
+router.post('/play', rateLimitMiddleware(15, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
@@ -221,7 +276,6 @@ router.post('/play', async (req, res) => {
       ? `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`
       : 'https://api.spotify.com/v1/me/player/play';
 
-    // Формируем тело запроса
     let body;
     if (contextUri) {
       body = { context_uri: contextUri };
@@ -243,6 +297,8 @@ router.post('/play', async (req, res) => {
       } else throw err;
     }
 
+    await invalidateUserCache(userId, [`spotify:player:${userId}`, `spotify:devices:${userId}`]);
+
     res.json({ success: true });
   } catch (error) {
     console.error('Play error:', error.response?.data || error.message);
@@ -250,7 +306,7 @@ router.post('/play', async (req, res) => {
   }
 });
 
-router.post('/disconnect', async (req, res) => {
+router.post('/disconnect', rateLimitMiddleware(10, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
@@ -263,31 +319,42 @@ router.post('/disconnect', async (req, res) => {
       data: { userId: null },
     });
 
+    await invalidateUserCache(userId, [
+      `spotify:status:${userId}`,
+      `spotify:token-info:${userId}`,
+      `spotify:user-playlists:${userId}`,
+    ]);
+
     res.json({ message: 'Spotify успешно отключен' });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка отключения Spotify' });
   }
 });
 
-router.get('/token-info', async (req, res) => {
+router.get('/token-info', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  try {
-    const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser) return res.status(401).json({ error: 'Spotify не подключен' });
+  const cacheKey = `spotify:token-info:${userId}`;
 
-    const accessToken = getAccessToken(spotifyUser);
-    const response = await axios.get('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${accessToken}` },
+  try {
+    const info = await getOrSet(cacheKey, 600, async () => {
+      const spotifyUser = await getSpotifyUser(userId);
+      if (!spotifyUser) throw new Error('Spotify не подключен');
+
+      const accessToken = getAccessToken(spotifyUser);
+      const response = await axios.get('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      return { spotifyUser: response.data, tokenPreview: accessToken.substring(0, 10) + '...' };
     });
-    res.json({ spotifyUser: response.data, tokenPreview: accessToken.substring(0, 10) + '...' });
+    res.json(info);
   } catch (error) {
     res.json({ error: error.message });
   }
 });
 
-router.post('/next', async (req, res) => {
+router.post('/next', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   console.log('Skip next, userId:', userId);
   const spotifyUser = await getSpotifyUser(userId);
@@ -299,6 +366,8 @@ router.post('/next', async (req, res) => {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     console.log('Skip next result:', result.status);
+    await invalidateUserCache(userId, [`spotify:player:${userId}`, `spotify:devices:${userId}`]);
+
     res.json({ success: true });
   } catch (e) {
     console.error('Skip next error:', e.response?.data || e.message);
@@ -306,7 +375,7 @@ router.post('/next', async (req, res) => {
   }
 });
 
-router.post('/previous', async (req, res) => {
+router.post('/previous', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   const spotifyUser = await getSpotifyUser(userId);
   if (!spotifyUser?.accessToken) return res.status(401).json({ error: 'Нет токена' });
@@ -314,11 +383,12 @@ router.post('/previous', async (req, res) => {
     await axios.post('https://api.spotify.com/v1/me/player/previous', {}, {
       headers: { Authorization: `Bearer ${getAccessToken(spotifyUser)}` },
     });
+    await invalidateUserCache(userId, [`spotify:player:${userId}`, `spotify:devices:${userId}`]);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-router.put('/seek', async (req, res) => {
+router.put('/seek', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   const { position_ms } = req.query;
   const spotifyUser = await getSpotifyUser(userId);
@@ -327,11 +397,12 @@ router.put('/seek', async (req, res) => {
     await axios.put(`https://api.spotify.com/v1/me/player/seek?position_ms=${position_ms}`, {}, {
       headers: { Authorization: `Bearer ${getAccessToken(spotifyUser)}` },
     });
+    await invalidateUserCache(userId, [`spotify:player:${userId}`, `spotify:devices:${userId}`]);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-router.put('/pause', async (req, res) => {
+router.put('/pause', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
   try {
@@ -341,13 +412,14 @@ router.put('/pause', async (req, res) => {
     await axios.put('https://api.spotify.com/v1/me/player/pause', {}, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    await invalidateUserCache(userId, [`spotify:player:${userId}`, `spotify:devices:${userId}`]);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: 'Ошибка паузы' });
   }
 });
 
-router.put('/resume', async (req, res) => {
+router.put('/resume', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
   try {
@@ -357,6 +429,7 @@ router.put('/resume', async (req, res) => {
     await axios.put('https://api.spotify.com/v1/me/player/play', {}, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    await invalidateUserCache(userId, [`spotify:player:${userId}`, `spotify:devices:${userId}`]);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: 'Ошибка возобновления' });

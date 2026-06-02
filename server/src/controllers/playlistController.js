@@ -1,4 +1,5 @@
 const prisma = require('../db/prisma');
+const { getOrSet, invalidateUserDB } = require('../infrastructure/spotify/cache');
 
 const getUserId = (req) => {
   if (req.session?.userId) return req.session.userId;
@@ -15,6 +16,8 @@ exports.createCustomPlaylist = async (req, res) => {
     const { name, description, imageUrl } = req.body;
     if (!name || name.trim().length === 0)
       return res.status(400).json({ error: 'Название обязательно' });
+    if (name.trim().length > 100)
+      return res.status(400).json({ error: 'Название не должно превышать 100 символов' });
 
     const playlist = await prisma.playlist.create({
       data: {
@@ -25,6 +28,7 @@ exports.createCustomPlaylist = async (req, res) => {
         isCustom: true,
       },
     });
+    await invalidateUserDB(userId);
 
     res.status(201).json(playlist);
   } catch (error) {
@@ -38,9 +42,12 @@ exports.getUserPlaylists = async (req, res) => {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-    const playlists = await prisma.playlist.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
+    const cacheKey = `db:user-playlists-db:${userId}`;
+    const playlists = await getOrSet(cacheKey, null, async () => {
+      return await prisma.playlist.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+      });
     });
     res.status(200).json(playlists);
   } catch (error) {
@@ -63,11 +70,13 @@ exports.toggleLike = async (req, res) => {
 
     if (existing) {
       await prisma.likedTrack.delete({ where: { id: existing.id } });
+      await invalidateUserDB(userId);
       return res.json({ liked: false });
     } else {
       await prisma.likedTrack.create({
         data: { userId, spotifyUri, trackName, artistName },
       });
+      await invalidateUserDB(userId);
       return res.json({ liked: true });
     }
   } catch (error) {
@@ -81,9 +90,12 @@ exports.getLikedTracks = async (req, res) => {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-    const tracks = await prisma.likedTrack.findMany({
-      where: { userId },
-      orderBy: { likedAt: 'desc' },
+    const cacheKey = `db:liked-tracks:${userId}`;
+    const tracks = await getOrSet(cacheKey, null, async () => {
+      return await prisma.likedTrack.findMany({
+        where: { userId },
+        orderBy: { likedAt: 'desc' },
+      });
     });
     res.json(tracks);
   } catch (error) {
@@ -100,19 +112,29 @@ exports.importPlaylist = async (req, res) => {
     const { spotifyPlaylistId, name, description, imageUrl } = req.body;
     if (!spotifyPlaylistId) return res.status(400).json({ error: 'spotifyPlaylistId обязателен' });
 
-    const playlist = await prisma.playlist.upsert({
-      where: { spotifyId: spotifyPlaylistId },
-      update: { name, description, imageUrl },
-      create: {
-        userId,
-        spotifyId: spotifyPlaylistId,
-        name,
-        description,
-        imageUrl,
-        isCustom: false,
-      },
+    let playlist = await prisma.playlist.findFirst({
+      where: { userId, spotifyId: spotifyPlaylistId }
     });
 
+    if (playlist) {
+      playlist = await prisma.playlist.update({
+        where: { id: playlist.id },
+        data: { name, description, imageUrl }
+      });
+    } else {
+      playlist = await prisma.playlist.create({
+        data: {
+          userId,
+          spotifyId: spotifyPlaylistId,
+          name,
+          description,
+          imageUrl,
+          isCustom: false,
+        },
+      });
+    }
+
+    await invalidateUserDB(userId);
     res.status(200).json(playlist);
   } catch (error) {
     console.error('Import playlist error:', error);
@@ -128,10 +150,13 @@ exports.deletePlaylist = async (req, res) => {
     const { playlistId } = req.params;
     const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } });
     if (!playlist) return res.status(404).json({ error: 'Плейлист не найден' });
-    if (playlist.userId !== userId || !playlist.isCustom)
+    if (playlist.userId !== userId)
       return res.status(403).json({ error: 'Нет доступа' });
+    if (!playlist.isCustom)
+      return res.status(400).json({ error: 'Нельзя удалить импортированный плейлист' });
 
     await prisma.playlist.delete({ where: { id: playlistId } });
+    await invalidateUserDB(userId);
     res.json({ message: 'Плейлист удалён' });
   } catch (error) {
     console.error('Delete playlist error:', error);
@@ -161,6 +186,7 @@ exports.addTrackToPlaylist = async (req, res) => {
         durationMs: durationMs || null,
       },
     });
+    await invalidateUserDB(userId);
     res.status(201).json(track);
   } catch (error) {
     if (error.code === 'P2002') {
@@ -184,6 +210,7 @@ exports.removeTrackFromPlaylist = async (req, res) => {
     await prisma.playlistTrack.deleteMany({
       where: { playlistId, spotifyUri: trackUri },
     });
+    await invalidateUserDB(userId);
     res.json({ message: 'Трек удалён' });
   } catch (error) {
     console.error('Remove track error:', error);
@@ -199,15 +226,21 @@ exports.getPlaylistTracks = async (req, res) => {
     const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } });
     if (!playlist) return res.status(404).json({ error: 'Плейлист не найден' });
 
-    if (playlist.isCustom || playlist.userId === userId) {
-      const tracks = await prisma.playlistTrack.findMany({
+    if (playlist.userId !== userId) {
+      if (playlist.isCustom) {
+        return res.status(403).json({ error: 'Нет доступа' });
+      }
+      return res.status(403).json({ error: 'Нет доступа' });
+    }
+
+    const cacheKey = `db:playlist-tracks-db:${playlistId}`;
+    const tracks = await getOrSet(cacheKey, null, async () => {
+      return await prisma.playlistTrack.findMany({
         where: { playlistId },
         orderBy: { addedAt: 'asc' },
       });
-      return res.json(tracks);
-    }
-
-    return res.json([]);
+    });
+    res.json(tracks);
   } catch (error) {
     console.error('Get playlist tracks error:', error);
     res.status(500).json({ error: 'Ошибка получения треков' });

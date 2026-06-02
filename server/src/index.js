@@ -1,4 +1,7 @@
 require('dotenv').config();
+require('./infrastructure/redis'); 
+
+const { rateLimitMiddleware } = require('./infrastructure/rateLimiter');
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
@@ -65,6 +68,8 @@ app.use(session({
   }
 }));
 
+app.use(rateLimitMiddleware(100, 60));
+
 app.use('/auth', authRoutes);
 app.use('/friends', friendsRoutes);
 app.use('/sessions', sessionRoutes);
@@ -85,6 +90,22 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error.message);
 });
+
+async function shutdown() {
+  console.log('Shutting down gracefully...');
+  const redisModule = require('./infrastructure/redis');
+  if (redisModule.redisClient) {
+    await redisModule.redisClient.quit().catch(() => {});
+    console.log('Redis disconnected');
+  }
+  httpServer.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
