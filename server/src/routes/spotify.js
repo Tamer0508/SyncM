@@ -457,4 +457,93 @@ router.put('/resume', rateLimitMiddleware(20, 60), async (req, res) => {
   }
 });
 
+router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const { state } = req.query; // ожидаем 'true' или 'false'
+  if (state !== 'true' && state !== 'false') {
+    return res.status(400).json({ error: 'Параметр state должен быть true или false' });
+  }
+
+  // Отвечаем мгновенно
+  res.json({ success: true });
+
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser?.accessToken) return;
+
+    let accessToken = getAccessToken(spotifyUser);
+    const url = `https://api.spotify.com/v1/me/player/shuffle?state=${state}`;
+
+    try {
+      await axios.put(url, {}, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    } catch (err) {
+      if (err.response?.status === 401) {
+        accessToken = await refreshAccessToken(spotifyUser);
+        await axios.put(url, {}, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } else {
+        throw err;
+      }
+    }
+
+    // Очистка кэша плеера
+    await Promise.all([
+      redis.del(`spotify:player:${userId}`),
+      redis.del(`spotify:devices:${userId}`),
+    ]);
+  } catch (error) {
+    console.error('Shuffle error:', error.response?.data || error.message);
+  }
+});
+
+router.put('/repeat', rateLimitMiddleware(10, 60), async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const { state } = req.query; // ожидаем 'off', 'context' или 'track'
+  const validStates = ['off', 'context', 'track'];
+  if (!validStates.includes(state)) {
+    return res.status(400).json({ error: 'Параметр state должен быть off, context или track' });
+  }
+
+  // Отвечаем мгновенно
+  res.json({ success: true });
+
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser?.accessToken) return;
+
+    let accessToken = getAccessToken(spotifyUser);
+    const url = `https://api.spotify.com/v1/me/player/repeat?state=${state}`;
+
+    try {
+      await axios.put(url, {}, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    } catch (err) {
+      if (err.response?.status === 401) {
+        accessToken = await refreshAccessToken(spotifyUser);
+        await axios.put(url, {}, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } else {
+        throw err;
+      }
+    }
+
+    // Очистка кэша плеера
+    await Promise.all([
+      redis.del(`spotify:player:${userId}`),
+      redis.del(`spotify:devices:${userId}`),
+    ]);
+  } catch (error) {
+    console.error('Repeat error:', error.response?.data || error.message);
+  }
+});
+
 module.exports = router;

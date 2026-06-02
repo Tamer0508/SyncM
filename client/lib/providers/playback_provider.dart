@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:palette_generator/palette_generator.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:spotify_sdk/models/player_state.dart';
 import 'package:spotify_sdk/models/image_uri.dart';
@@ -12,6 +13,7 @@ class PlaybackProvider extends ChangeNotifier {
   ApiService? _apiService;
   ApiService? get apiService => _apiService;
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
+  bool get _isWeb => kIsWeb;
 
   Map<String, dynamic>? _currentTrack;
   bool _isPlaying = false;
@@ -21,10 +23,14 @@ class PlaybackProvider extends ChangeNotifier {
   Uint8List? _currentImageBytes;
   String? _lastImageUri;
   Timer? _pollingTimer;
+  Timer? _trackChangeTimer;
 
   IO.Socket? _socket;
   String? _currentSessionId;
   String? _userId;
+
+  bool _shuffleActive = false;
+  String _repeatMode = 'off';
 
   Map<String, dynamic>? get currentTrack => _currentTrack;
   bool get isPlaying => _isPlaying;
@@ -32,6 +38,13 @@ class PlaybackProvider extends ChangeNotifier {
   int get durationMs => _durationMs;
   int get positionMs => _positionMs;
   Uint8List? get currentImageBytes => _currentImageBytes;
+
+  bool get shuffleActive => _shuffleActive;
+  String get repeatMode => _repeatMode;
+  bool get repeatActive => _repeatMode != 'off';
+
+  final Map<String, PaletteGenerator> _paletteCache = {};
+  Map<String, PaletteGenerator> get paletteCache => _paletteCache;
 
   static const _clientId = '809ce8e069a64cb5970c20e356024786';
   static const _redirectUrl = 'syncm://callback';
@@ -42,22 +55,20 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   void _startPolling() {
-
-    if (kIsWeb || !_isWindows || _apiService == null) return;
+    if (_apiService == null) return;
 
     _pollingTimer?.cancel();
-    _pollingTimer =
-        Timer.periodic(const Duration(milliseconds: 500), (_) async {
-      if (!_isWindows || !_isPlaying) return;
+    int tickCount = 0;
+    _pollingTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      if (!_isPlaying) return;
 
-      // Локально увеличиваем позицию каждые 500мс
       if (_isPlaying && _durationMs > 0) {
         _positionMs = (_positionMs + 500).clamp(0, _durationMs);
         notifyListeners();
       }
 
-      // Раз в 3 секунды синхронизируемся с сервером
-      if (DateTime.now().second % 3 == 0) {
+      tickCount++;
+      if (tickCount % 6 == 0) {
         try {
           final state = await _apiService?.getPlayerState();
           if (state == null) return;
@@ -211,27 +222,32 @@ class PlaybackProvider extends ChangeNotifier {
     }
 
     try {
-      if (_isWindows) {
-  try {
-    final contextUri = playlistId != null
-        ? (playlistId.startsWith('spotify:') ? playlistId : 'spotify:playlist:$playlistId')
-        : null;
-    
-    bool played = await _apiService?.playTrack(
-      uri,
-      contextUri: contextUri,
-      offset: track['index'] as int?,
-    ) ?? false;
+      if (_isWindows || _isWeb) {
+        try {
+          final contextUri = playlistId != null
+              ? (playlistId.startsWith('spotify:') ? playlistId : 'spotify:playlist:$playlistId')
+              : null;
 
-    _currentTrack = track;
-    _isPlaying = true;
-    notifyListeners();
-    _startPolling();
-  } catch (e) {
-    print('[Windows] Play error: $e');
-  }
-  return;
-}
+          await _apiService?.playTrack(
+            uri,
+            contextUri: contextUri,
+            offset: track['index'] as int?,
+          );
+
+          _currentTrack = track;
+          _isPlaying = true;
+
+          if (track['imageUrl'] != null && !_paletteCache.containsKey(track['imageUrl'])) {
+            _preloadPalette(track['imageUrl']);
+          }
+
+          notifyListeners();
+          _startPolling();
+        } catch (e) {
+          print('[Web/Windows] Play error: $e');
+        }
+        return;
+      }
 
       if (playlistId != null) {
         final contextUri = playlistId.startsWith('spotify:')
@@ -282,7 +298,7 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> togglePlay() async {
-    if (_isWindows) {
+    if (_isWindows || _isWeb) {
       try {
         if (_isPlaying) {
           await _apiService?.pausePlayback();
@@ -293,7 +309,7 @@ class PlaybackProvider extends ChangeNotifier {
         }
         notifyListeners();
       } catch (e) {
-        print('[Windows] Toggle error: $e');
+        print('[Web/Windows] Toggle error: $e');
       }
       return;
     }
@@ -319,88 +335,118 @@ class PlaybackProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> skipNext() async {
-  if (_isWindows) {
-    try {
-      await _apiService?.skipToNext();
-      final oldUri = _currentTrack?['uri'];
-      for (int i = 0; i < 5; i++) {
-        await Future.delayed(const Duration(milliseconds: 600));
-        final state = await _apiService?.getPlayerState();
-        if (state == null) continue;
-        final track = state['item'];
-        final newUri = track?['uri'];
-        if (newUri != null && newUri != oldUri) {
-          _isPlaying = state['is_playing'] ?? true;
-          _positionMs = state['progress_ms'] ?? 0;
-          _durationMs = track?['duration_ms'] ?? 0;
-          _currentTrack = {
-            'title': track['name'],
-            'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
-            'imageUrl': track['album']?['images']?[0]?['url'],
-            'uri': newUri,
-          };
-          notifyListeners();
-          break;
-        }
-      }
-    } catch (e) {
-      print('[Windows] Skip next error: $e');
-    }
-    return;
-  }
-  try {
-    await SpotifySdk.skipNext();
-  } catch (e) {
-    print('[Spotify] Skip next error: $e');
-  }
-}
+  void _updateFromPlayerState(dynamic state) {
+    if (state == null) return;
+    _isPlaying = state['is_playing'] ?? false;
+    _positionMs = state['progress_ms'] ?? 0;
+    _durationMs = state['item']?['duration_ms'] ?? 0;
+    final track = state['item'];
+    if (track != null) {
+      final newImageUrl = track['album']?['images']?[0]?['url'];
+      _currentTrack = {
+        'title': track['name'],
+        'artist':
+            (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
+        'imageUrl': newImageUrl,
+        'uri': track['uri'],
+      };
+      _currentImageBytes = null;
 
-Future<void> skipPrevious() async {
-  if (_isWindows) {
-    try {
-      await _apiService?.skipToPrevious();
-      final oldUri = _currentTrack?['uri'];
-      for (int i = 0; i < 5; i++) {
-        await Future.delayed(const Duration(milliseconds: 600));
+      if (newImageUrl != null && !_paletteCache.containsKey(newImageUrl)) {
+        _preloadPalette(newImageUrl);
+      }
+    }
+    notifyListeners();
+  }
+
+  void _pollForTrackChange() {
+    final oldUri = _currentTrack?['uri'];
+    _trackChangeTimer?.cancel();
+    int attempts = 0;
+    _trackChangeTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
+      attempts++;
+      if (attempts > 10) {
+        timer.cancel();
+        return;
+      }
+      try {
         final state = await _apiService?.getPlayerState();
-        if (state == null) continue;
+        if (state == null) return;
         final track = state['item'];
         final newUri = track?['uri'];
         if (newUri != null && newUri != oldUri) {
-          _isPlaying = state['is_playing'] ?? true;
-          _positionMs = state['progress_ms'] ?? 0;
-          _durationMs = track?['duration_ms'] ?? 0;
-          _currentTrack = {
-            'title': track['name'],
-            'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
-            'imageUrl': track['album']?['images']?[0]?['url'],
-            'uri': newUri,
-          };
-          notifyListeners();
-          break;
+          timer.cancel();
+          _updateFromPlayerState(state);
         }
+      } catch (e) {
+        print('[Poll] error: $e');
       }
+    });
+  }
+
+  Future<void> _preloadPalette(String imageUrl) async {
+    try {
+      final palette = await PaletteGenerator.fromImageProvider(
+        NetworkImage(imageUrl),
+        size: const Size(200, 200),
+        maximumColorCount: 16,
+      );
+      _paletteCache[imageUrl] = palette;
+      notifyListeners();
     } catch (e) {
-      print('[Windows] Skip previous error: $e');
+      print('Preload palette error: $e');
     }
-    return;
   }
-  try {
-    await SpotifySdk.skipPrevious();
-  } catch (e) {
-    print('[Spotify] Skip previous error: $e');
+
+  Future<void> skipNext() async {
+    _positionMs = 0;
+    notifyListeners();
+
+    if (_isWindows || _isWeb) {
+      try {
+        await _apiService?.skipToNext();
+        _pollForTrackChange();
+      } catch (e) {
+        print('[Web/Windows] Skip next error: $e');
+      }
+      return;
+    }
+
+    try {
+      await SpotifySdk.skipNext();
+    } catch (e) {
+      print('[Spotify] Skip next error: $e');
+    }
   }
-}
+
+  Future<void> skipPrevious() async {
+    _positionMs = 0;
+    notifyListeners();
+
+    if (_isWindows || _isWeb) {
+      try {
+        await _apiService?.skipToPrevious();
+        _pollForTrackChange();
+      } catch (e) {
+        print('[Web/Windows] Skip previous error: $e');
+      }
+      return;
+    }
+    try {
+      await SpotifySdk.skipPrevious();
+    } catch (e) {
+      print('[Spotify] Skip previous error: $e');
+    }
+  }
 
   Future<void> seekTo(int ms) async {
-    if (_isWindows) {
+    if (_isWindows || _isWeb) {
       try {
         await _apiService?.seekToPosition(ms);
         _positionMs = ms;
         notifyListeners();
       } catch (e) {
-        print('[Windows] Seek error: $e');
+        print('[Web/Windows] Seek error: $e');
       }
       return;
     }
@@ -416,6 +462,7 @@ Future<void> skipPrevious() async {
 
   void stop() {
     _pollingTimer?.cancel();
+    _trackChangeTimer?.cancel();
     if (_currentSessionId != null && _userId != null) {
       _socket?.emit('leave_session', {'sessionId': _currentSessionId, 'userId': _userId});
     }
@@ -428,9 +475,65 @@ Future<void> skipPrevious() async {
     notifyListeners();
   }
 
+  Future<void> setShuffle(bool enabled) async {
+    try {
+      // Веб / Windows – используем API
+      if (_isWindows || _isWeb) {
+        await _apiService?.setShuffle(enabled);
+        _shuffleActive = enabled;
+        notifyListeners();
+        return;
+      }
+      // Мобильные – Spotify SDK
+      if (!_isConnected) await connect();
+      await SpotifySdk.setShuffle(shuffle: enabled);
+      _shuffleActive = enabled;
+      notifyListeners();
+    } catch (e) {
+      print('[Spotify] setShuffle error: $e');
+    }
+  }
+
+  Future<void> cycleRepeatMode() async {
+    String newMode;
+    switch (_repeatMode) {
+      case 'off':
+        newMode = 'context';
+        break;
+      case 'context':
+        newMode = 'track';
+        break;
+      default:
+        newMode = 'off';
+    }
+
+    try {
+      // Веб / Windows – API
+      if (_isWindows || _isWeb) {
+        await _apiService?.setRepeatMode(newMode);
+        _repeatMode = newMode;
+        notifyListeners();
+        return;
+      }
+      // Мобильные – SDK
+      if (!_isConnected) await connect();
+      final sdkMode = newMode == 'off'
+          ? RepeatMode.off
+          : newMode == 'context'
+              ? RepeatMode.context
+              : RepeatMode.track;
+      await SpotifySdk.setRepeatMode(repeatMode: sdkMode);
+      _repeatMode = newMode;
+      notifyListeners();
+    } catch (e) {
+      print('[Spotify] cycleRepeatMode error: $e');
+    }
+  }
+
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _trackChangeTimer?.cancel();
     _socket?.disconnect();
     super.dispose();
   }

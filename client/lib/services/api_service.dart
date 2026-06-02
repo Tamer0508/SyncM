@@ -408,6 +408,39 @@ Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) asy
   return null;
 }
 
+Future<bool> setShuffle(bool state) async {
+    final uri = Uri.parse('$baseUrl/spotify/player/shuffle?state=$state');
+    try {
+      final response = await http.put(uri, headers: _headers);
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return true;
+      } else {
+        print('[ApiService] setShuffle failed: ${response.statusCode} ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('[ApiService] setShuffle error: $e');
+      return false;
+    }
+  }
+
+  /// Устанавливает режим повтора (off, context, track)
+  Future<bool> setRepeatMode(String mode) async {
+    final uri = Uri.parse('$baseUrl/spotify/player/repeat?state=$mode');
+    try {
+      final response = await http.put(uri, headers: _headers);
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return true;
+      } else {
+        print('[ApiService] setRepeatMode failed: ${response.statusCode} ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('[ApiService] setRepeatMode error: $e');
+      return false;
+    }
+  }
+
 // Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) async {
 //   final res = await http.post(
 //     _uri('/sessions/$sessionId/respond'),
@@ -426,4 +459,5 @@ Future<Map<String, dynamic>?> getPlayerState() async {
   void setCookie(String cookie) {
     _cookie = cookie;
   }
+
 }
