@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class SocketService {
@@ -8,6 +9,10 @@ class SocketService {
   IO.Socket? _socket;
   String? _token;
   String? _baseUrl;
+
+  final StreamController<Map<String, dynamic>> _friendRequestController = StreamController.broadcast();
+
+  Stream<Map<String, dynamic>> get onFriendRequest => _friendRequestController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -25,6 +30,15 @@ class SocketService {
 
     _socket!.onConnect((_) {
       _socket!.emit('authenticate', {'token': token});
+    });
+
+    _socket!.on('friend_request', (data) {
+      try {
+        final parsed = Map<String, dynamic>.from(data as Map);
+        _friendRequestController.add(parsed);
+      } catch (_) {
+        // ignore malformed payloads
+      }
     });
 
     _socket!.onDisconnect((_) {});

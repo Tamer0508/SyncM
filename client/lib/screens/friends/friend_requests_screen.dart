@@ -17,6 +17,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final prov = Provider.of<FriendsProvider>(context, listen: false);
+      prov.markAsRead();
       prov.fetchIncomingRequests(refresh: true);
     });
   }

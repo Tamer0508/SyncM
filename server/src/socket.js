@@ -56,12 +56,11 @@ const setupSocket = (io) => {
 
     let userId = null;
 
-    socket.on('authenticate', async (data) => {
-      const token = data.token;
-      if (!token) return;
-      userId = token;
+    const connectUser = async (incomingUserId) => {
+      if (!incomingUserId) return;
+      userId = incomingUserId;
       socket.data.userId = userId;
-      socket.join(userId);
+      socket.join(`user:${userId}`);
 
       // Отменяем "выход в оффлайн" если был запланирован
       if (offlineTimers.has(userId)) {
@@ -97,6 +96,20 @@ const setupSocket = (io) => {
           });
         }
       }
+    };
+
+    if (socket.handshake?.query?.userId) {
+      const handshakeUserId = socket.handshake.query.userId;
+      if (typeof handshakeUserId === 'string' && handshakeUserId.trim()) {
+        await connectUser(handshakeUserId.trim());
+      }
+    }
+
+    socket.on('authenticate', async (data) => {
+      if (!data) return;
+      const token = data.token || data.userId || data;
+      if (!token) return;
+      await connectUser(token);
     });
 
     socket.on('join_session', async ({ sessionId }) => {
@@ -169,6 +182,10 @@ const setupSocket = (io) => {
       logger.info({ socketId: socket.id }, 'User disconnected');
       const uid = socket.data.userId;
       const sid = socket.data.sessionId;
+
+      if (uid) {
+        socket.leave(`user:${uid}`);
+      }
 
       if (sid && uid) {
         io.to(sid).emit('user_left', { userId: uid });

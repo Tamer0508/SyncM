@@ -719,9 +719,45 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) {
         final isDesktop = constraints.maxWidth >= 900;
         if (!isDesktop && _currentIndex > 2) _currentIndex = 0;
+        final unreadCount = Provider.of<FriendsProvider>(context).unreadCount;
         final tabsMobile = [_buildHomeTab(), FriendsScreen(embedded: true), ProfileScreen(embedded: true)];
         final tabsDesktop = [_buildHomeTab(), FriendsScreen(embedded: true), ProfileScreen(embedded: true), const SettingsScreen()];
         final miniPlayerWidget = const Padding(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: MiniPlayer());
+        final navItems = [
+          const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Главная'),
+          BottomNavigationBarItem(
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.people),
+                if (unreadCount > 0)
+                  Positioned(
+                    top: -5,
+                    right: -10,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.yellow[700],
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      child: Text(
+                        '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            label: 'Друзья',
+          ),
+          const BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
+        ];
         final mobileBottomNav = !isDesktop
             ? SafeArea(
                 top: false,
@@ -733,19 +769,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         ? CupertinoTabBar(
                             currentIndex: _currentIndex, onTap: (i) => setState(() => _currentIndex = i),
                             activeColor: Theme.of(context).colorScheme.primary,
-                            items: const [
-                              BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Главная'),
-                              BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Друзья'),
-                              BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
-                            ],
+                            items: navItems,
                           )
                         : BottomNavigationBar(
                             currentIndex: _currentIndex, onTap: (i) => setState(() => _currentIndex = i),
-                            items: const [
-                              BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Главная'),
-                              BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Друзья'),
-                              BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
-                            ],
+                            items: navItems,
                           ),
                   ],
                 ),

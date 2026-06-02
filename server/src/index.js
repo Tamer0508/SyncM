@@ -21,6 +21,7 @@ const spotifyRoutes = require('./routes/spotify');
 const playlistRoutes = require('./routes/playlists');
 const healthRoutes = require('./routes/health');
 const setupSocket = require('./socket');
+require('./infrastructure/queue');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

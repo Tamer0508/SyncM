@@ -1,5 +1,6 @@
 const prisma = require('../db/prisma');
 const { getOrSet, invalidateUserDB } = require('../infrastructure/spotify/cache');
+const { addNotificationJob } = require('../infrastructure/queue');
 const { withLock } = require('../infrastructure/lock');
 
 const getUserId = (req) => {
@@ -101,6 +102,7 @@ const sendRequest = async (req, res) => {
       const friendship = await prisma.friendship.create({
         data: { senderId, receiverId },
         include: {
+          sender: { select: { id: true, username: true } },
           receiver: {
             select: {
               id: true,
@@ -114,6 +116,15 @@ const sendRequest = async (req, res) => {
 
       await invalidateUserDB(senderId);
       await invalidateUserDB(receiverId);
+
+      await addNotificationJob({
+        type: 'friend_request',
+        toUserId: receiverId,
+        fromUserId: senderId,
+        fromUserName: friendship.sender.username,
+        requestId: friendship.id,
+        timestamp: Date.now(),
+      });
 
       res.status(201).json({
         id: friendship.id,
@@ -176,6 +187,15 @@ const acceptRequest = async (req, res) => {
 
       await invalidateUserDB(friendship.senderId);
       await invalidateUserDB(friendship.receiverId);
+
+      await addNotificationJob({
+        type: 'friend_request_accepted',
+        toUserId: friendship.senderId,
+        fromUserId: userId,
+        fromUserName: updated.sender.username,
+        friendshipId: updated.id,
+        timestamp: Date.now(),
+      });
 
       res.json({
         id: updated.id,

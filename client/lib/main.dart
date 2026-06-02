@@ -10,6 +10,7 @@ import 'providers/theme_provider.dart';
 import 'services/socket_service.dart';
 import 'services/api_service.dart';
 import 'theme.dart';
+import 'utils/app_globals.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/home/home_screen.dart';
 
@@ -67,6 +68,7 @@ class MyApp extends StatelessWidget {
           darkTheme: AppTheme.dark,
           themeMode: themeProvider.themeMode,
           navigatorKey: navigatorKey,
+          scaffoldMessengerKey: scaffoldMessengerKey,
           home: const _AuthGate(),
           onGenerateRoute: generateRoute,
         ),
@@ -111,6 +113,7 @@ class _AuthGateState extends State<_AuthGate> {
       if (userId != null) {
         final socket = SocketService();
         socket.init('https://syncm-production.up.railway.app', userId);
+        Provider.of<FriendsProvider>(context, listen: false).init(socket);
       }
     });
   }

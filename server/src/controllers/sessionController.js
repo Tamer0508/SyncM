@@ -1,5 +1,5 @@
 const prisma = require('../db/prisma');
-const { getIo } = require('../socket');
+const { addNotificationJob } = require('../infrastructure/queue');
 const { getOrSet, invalidateUserDB } = require('../infrastructure/spotify/cache');
 
 const createSession = async (req, res) => {
@@ -64,15 +64,18 @@ const createSession = async (req, res) => {
       });
 
       try {
-        const io = getIo();
-        if (io) {
-          io.to(friendId).emit('session_invite', {
-            sessionId: session.id,
-            sessionName: session.name,
-            hostId: userId,
-          });
-        }
-      } catch (e) {}
+        await addNotificationJob({
+          type: 'session_invite',
+          toUserId: friendId,
+          sessionId: session.id,
+          sessionName: session.name,
+          hostId: userId,
+          timestamp: Date.now(),
+        });
+      } catch (e) {
+        // If queueing fails, the session is still created and the client receives a response.
+        logger.error({ err: e }, 'Failed to enqueue session invite notification');
+      }
 
       await invalidateUserDB(userId);
       await invalidateUserDB(friendId);
@@ -171,9 +174,15 @@ const addTracks = async (req, res) => {
       await Promise.all(userIds.map(uid => invalidateUserDB(uid)));
 
       try {
-        const io = getIo();
-        if (io) io.to(sessionId).emit('tracks-added', createdTracks);
-      } catch (e) {}
+        await addNotificationJob({
+          type: 'tracks_added',
+          sessionId,
+          tracks: createdTracks,
+          timestamp: Date.now(),
+        });
+      } catch (e) {
+        logger.error({ err: e }, 'Failed to enqueue tracks-added notification');
+      }
 
       res.json({ message: `Добавлено ${createdTracks.length} треков`, tracks: createdTracks });
     });
@@ -213,6 +222,19 @@ const rateTrack = async (req, res) => {
       if (track?.session) {
         const userIds = track.session.members.map(m => m.userId);
         await Promise.all(userIds.map(uid => invalidateUserDB(uid)));
+      }
+
+      try {
+        await addNotificationJob({
+          type: 'track_rated',
+          sessionId: track?.session?.id,
+          trackId,
+          userId,
+          rating,
+          timestamp: Date.now(),
+        });
+      } catch (e) {
+        logger.error({ err: e }, 'Failed to enqueue track_rated notification');
       }
 
       res.json(result);
@@ -315,11 +337,17 @@ const respondToInvite = async (req, res) => {
       });
 
       try {
-        const io = getIo();
-        if (io) {
-          io.to(session.hostId).emit('invite_response', { userId, accept, sessionId });
-        }
-      } catch (e) {}
+        await addNotificationJob({
+          type: 'invite_response',
+          toUserId: session.hostId,
+          userId,
+          accept,
+          sessionId,
+          timestamp: Date.now(),
+        });
+      } catch (e) {
+        logger.error({ err: e }, 'Failed to enqueue invite_response notification');
+      }
 
       await invalidateUserDB(userId);
       if (accept) {
