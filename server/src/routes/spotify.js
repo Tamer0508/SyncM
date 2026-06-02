@@ -457,11 +457,16 @@ router.put('/resume', rateLimitMiddleware(20, 60), async (req, res) => {
   }
 });
 
+// ============================
+// Shuffle и Repeat (с отладкой)
+// ============================
+
 router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
   const userId = getUserId(req);
+  console.log(`[Shuffle] Request from userId=${userId}, state=${req.query.state}`);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const { state } = req.query; // ожидаем 'true' или 'false'
+  const { state } = req.query;
   if (state !== 'true' && state !== 'false') {
     return res.status(400).json({ error: 'Параметр state должен быть true или false' });
   }
@@ -471,78 +476,115 @@ router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
 
   try {
     const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser?.accessToken) return;
+    if (!spotifyUser) {
+      console.log('[Shuffle] No spotifyUser found');
+      return;
+    }
+    if (!spotifyUser.accessToken) {
+      console.log('[Shuffle] spotifyUser has no accessToken');
+      return;
+    }
 
-    let accessToken = getAccessToken(spotifyUser);
+    let accessToken;
+    try {
+      accessToken = getAccessToken(spotifyUser);
+      console.log(`[Shuffle] Access token obtained (first 10 chars): ${accessToken.substring(0, 10)}...`);
+    } catch (decryptError) {
+      console.log('[Shuffle] Decrypt error:', decryptError.message);
+      return; // не можем продолжать без токена
+    }
+
     const url = `https://api.spotify.com/v1/me/player/shuffle?state=${state}`;
 
     try {
       await axios.put(url, {}, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      console.log('[Shuffle] Successfully sent to Spotify');
     } catch (err) {
       if (err.response?.status === 401) {
+        console.log('[Shuffle] Token expired, refreshing...');
         accessToken = await refreshAccessToken(spotifyUser);
         await axios.put(url, {}, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
+        console.log('[Shuffle] Successfully sent after token refresh');
       } else {
+        console.log('[Shuffle] Spotify API error:', err.response?.status, err.response?.data);
         throw err;
       }
     }
 
-    // Очистка кэша плеера
+    // Очистка кэша
     await Promise.all([
       redis.del(`spotify:player:${userId}`),
       redis.del(`spotify:devices:${userId}`),
     ]);
   } catch (error) {
-    console.error('Shuffle error:', error.response?.data || error.message);
+    console.error('[Shuffle] Error:', error.message);
   }
 });
 
 router.put('/repeat', rateLimitMiddleware(10, 60), async (req, res) => {
   const userId = getUserId(req);
+  console.log(`[Repeat] Request from userId=${userId}, state=${req.query.state}`);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const { state } = req.query; // ожидаем 'off', 'context' или 'track'
+  const { state } = req.query;
   const validStates = ['off', 'context', 'track'];
   if (!validStates.includes(state)) {
     return res.status(400).json({ error: 'Параметр state должен быть off, context или track' });
   }
 
-  // Отвечаем мгновенно
   res.json({ success: true });
 
   try {
     const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser?.accessToken) return;
+    if (!spotifyUser) {
+      console.log('[Repeat] No spotifyUser found');
+      return;
+    }
+    if (!spotifyUser.accessToken) {
+      console.log('[Repeat] spotifyUser has no accessToken');
+      return;
+    }
 
-    let accessToken = getAccessToken(spotifyUser);
+    let accessToken;
+    try {
+      accessToken = getAccessToken(spotifyUser);
+      console.log(`[Repeat] Access token obtained (first 10 chars): ${accessToken.substring(0, 10)}...`);
+    } catch (decryptError) {
+      console.log('[Repeat] Decrypt error:', decryptError.message);
+      return;
+    }
+
     const url = `https://api.spotify.com/v1/me/player/repeat?state=${state}`;
 
     try {
       await axios.put(url, {}, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      console.log('[Repeat] Successfully sent to Spotify');
     } catch (err) {
       if (err.response?.status === 401) {
+        console.log('[Repeat] Token expired, refreshing...');
         accessToken = await refreshAccessToken(spotifyUser);
         await axios.put(url, {}, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
+        console.log('[Repeat] Successfully sent after token refresh');
       } else {
+        console.log('[Repeat] Spotify API error:', err.response?.status, err.response?.data);
         throw err;
       }
     }
 
-    // Очистка кэша плеера
     await Promise.all([
       redis.del(`spotify:player:${userId}`),
       redis.del(`spotify:devices:${userId}`),
     ]);
   } catch (error) {
-    console.error('Repeat error:', error.response?.data || error.message);
+    console.error('[Repeat] Error:', error.message);
   }
 });
 
