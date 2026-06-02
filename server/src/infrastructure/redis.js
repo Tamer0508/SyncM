@@ -1,9 +1,10 @@
 const Redis = require('ioredis');
+const logger = require('./logger');
 
 const REDIS_URL = process.env.REDIS_URL;
 
 if (!REDIS_URL) {
-  console.warn(' REDIS_URL не задан в .env. Кэширование будет отключено (fallback).');
+  logger.warn('REDIS_URL is not configured. Redis caching will be disabled.');
 }
 
 let redisClient = null;
@@ -14,32 +15,31 @@ if (REDIS_URL) {
     maxRetriesPerRequest: 3,
     retryStrategy(times) {
       const delay = Math.min(times * 50, 2000);
-      console.log(` Redis reconnecting attempt ${times}, delay ${delay}ms`);
+      logger.info({ attempt: times, delay }, `Redis reconnecting attempt ${times}, delay ${delay}ms`);
       return delay;
     },
     enableReadyCheck: true,
     reconnectOnError(err) {
-      console.error('Redis connection error:', err.message);
+      logger.error({ err }, 'Redis connection error');
       const targetErrors = ['READONLY', 'ETIMEDOUT', 'ECONNRESET'];
       return targetErrors.some(e => err.message.includes(e));
     }
   });
 
-    redisClient.on('connect', () => console.log(' Redis client connected'));
+    redisClient.on('connect', () => logger.info('Redis client connected'));
     redisClient.on('ready', () => {
         isRedisReady = true;
-        console.log(' Redis ready to accept commands');
+        logger.info('Redis ready to accept commands');
     });
     redisClient.on('error', (err) => {
-        // Просто логируем, но не меняем флаг готовности
-        console.error(' Redis error:', err.message);
+        logger.error({ err }, 'Redis error');
     });
     redisClient.on('close', () => {
-        console.warn(' Redis connection closed');
+        logger.warn('Redis connection closed');
         isRedisReady = false;
     });
     redisClient.on('end', () => {
-        console.warn(' Redis connection ended');
+        logger.warn('Redis connection ended');
         isRedisReady = false;
     });
 }
@@ -54,7 +54,7 @@ async function get(key) {
     const data = await redisClient.get(key);
     return data ? JSON.parse(data) : null;
   } catch (err) {
-    console.error(`Redis get error for key "${key}":`, err.message);
+    logger.error({ err, key }, `Redis get error for key "${key}"`);
     return null;
   }
 }
@@ -66,7 +66,7 @@ async function set(key, value, ttlSeconds) {
     await redisClient.setex(key, ttlSeconds, serialized);
     return true;
   } catch (err) {
-    console.error(`Redis set error for key "${key}":`, err.message);
+    logger.error({ err, key }, `Redis set error for key "${key}"`);
     return false;
   }
 }
@@ -77,7 +77,7 @@ async function del(key) {
     await redisClient.del(key);
     return true;
   } catch (err) {
-    console.error(`Redis del error for key "${key}":`, err.message);
+    logger.error({ err, key }, `Redis del error for key "${key}"`);
     return false;
   }
 }
@@ -97,7 +97,7 @@ async function getWithTTL(key) {
     if (!value) return null;
     return { value: JSON.parse(value), ttl: ttl };
   } catch (err) {
-    console.error(`Redis getWithTTL error:`, err.message);
+    logger.error({ err, key }, 'Redis getWithTTL error');
     return null;
   }
 }
@@ -108,7 +108,7 @@ async function acquireLock(lockKey, ttlSeconds = 5) {
     const result = await redisClient.set(lockKey, 'locked', 'NX', 'EX', ttlSeconds);
     return result === 'OK';
   } catch (err) {
-    console.error(`Redis acquireLock error for ${lockKey}:`, err.message);
+    logger.error({ err, lockKey }, `Redis acquireLock error for ${lockKey}`);
     return false;
   }
 }
@@ -119,7 +119,7 @@ async function releaseLock(lockKey) {
     await redisClient.del(lockKey);
     return true;
   } catch (err) {
-    console.error(`Redis releaseLock error for ${lockKey}:`, err.message);
+    logger.error({ err, lockKey }, `Redis releaseLock error for ${lockKey}`);
     return false;
   }
 }
@@ -138,10 +138,10 @@ async function deleteByPattern(pattern) {
         deletedCount += keys.length;
       }
     } while (cursor !== '0');
-    console.log(` Deleted ${deletedCount} keys matching pattern: ${pattern}`);
-    return deletedCount;
-  } catch (err) {
-    console.error(`Error deleting by pattern ${pattern}:`, err.message);
+logger.info({ pattern, deletedCount }, `Deleted ${deletedCount} keys matching pattern: ${pattern}`);
+        return deletedCount;
+      } catch (err) {
+        logger.error({ err, pattern }, `Error deleting by pattern ${pattern}`);
     return 0;
   }
 }

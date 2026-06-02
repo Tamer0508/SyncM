@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const logger = require('../infrastructure/logger');
 
 // Алгоритм AES-256-GCM (с аутентификацией)
 const ALGORITHM = 'aes-256-gcm';
@@ -67,7 +68,7 @@ function decrypt(payload) {
     return decrypted.toString('utf8');
   } catch (error) {
     // Если расшифровка не удалась — возможно plain text, возвращаем как есть
-    console.error('Decrypt error:', error.message);
+    logger.error({ err: error }, 'Decrypt error');
     return payload;
   }
 }

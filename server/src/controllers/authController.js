@@ -154,8 +154,6 @@ const callback = async (req, res) => {
   } catch (error) {
     if (req && req.log && typeof req.log.error === 'function') {
       req.log.error('OAuth error:', error.response?.data || error.message);
-    } else {
-      console.error('OAuth error:', error.response?.data || error.message);
     }
     res.status(500).json({ error: 'Ошибка авторизации Spotify' });
   }
@@ -223,7 +221,9 @@ const getMe = async (req, res) => {
 
     res.json(userData);
   } catch (error) {
-    console.error('GetMe error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('GetMe error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения пользователя' });
   }
 };
@@ -269,12 +269,11 @@ const googleAuth = async (req, res) => {
       cookie: `connect.sid=${req.sessionID}`,
     });
     } catch (error) {
-    console.error('Google auth error:', error);
-    res.status(401).json({ error: 'Invalid token' });
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Google auth error:', error);   // также поправьте сообщение
+      if (req && req.log && typeof req.log.error === 'function') {
+        req.log.error('Google auth error:', error);
+      }
+      res.status(401).json({ error: 'Invalid token' });
     }
-  }   // ← закрывающая скобка catch
 };
 
 const logout = async (req, res) => { 
@@ -305,7 +304,9 @@ const getSettings = async (req, res) => {
     });
     res.json(settings);
   } catch (error) {
-    console.error('Get settings error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Get settings error:', error);
+    }
     res.status(500).json({ error: 'Ошибка получения настроек' });
   }
 };
@@ -339,7 +340,9 @@ const updateSettings = async (req, res) => {
 
     res.json(updated);
   } catch (error) {
-    console.error('Update settings error:', error);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Update settings error:', error);
+    }
     res.status(500).json({ error: 'Ошибка обновления настроек' });
   }
 };
@@ -522,7 +525,9 @@ const googleWebCallback = async (req, res) => {
       </html>
     `);
   } catch (error) {
-    console.error('Google web callback error:', error.response?.data || error.message);
+    if (req && req.log && typeof req.log.error === 'function') {
+      req.log.error('Google web callback error:', error.response?.data || error.message);
+    }
     return res.status(500).json({ error: 'Ошибка авторизации Google' });
   }
 };

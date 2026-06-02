@@ -6,13 +6,14 @@ const { encrypt, decrypt } = require('../utils/crypto');
 const { getOrSet } = require('../infrastructure/spotify/cache');
 const { acquireLock, releaseLock } = require('../infrastructure/redis');
 const redis = require('../infrastructure/redis');
+const logger = require('../infrastructure/logger');
 const { rateLimitMiddleware } = require('../infrastructure/rateLimiter');
 
 const refreshAccessToken = async (spotifyUser) => {
   const lockKey = `spotify:refresh_lock:${spotifyUser.id}`;
   const locked = await acquireLock(lockKey, 5);
   if (!locked) {
-    console.log(` Refresh token already in progress for user ${spotifyUser.id}, waiting...`);
+    logger.info({ userId: spotifyUser.id }, 'Refresh token already in progress, waiting');
     await new Promise(resolve => setTimeout(resolve, 100));
     const freshSpotifyUser = await prisma.spotifyUser.findUnique({
       where: { id: spotifyUser.id }
@@ -58,7 +59,7 @@ const refreshAccessToken = async (spotifyUser) => {
 
     return newAccessToken;
   } catch (error) {
-    console.error('Refresh token error:', error.response?.data || error.message);
+    logger.error({ err: error, spotifyUserId: spotifyUser?.id }, 'Refresh token error');
     throw error;
   } finally {
     await releaseLock(lockKey);
@@ -127,7 +128,7 @@ router.get('/playlists', rateLimitMiddleware(30, 60), async (req, res) => {
 
     res.json(playlists);
   } catch (error) {
-    console.error('Error in /playlists:', error.message);
+    logger.error({ err: error }, 'Error in /playlists');
     res.status(500).json({ error: 'Ошибка получения плейлистов' });
   }
 });
@@ -178,7 +179,7 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), async (
 
     res.json(tracks);
   } catch (error) {
-    console.error('Error fetching tracks:', error.message);
+    logger.error({ err: error }, 'Error fetching tracks');
     res.status(500).json({ error: 'Ошибка получения треков' });
   }
 });
@@ -224,8 +225,8 @@ router.get('/devices', rateLimitMiddleware(20, 60), async (req, res) => {
     });
 
     res.json(devices);
-  } catch (e) {
-    console.error('Devices error:', e.message);
+  } catch (error) {
+    logger.error({ err: error }, 'Devices error');
     res.status(500).json({ error: 'Ошибка получения устройств' });
   }
 });
@@ -244,8 +245,8 @@ router.get('/player', rateLimitMiddleware(30, 60), async (req, res) => {
     });
     if (response.status === 204) return res.json(null);
     res.json(response.data);
-  } catch (e) {
-    console.error('Player state error:', e.message);
+  } catch (error) {
+    logger.error({ err: error }, 'Player state error');
     res.status(500).json({ error: 'Ошибка получения плеера' });
   }
 });
@@ -298,7 +299,7 @@ router.post('/play', rateLimitMiddleware(15, 60), async (req, res) => {
       redis.del(`spotify:devices:${userId}`),
     ]);
   } catch (error) {
-    console.error('Play error:', error.response?.data || error.message);
+    logger.error({ err: error }, 'Play error');
   }
 });
 
@@ -368,7 +369,7 @@ router.post('/next', rateLimitMiddleware(20, 60), async (req, res) => {
       redis.del(`spotify:devices:${userId}`),
     ]);
   } catch (e) {
-    console.error('Skip next error:', e.response?.data || e.message);
+    logger.error({ err: error }, 'Skip next error');
   }
 });
 
@@ -389,7 +390,7 @@ router.post('/previous', rateLimitMiddleware(20, 60), async (req, res) => {
       redis.del(`spotify:devices:${userId}`),
     ]);
   } catch (e) {
-    console.error('Previous error:', e.message);
+    logger.error({ err: error }, 'Previous error');
   }
 });
 
@@ -410,8 +411,8 @@ router.put('/seek', rateLimitMiddleware(20, 60), async (req, res) => {
       redis.del(`spotify:player:${userId}`),
       redis.del(`spotify:devices:${userId}`),
     ]);
-  } catch (e) {
-    console.error('Seek error:', e.message);
+  } catch (error) {
+    logger.error({ err: error }, 'Seek error');
   }
 });
 
@@ -431,8 +432,8 @@ router.put('/pause', rateLimitMiddleware(20, 60), async (req, res) => {
       redis.del(`spotify:player:${userId}`),
       redis.del(`spotify:devices:${userId}`),
     ]);
-  } catch (e) {
-    console.error('Pause error:', e.message);
+  } catch (error) {
+    logger.error({ err: error }, 'Pause error');
   }
 });
 
@@ -452,8 +453,8 @@ router.put('/resume', rateLimitMiddleware(20, 60), async (req, res) => {
       redis.del(`spotify:player:${userId}`),
       redis.del(`spotify:devices:${userId}`),
     ]);
-  } catch (e) {
-    console.error('Resume error:', e.message);
+  } catch (error) {
+    logger.error({ err: error }, 'Resume error');
   }
 });
 
@@ -463,7 +464,7 @@ router.put('/resume', rateLimitMiddleware(20, 60), async (req, res) => {
 
 router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
   const userId = getUserId(req);
-  console.log(`[Shuffle] Request from userId=${userId}, state=${req.query.state}`);
+  logger.info({ userId, state: req.query.state }, 'Shuffle request received');
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { state } = req.query;
@@ -477,21 +478,21 @@ router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
   try {
     const spotifyUser = await getSpotifyUser(userId);
     if (!spotifyUser) {
-      console.log('[Shuffle] No spotifyUser found');
+      logger.warn({ userId }, 'Shuffle request has no Spotify user');
       return;
     }
     if (!spotifyUser.accessToken) {
-      console.log('[Shuffle] spotifyUser has no accessToken');
+      logger.warn({ userId }, 'Shuffle request Spotify user has no access token');
       return;
     }
 
     let accessToken;
     try {
       accessToken = getAccessToken(spotifyUser);
-      console.log(`[Shuffle] Access token obtained (first 10 chars): ${accessToken.substring(0, 10)}...`);
+      logger.debug({ userId }, `Shuffle access token obtained (first 10 chars): ${accessToken.substring(0, 10)}...`);
     } catch (decryptError) {
-      console.log('[Shuffle] Decrypt error:', decryptError.message);
-      return; // не можем продолжать без токена
+      logger.error({ userId, err: decryptError }, 'Shuffle decrypt error');
+      return; // ← ВАЖНО: выходим, если не смогли расшифровать
     }
 
     const url = `https://api.spotify.com/v1/me/player/shuffle?state=${state}`;
@@ -500,17 +501,17 @@ router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
       await axios.put(url, {}, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      console.log('[Shuffle] Successfully sent to Spotify');
+      logger.info({ userId }, 'Shuffle command sent to Spotify');
     } catch (err) {
       if (err.response?.status === 401) {
-        console.log('[Shuffle] Token expired, refreshing...');
+        logger.info({ userId }, 'Shuffle token expired, refreshing');
         accessToken = await refreshAccessToken(spotifyUser);
         await axios.put(url, {}, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-        console.log('[Shuffle] Successfully sent after token refresh');
+        logger.info({ userId }, 'Shuffle command sent after token refresh');
       } else {
-        console.log('[Shuffle] Spotify API error:', err.response?.status, err.response?.data);
+        logger.error({ err, userId, status: err.response?.status, data: err.response?.data }, 'Shuffle Spotify API error');
         throw err;
       }
     }
@@ -521,13 +522,13 @@ router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
       redis.del(`spotify:devices:${userId}`),
     ]);
   } catch (error) {
-    console.error('[Shuffle] Error:', error.message);
+    logger.error({ err: error, userId }, 'Shuffle error');
   }
 });
 
 router.put('/repeat', rateLimitMiddleware(10, 60), async (req, res) => {
   const userId = getUserId(req);
-  console.log(`[Repeat] Request from userId=${userId}, state=${req.query.state}`);
+  logger.info({ userId, state: req.query.state }, 'Repeat request received');
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { state } = req.query;
@@ -541,20 +542,20 @@ router.put('/repeat', rateLimitMiddleware(10, 60), async (req, res) => {
   try {
     const spotifyUser = await getSpotifyUser(userId);
     if (!spotifyUser) {
-      console.log('[Repeat] No spotifyUser found');
+      logger.warn({ userId }, 'Repeat request has no Spotify user');
       return;
     }
     if (!spotifyUser.accessToken) {
-      console.log('[Repeat] spotifyUser has no accessToken');
+      logger.warn({ userId }, 'Repeat request Spotify user has no access token');
       return;
     }
 
     let accessToken;
     try {
       accessToken = getAccessToken(spotifyUser);
-      console.log(`[Repeat] Access token obtained (first 10 chars): ${accessToken.substring(0, 10)}...`);
+      logger.debug({ userId }, `Repeat access token obtained (first 10 chars): ${accessToken.substring(0, 10)}...`);
     } catch (decryptError) {
-      console.log('[Repeat] Decrypt error:', decryptError.message);
+      logger.error({ err: decryptError, userId }, 'Repeat decrypt error');
       return;
     }
 
@@ -564,17 +565,17 @@ router.put('/repeat', rateLimitMiddleware(10, 60), async (req, res) => {
       await axios.put(url, {}, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      console.log('[Repeat] Successfully sent to Spotify');
+      logger.info({ userId }, 'Repeat command sent to Spotify');
     } catch (err) {
       if (err.response?.status === 401) {
-        console.log('[Repeat] Token expired, refreshing...');
+        logger.info({ userId }, 'Repeat token expired, refreshing');
         accessToken = await refreshAccessToken(spotifyUser);
         await axios.put(url, {}, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-        console.log('[Repeat] Successfully sent after token refresh');
+        logger.info({ userId }, 'Repeat command sent after token refresh');
       } else {
-        console.log('[Repeat] Spotify API error:', err.response?.status, err.response?.data);
+        logger.error({ err, userId, status: err.response?.status, data: err.response?.data }, 'Repeat Spotify API error');
         throw err;
       }
     }
@@ -584,7 +585,7 @@ router.put('/repeat', rateLimitMiddleware(10, 60), async (req, res) => {
       redis.del(`spotify:devices:${userId}`),
     ]);
   } catch (error) {
-    console.error('[Repeat] Error:', error.message);
+    logger.error({ err: error, userId }, 'Repeat error');
   }
 });
 

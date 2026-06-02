@@ -1,5 +1,6 @@
 const prisma = require('./db/prisma');
 const cookie = require('cookie');
+const logger = require('./infrastructure/logger');
 const { invalidateUserDB } = require('./infrastructure/spotify/cache');
 
 const onlineUsers = new Map();
@@ -17,7 +18,7 @@ async function updateOnlineStatus(userId, isOnline) {
       }
     });
   } catch (err) {
-    console.error('Update online status error:', err.message);
+    logger.error({ err, userId }, 'Update online status error');
   }
 }
 
@@ -51,7 +52,7 @@ async function isSessionMember(sessionId, userId) {
 const setupSocket = (io) => {
   ioInstance = io;
   io.on('connection', async (socket) => {
-    console.log('User connected:', socket.id);
+    logger.info({ socketId: socket.id }, 'User connected');
 
     let userId = null;
 
@@ -116,7 +117,7 @@ const setupSocket = (io) => {
       socket.join(sessionId);
       socket.data.sessionId = sessionId;
       io.to(sessionId).emit('user_joined', { userId: uid });
-      console.log(`User ${uid} joined session ${sessionId}`);
+      logger.info({ userId: uid, sessionId }, 'User joined session');
     });
 
     socket.on('play', async ({ sessionId, spotifyUri, position_ms }) => {
@@ -165,7 +166,7 @@ const setupSocket = (io) => {
     });
 
     socket.on('disconnect', async () => {
-      console.log('User disconnected:', socket.id);
+      logger.info({ socketId: socket.id }, 'User disconnected');
       const uid = socket.data.userId;
       const sid = socket.data.sessionId;
 

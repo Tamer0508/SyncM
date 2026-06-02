@@ -1,4 +1,5 @@
 const redis = require('./redis');
+const logger = require('./logger');
 
 const rateLimitScript = `
   local current = redis.call('INCR', KEYS[1])
@@ -11,7 +12,7 @@ const rateLimitScript = `
 
 async function rateLimit(key, limit, windowSeconds) {
   if (!redis.isRedisAvailable()) {
-    console.warn('Rate limiter skipped: Redis unavailable');
+    logger.warn('Rate limiter skipped: Redis unavailable');
     return { allowed: true, remaining: limit, reset: windowSeconds };
   }
 
@@ -30,7 +31,7 @@ async function rateLimit(key, limit, windowSeconds) {
 
     return { allowed, remaining, reset };
   } catch (err) {
-    console.error('Rate limiter error:', err.message);
+    logger.error({ err }, 'Rate limiter error');
     // В случае ошибки разрешаем запрос
     return { allowed: true, remaining: limit, reset: windowSeconds };
   }

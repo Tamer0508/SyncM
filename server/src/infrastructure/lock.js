@@ -1,4 +1,5 @@
 const Redlock = require('redlock');
+const logger = require('./logger');
 const { redisClient, isRedisAvailable } = require('./redis');
 
 let redlock = null;
@@ -13,14 +14,14 @@ if (isRedisAvailable()) {
     });
 
     redlock.on('clientError', (err) => {
-      console.error('Redlock client error:', err);
+      logger.error({ err }, 'Redlock client error');
     });
   } catch (err) {
-    console.error('Failed to initialize Redlock:', err.message || err);
+    logger.error({ err }, 'Failed to initialize Redlock');
     redlock = null;
   }
 } else {
-  console.warn('Redis is not available — distributed locks disabled');
+  logger.warn('Redis is not available — distributed locks disabled');
 }
 
 async function withLock(resource, ttlMs, fn) {
@@ -49,7 +50,7 @@ async function withLock(resource, ttlMs, fn) {
       if (lock) await lock.release();
     } catch (releaseErr) {
       // best-effort release
-      console.warn('Failed to release lock', releaseErr?.message || releaseErr);
+      logger.warn({ err: releaseErr }, 'Failed to release lock');
     }
   }
 }

@@ -5,6 +5,7 @@ const { rateLimitMiddleware } = require('./infrastructure/rateLimiter');
 const express = require('express');
 const cors = require('cors');
 const logger = require('./infrastructure/logger');
+const pinoHttp = require('pino-http');
 const requestId = require('./middleware/requestId');
 const session = require('express-session');
 const { createServer } = require('http');
@@ -33,8 +34,8 @@ pool.query(`
     "expire" timestamp(6) NOT NULL,
     CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
   )
-`).then(() => console.log("Session table ready"))
-  .catch(err => console.error("Session table error:", err));
+`).then(() => logger.info('Session table ready'))
+  .catch(err => logger.error('Session table error:', err));
 
 const app = express();
 app.set('trust proxy', 1);
@@ -57,6 +58,14 @@ app.use(express.json());
 
 // Attach or generate a request id for tracing
 app.use(requestId);
+app.use(pinoHttp({
+  logger,
+  customLogLevel: (res, err) => {
+    if (res.statusCode >= 500 || err) return 'error';
+    if (res.statusCode >= 400) return 'warn';
+    return 'info';
+  }
+}));
 
 app.use(session({
   store: new pgSession({
@@ -78,11 +87,10 @@ app.use(session({
 app.use((req, res, next) => {
   try {
     const auth = req.headers.authorization;
-    const userId = req.session?.userId || (auth && auth.startsWith('Bearer ') ? auth.replace('Bearer ', '') : null);
-    // create child logger with requestId and userId
+    const userId = req.user?.id || req.session?.userId || (auth && auth.startsWith('Bearer ') ? auth.replace('Bearer ', '') : null);
     req.log = (req.log || logger).child({ requestId: req.id || null, userId: userId || null });
   } catch (e) {
-    // ignore
+    req.log = req.log || logger;
   }
   next();
 });
@@ -104,19 +112,19 @@ app.get('/', (req, res) => {
 setupSocket(io);
 
 process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled Rejection:', reason);
+  logger.error({ reason }, 'Unhandled Rejection');
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error.message);
+  logger.error({ err: error }, 'Uncaught Exception');
 });
 
 async function shutdown(signal) {
-  console.log(`Received ${signal || 'shutdown'} - shutting down gracefully...`);
+  logger.info({ signal }, 'Received shutdown signal, shutting down gracefully...');
 
   // Force exit after 10 seconds
   const forceTimeout = setTimeout(() => {
-    console.error('Could not close connections in time, forcing shutdown');
+    logger.error('Could not close connections in time, forcing shutdown');
     process.exit(1);
   }, 10000);
 
@@ -124,13 +132,13 @@ async function shutdown(signal) {
     // Stop accepting new connections
     await new Promise((resolve) => {
       httpServer.close((err) => {
-        if (err) console.error('HTTP server close error:', err);
-        else console.log('HTTP server closed');
+        if (err) logger.error({ err }, 'HTTP server close error');
+        else logger.info('HTTP server closed');
         resolve();
       });
     });
   } catch (err) {
-    console.error('Error while closing HTTP server:', err?.message || err);
+    logger.error({ err }, 'Error while closing HTTP server');
   }
 
   try {
@@ -138,9 +146,9 @@ async function shutdown(signal) {
     if (io && typeof io.close === 'function') {
       try {
         io.close();
-        console.log('Socket.io closed');
+        logger.info('Socket.io closed');
       } catch (e) {
-        console.error('Error closing socket.io:', e?.message || e);
+        logger.error({ err: e }, 'Error closing socket.io');
       }
     }
   } catch (e) {}
@@ -148,19 +156,19 @@ async function shutdown(signal) {
   try {
     const prisma = require('./db/prisma');
     await prisma.$disconnect();
-    console.log('Prisma disconnected');
+    logger.info('Prisma disconnected');
   } catch (err) {
-    console.error('Prisma disconnect error:', err?.message || err);
+    logger.error({ err }, 'Prisma disconnect error');
   }
 
   try {
     const redisModule = require('./infrastructure/redis');
     if (redisModule && redisModule.redisClient) {
       await redisModule.redisClient.quit().catch(() => {});
-      console.log('Redis disconnected');
+      logger.info('Redis disconnected');
     }
   } catch (err) {
-    console.error('Redis quit error:', err?.message || err);
+    logger.error({ err }, 'Redis quit error');
   }
 
   clearTimeout(forceTimeout);
@@ -172,5 +180,5 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  logger.info({ port: PORT }, 'Server running');
 });

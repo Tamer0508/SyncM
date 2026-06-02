@@ -1,4 +1,5 @@
 const redis = require('../redis');
+const logger = require('../logger');
 
 const TTL_CONFIG = {
   track: 3600,
@@ -80,11 +81,11 @@ async function getOrSet(cacheKey, ttlSeconds, fetchFn, options = {}) {
         const now = Date.now();
         if (parsed.exp > now) {
           // Fresh
-          console.log(` Cache HIT (fresh): ${cacheKey}`);
+          logger.info({ cacheKey }, `Cache HIT (fresh)`);
           return parsed.data;
         } else if (staleWhileRevalidate && parsed.exp + STALE_EXTRA * 1000 > now) {
           // Stale, но ещё в пределах физического хранения
-          console.log(` Cache STALE (will revalidate): ${cacheKey}`);
+          logger.info({ cacheKey }, `Cache STALE (will revalidate)`);
           // Фоновое обновление
           (async () => {
             try {
@@ -97,9 +98,9 @@ async function getOrSet(cacheKey, ttlSeconds, fetchFn, options = {}) {
                 physicalTtl,
                 JSON.stringify({ data: fresh, exp: logicalExpiry })
               );
-              console.log(` Background refresh OK for ${cacheKey}`);
+              logger.info({ cacheKey }, 'Background refresh OK');
             } catch (err) {
-              console.error(`Background refresh failed for ${cacheKey}:`, err.message);
+              logger.error({ err, cacheKey }, 'Background refresh failed');
             }
           })();
           return parsed.data; // отдаём устаревшие данные
@@ -107,18 +108,18 @@ async function getOrSet(cacheKey, ttlSeconds, fetchFn, options = {}) {
         // Иначе истекло даже физически — идём ниже
       } else {
         // Старый формат (без exp), чтобы не ломаться, считаем fresh
-        console.log(` Cache HIT (old format, treating as fresh): ${cacheKey}`);
+        logger.info({ cacheKey }, 'Cache HIT (old format, treating as fresh)');
         return parsed.data !== undefined ? parsed.data : parsed;
       }
     } catch (e) {
       // Если не JSON, возвращаем как есть (на случай старых ключей)
-      console.log(` Cache HIT (plain value): ${cacheKey}`);
+      logger.info({ cacheKey }, 'Cache HIT (plain value)');
       return raw;
     }
   }
 
   // Честный MISS или физически истекло
-  console.log(` Cache MISS: ${cacheKey}`);
+  logger.info({ cacheKey }, 'Cache MISS');
   const freshData = await fetchFn();
   if (redis.isRedisAvailable()) {
     const finalTtl = getJitteredTTL(baseTtl, jitter);
@@ -129,7 +130,7 @@ async function getOrSet(cacheKey, ttlSeconds, fetchFn, options = {}) {
       cacheKey,
       physicalTtl,
       JSON.stringify({ data: freshData, exp: logicalExpiry })
-    ).catch(err => console.error(`Failed to set cache ${cacheKey}:`, err.message));
+    ).catch(err => logger.error({ err, cacheKey }, `Failed to set cache ${cacheKey}`));
   }
   return freshData;
 }
@@ -140,7 +141,7 @@ async function deleteKey(key) {
     await redis.del(key);
     return true;
   } catch (err) {
-    console.error(`Failed to delete key ${key}:`, err.message);
+    logger.error({ err, key }, 'Failed to delete cache key');
     return false;
   }
 }
@@ -165,10 +166,10 @@ async function invalidateUserDB(userId, additionalKeys = []) {
     await redis.deleteByPattern(`db:friend-requests:${userId}:*`);
     await redis.deleteByPattern(`db:search-users:*:${userId}`);
     
-    console.log(` Invalidated DB cache for user ${userId}`);
+    logger.info({ userId }, 'Invalidated DB cache for user');
     return true;
   } catch (err) {
-    console.error(`DB cache invalidation error:`, err.message);
+    logger.error({ err, userId }, 'DB cache invalidation error');
     return false;
   }
 }
