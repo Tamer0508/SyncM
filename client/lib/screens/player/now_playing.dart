@@ -329,11 +329,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     final provider = Provider.of<PlaybackProvider>(context, listen: false);
     if (imageUrl != null && provider.paletteCache.containsKey(imageUrl)) {
       final p = provider.paletteCache[imageUrl]!;
-      _setTargetColors(
-        p.dominantColor?.color ?? Colors.deepPurple,
-        p.vibrantColor?.color ??
-            (p.lightVibrantColor?.color ?? Colors.purpleAccent),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _setTargetColors(
+          p.dominantColor?.color ?? Colors.deepPurple,
+          p.vibrantColor?.color ??
+              (p.lightVibrantColor?.color ?? Colors.purpleAccent),
+        );
+      });
       return;
     }
 
@@ -353,11 +355,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         provider.paletteCache[imageUrl] = palette;
       }
       if (!mounted) return;
-      _setTargetColors(
-        palette.dominantColor?.color ?? Colors.deepPurple,
-        palette.vibrantColor?.color ??
-            (palette.lightVibrantColor?.color ?? Colors.purpleAccent),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _setTargetColors(
+          palette.dominantColor?.color ?? Colors.deepPurple,
+          palette.vibrantColor?.color ??
+              (palette.lightVibrantColor?.color ?? Colors.purpleAccent),
+        );
+      });
     } catch (e) {
       print('Palette error: $e');
     }
@@ -399,8 +403,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                 Colors.blueGrey.shade800, Colors.blueGrey.shade600);
           }
           _updatePalette(imageBytes: imageBytes, imageUrl: imageUrl);
-          _artworkFadeController.reset();
-          _artworkFadeController.forward();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _artworkFadeController.reset();
+            _artworkFadeController.forward();
+          });
         }
 
         if (artworkChanged) {

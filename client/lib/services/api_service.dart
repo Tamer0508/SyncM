@@ -408,8 +408,8 @@ Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) asy
   return null;
 }
 
-Future<bool> setShuffle(bool state) async {
-    final uri = Uri.parse('$baseUrl/spotify/player/shuffle?state=$state');
+  Future<bool> setShuffle(bool state) async {
+    final uri = Uri.parse('$baseUrl/spotify/shuffle?state=$state');
     try {
       final response = await http.put(uri, headers: _headers);
       if (response.statusCode == 200 || response.statusCode == 204) {
@@ -426,7 +426,7 @@ Future<bool> setShuffle(bool state) async {
 
   /// Устанавливает режим повтора (off, context, track)
   Future<bool> setRepeatMode(String mode) async {
-    final uri = Uri.parse('$baseUrl/spotify/player/repeat?state=$mode');
+    final uri = Uri.parse('$baseUrl/spotify/repeat?state=$mode');
     try {
       final response = await http.put(uri, headers: _headers);
       if (response.statusCode == 200 || response.statusCode == 204) {
