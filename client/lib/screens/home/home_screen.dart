@@ -315,11 +315,11 @@ class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
                             onPressed: () { pb.skipNext(); setState(() => _dragValue = 0); },
                           ),
                           IconButton(
-                            icon: Icon(Icons.repeat,
-                                color: pb.repeatActive
-                                    ? _vibrantColor
-                                    : iconColor.withOpacity(0.7),
-                                size: 22),
+                            icon: Icon(
+                              pb.repeatMode == 'track' ? Icons.repeat_one : Icons.repeat,
+                              color: pb.repeatActive ? _vibrantColor : iconColor.withOpacity(0.7),
+                              size: 22,
+                            ),
                             onPressed: () => pb.cycleRepeatMode(),
                           ),
                         ],

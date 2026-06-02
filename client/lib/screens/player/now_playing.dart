@@ -624,11 +624,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                             },
                           ),
                           IconButton(
-                            icon: Icon(Icons.repeat,
-                                color: pb.repeatActive
-                                    ? _displayVibrant
-                                    : Colors.white70,
-                                size: 26),
+                            icon: Icon(
+                              pb.repeatMode == 'track' ? Icons.repeat_one : Icons.repeat,
+                              color: pb.repeatActive ? _displayVibrant : Colors.white70,
+                              size: 26,
+                            ),
                             onPressed: () => pb.cycleRepeatMode(),
                           ),
                         ],

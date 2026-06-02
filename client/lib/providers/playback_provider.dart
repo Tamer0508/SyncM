@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:math';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:palette_generator/palette_generator.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
@@ -31,6 +32,12 @@ class PlaybackProvider extends ChangeNotifier {
 
   bool _shuffleActive = false;
   String _repeatMode = 'off';
+
+  // Current Spotify playlist context (when playing from a playlist)
+  String? _currentPlaylistId;
+  List<dynamic>? _currentPlaylistTracks;
+  // Prevents automatic correction loops when we programmatically switch tracks
+  bool _suppressAutoCorrection = false;
 
   Map<String, dynamic>? get currentTrack => _currentTrack;
   bool get isPlaying => _isPlaying;
@@ -187,6 +194,21 @@ class PlaybackProvider extends ChangeNotifier {
           _socket?.emit('next_track', {'sessionId': _currentSessionId, 'spotifyUri': trackUri});
         }
 
+        // If shuffle is enabled and we are inside a playlist, make sure the
+        // new track belongs to that playlist; if not, correct it.
+        if (trackChanged && _shuffleActive && _currentPlaylistId != null && !_suppressAutoCorrection) {
+          try {
+            await _ensurePlaylistTracksLoaded();
+            final found = _currentPlaylistTracks?.any((t) => (t['uri'] as String?) == trackUri) ?? false;
+            if (!found) {
+              // Fire-and-forget correction
+              _playRandomFromCurrentPlaylist();
+            }
+          } catch (e) {
+            print('[PlaybackProvider] Error validating track against playlist: $e');
+          }
+        }
+
         if (trackChanged && imageUriId != _lastImageUri) {
           _lastImageUri = imageUriId;
           notifyListeners();
@@ -237,6 +259,20 @@ class PlaybackProvider extends ChangeNotifier {
           _currentTrack = track;
           _isPlaying = true;
 
+          // remember current playlist context and prefetch tracks for shuffle logic
+          if (playlistId != null) {
+            _currentPlaylistId = playlistId.startsWith('spotify:') ? playlistId : 'spotify:playlist:$playlistId';
+            try {
+              final tracks = await _apiService?.getPlaylistTracks(playlistId);
+              _currentPlaylistTracks = tracks;
+            } catch (e) {
+              print('[PlaybackProvider] Failed to prefetch playlist tracks: $e');
+            }
+          } else {
+            _currentPlaylistId = null;
+            _currentPlaylistTracks = null;
+          }
+
           if (track['imageUrl'] != null && !_paletteCache.containsKey(track['imageUrl'])) {
             _preloadPalette(track['imageUrl']);
           }
@@ -266,6 +302,20 @@ class PlaybackProvider extends ChangeNotifier {
       if (positionMs != null && positionMs > 0) {
         await Future.delayed(const Duration(milliseconds: 300));
         await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
+      }
+
+      // remember current playlist context and prefetch tracks for shuffle logic
+      if (playlistId != null) {
+        _currentPlaylistId = playlistId.startsWith('spotify:') ? playlistId : 'spotify:playlist:$playlistId';
+        try {
+          final tracks = await _apiService?.getPlaylistTracks(playlistId);
+          _currentPlaylistTracks = tracks;
+        } catch (e) {
+          print('[PlaybackProvider] Failed to prefetch playlist tracks: $e');
+        }
+      } else {
+        _currentPlaylistId = null;
+        _currentPlaylistTracks = null;
       }
 
       _currentTrack = track;
@@ -335,7 +385,7 @@ class PlaybackProvider extends ChangeNotifier {
     }
   }
 
-  void _updateFromPlayerState(dynamic state) {
+  Future<void> _updateFromPlayerState(dynamic state) async {
     if (state == null) return;
     _isPlaying = state['is_playing'] ?? false;
     _positionMs = state['progress_ms'] ?? 0;
@@ -354,6 +404,21 @@ class PlaybackProvider extends ChangeNotifier {
 
       if (newImageUrl != null && !_paletteCache.containsKey(newImageUrl)) {
         _preloadPalette(newImageUrl);
+      }
+
+      // If shuffle is active and we have a playlist context, ensure the new
+      // track belongs to that playlist; otherwise pick a random one from it.
+      if (_shuffleActive && _currentPlaylistId != null && !_suppressAutoCorrection) {
+        try {
+          await _ensurePlaylistTracksLoaded();
+          final uri = _currentTrack?['uri'] as String?;
+          final found = _currentPlaylistTracks?.any((t) => (t['uri'] as String?) == uri) ?? false;
+          if (!found) {
+            _playRandomFromCurrentPlaylist();
+          }
+        } catch (e) {
+          print('[PlaybackProvider] Error checking playlist membership: $e');
+        }
       }
     }
     notifyListeners();
@@ -404,8 +469,14 @@ class PlaybackProvider extends ChangeNotifier {
 
     if (_isWindows || _isWeb) {
       try {
-        await _apiService?.skipToNext();
-        _pollForTrackChange();
+        // If shuffle is active and we have a playlist context, pick a random
+        // track from the playlist to ensure we stay inside the playlist.
+        if (_shuffleActive && _currentPlaylistId != null) {
+          await _playRandomFromCurrentPlaylist();
+        } else {
+          await _apiService?.skipToNext();
+          _pollForTrackChange();
+        }
       } catch (e) {
         print('[Web/Windows] Skip next error: $e');
       }
@@ -413,7 +484,11 @@ class PlaybackProvider extends ChangeNotifier {
     }
 
     try {
-      await SpotifySdk.skipNext();
+      if (_shuffleActive && _currentPlaylistId != null) {
+        await _playRandomFromCurrentPlaylist();
+      } else {
+        await SpotifySdk.skipNext();
+      }
     } catch (e) {
       print('[Spotify] Skip next error: $e');
     }
@@ -425,17 +500,109 @@ class PlaybackProvider extends ChangeNotifier {
 
     if (_isWindows || _isWeb) {
       try {
-        await _apiService?.skipToPrevious();
-        _pollForTrackChange();
+        // For previous, if shuffle is active we also pick a random track
+        if (_shuffleActive && _currentPlaylistId != null) {
+          await _playRandomFromCurrentPlaylist();
+        } else {
+          await _apiService?.skipToPrevious();
+          _pollForTrackChange();
+        }
       } catch (e) {
         print('[Web/Windows] Skip previous error: $e');
       }
       return;
     }
     try {
-      await SpotifySdk.skipPrevious();
+      if (_shuffleActive && _currentPlaylistId != null) {
+        await _playRandomFromCurrentPlaylist();
+      } else {
+        await SpotifySdk.skipPrevious();
+      }
     } catch (e) {
       print('[Spotify] Skip previous error: $e');
+    }
+  }
+
+  String _plainPlaylistId(String id) {
+    if (id.contains(':')) return id.split(':').last;
+    return id;
+  }
+
+  Future<void> _ensurePlaylistTracksLoaded() async {
+    if (_currentPlaylistId == null || _currentPlaylistTracks != null) return;
+    try {
+      final id = _plainPlaylistId(_currentPlaylistId!);
+      final tracks = await _apiService?.getPlaylistTracks(id);
+      if (tracks != null) {
+        // Ensure index exists for each track
+        for (int i = 0; i < tracks.length; i++) {
+          if (tracks[i]['index'] == null) tracks[i]['index'] = i;
+        }
+        _currentPlaylistTracks = tracks;
+      }
+    } catch (e) {
+      print('[PlaybackProvider] Could not load playlist tracks: $e');
+    }
+  }
+
+  Future<void> _playRandomFromCurrentPlaylist() async {
+    if (_currentPlaylistId == null) return;
+    await _ensurePlaylistTracksLoaded();
+    final tracks = _currentPlaylistTracks;
+    if (tracks == null || tracks.isEmpty) return;
+
+    final uris = <String>[];
+    for (var t in tracks) {
+      final u = t['uri'] as String?;
+      if (u != null && u.isNotEmpty) uris.add(u);
+    }
+    if (uris.isEmpty) return;
+
+    final currentUri = _currentTrack?['uri'] as String?;
+    final rnd = Random();
+    int index = rnd.nextInt(uris.length);
+    int attempts = 0;
+    while (uris[index] == currentUri && attempts < 6) {
+      index = rnd.nextInt(uris.length);
+      attempts++;
+    }
+
+    // Construct a minimal track map for UI
+    final sel = tracks[index];
+    final selectedUri = uris[index];
+    final trackMap = {
+      'uri': selectedUri,
+      'index': sel['index'] ?? index,
+      'title': sel['name'] ?? sel['title'] ?? '',
+      'artist': sel['artist'] ?? '',
+      'imageUrl': sel['imageUrl'] ?? sel['album']?['images']?[0]?['url'] ?? null,
+    };
+
+    // Prevent recursive corrections for a short time
+    _suppressAutoCorrection = true;
+    Future.delayed(const Duration(seconds: 2), () {
+      _suppressAutoCorrection = false;
+    });
+
+    try {
+      final contextUri = _currentPlaylistId!.startsWith('spotify:')
+          ? _currentPlaylistId!
+          : 'spotify:playlist:${_currentPlaylistId!}';
+      if (_isWindows || _isWeb) {
+        await _apiService?.playTrack(selectedUri, contextUri: contextUri, offset: trackMap['index'] as int?);
+        _currentTrack = trackMap;
+        _isPlaying = true;
+        notifyListeners();
+      } else {
+        await SpotifySdk.play(spotifyUri: contextUri);
+        await Future.delayed(const Duration(milliseconds: 500));
+        await SpotifySdk.skipToIndex(spotifyUri: contextUri, trackIndex: trackMap['index'] as int? ?? 0);
+        _currentTrack = trackMap;
+        _isPlaying = true;
+        notifyListeners();
+      }
+    } catch (e) {
+      print('[PlaybackProvider] _playRandomFromCurrentPlaylist error: $e');
     }
   }
 
@@ -472,29 +639,34 @@ class PlaybackProvider extends ChangeNotifier {
     _isConnected = false;
     _currentImageBytes = null;
     _lastImageUri = null;
+    _currentPlaylistId = null;
+    _currentPlaylistTracks = null;
+    _suppressAutoCorrection = false;
     notifyListeners();
   }
 
   Future<void> setShuffle(bool enabled) async {
+    print('[PlaybackProvider] setShuffle called, enabled=$enabled');
     try {
-      // Веб / Windows – используем API
       if (_isWindows || _isWeb) {
         await _apiService?.setShuffle(enabled);
-        _shuffleActive = enabled;
-        notifyListeners();
-        return;
+      } else {
+        if (!_isConnected) await connect();
+        await SpotifySdk.setShuffle(shuffle: enabled);
       }
-      // Мобильные – Spotify SDK
-      if (!_isConnected) await connect();
-      await SpotifySdk.setShuffle(shuffle: enabled);
       _shuffleActive = enabled;
       notifyListeners();
     } catch (e) {
       print('[Spotify] setShuffle error: $e');
+      // всё равно обновляем локально, чтобы кнопка переключилась
+      _shuffleActive = enabled;
+      notifyListeners();
     }
   }
 
   Future<void> cycleRepeatMode() async {
+    print(
+        '[PlaybackProvider] cycleRepeatMode called, current mode=$_repeatMode');
     String newMode;
     switch (_repeatMode) {
       case 'off':
@@ -506,27 +678,24 @@ class PlaybackProvider extends ChangeNotifier {
       default:
         newMode = 'off';
     }
-
     try {
-      // Веб / Windows – API
       if (_isWindows || _isWeb) {
         await _apiService?.setRepeatMode(newMode);
-        _repeatMode = newMode;
-        notifyListeners();
-        return;
+      } else {
+        if (!_isConnected) await connect();
+        final sdkMode = newMode == 'off'
+            ? RepeatMode.off
+            : newMode == 'context'
+                ? RepeatMode.context
+                : RepeatMode.track;
+        await SpotifySdk.setRepeatMode(repeatMode: sdkMode);
       }
-      // Мобильные – SDK
-      if (!_isConnected) await connect();
-      final sdkMode = newMode == 'off'
-          ? RepeatMode.off
-          : newMode == 'context'
-              ? RepeatMode.context
-              : RepeatMode.track;
-      await SpotifySdk.setRepeatMode(repeatMode: sdkMode);
       _repeatMode = newMode;
       notifyListeners();
     } catch (e) {
       print('[Spotify] cycleRepeatMode error: $e');
+      _repeatMode = newMode;
+      notifyListeners();
     }
   }
 
