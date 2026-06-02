@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { rateLimitMiddleware } = require('../infrastructure/rateLimiter');
+const idempotency = require('../middleware/idempotency');
 const {
   searchUsers,
   sendRequest,
@@ -16,9 +17,9 @@ router.get('/search', rateLimitMiddleware(15, 60), searchUsers);
 router.get('/', rateLimitMiddleware(15, 60), getFriends);
 router.get('/requests', rateLimitMiddleware(15, 60), getIncomingRequests);
 router.get('/user/:userId', rateLimitMiddleware(15, 60), getUserById);
-router.post('/request', rateLimitMiddleware(10, 60), sendRequest);
-router.patch('/:friendshipId/accept', rateLimitMiddleware(10, 60), acceptRequest);
-router.delete('/:friendshipId', rateLimitMiddleware(10, 60), deleteRequest);
-router.delete('/by-user/:friendId', rateLimitMiddleware(10, 60), deleteFriendByUserId);
+router.post('/request', rateLimitMiddleware(10, 60), idempotency, sendRequest);
+router.patch('/:friendshipId/accept', rateLimitMiddleware(10, 60), idempotency, acceptRequest);
+router.delete('/:friendshipId', rateLimitMiddleware(10, 60), idempotency, deleteRequest);
+router.delete('/by-user/:friendId', rateLimitMiddleware(10, 60), idempotency, deleteFriendByUserId);
 
 module.exports = router;
