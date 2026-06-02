@@ -1,6 +1,6 @@
 const prisma = require('./db/prisma');
 const cookie = require('cookie');
-const { invalidateUserDB } = require('../infrastructure/spotify/cache');
+const { invalidateUserDB } = require('./infrastructure/spotify/cache');
 
 const onlineUsers = new Map();
 const offlineTimers = new Map(); // userId -> Timeout
