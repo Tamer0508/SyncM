@@ -1,13 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../utils/notifications.dart';
-import 'dart:html' as html if (dart.library.html) '';
-import '../../utils/error_utils.dart';
 
 class SettingsScreen extends StatelessWidget {
   final bool embedded;
@@ -35,81 +32,41 @@ class _SettingsBodyState extends State<_SettingsBody> {
   bool _isUploading = false;
 
   Future<void> _pickAndUploadAvatar() async {
-    if (kIsWeb) {
-      final input = html.FileUploadInputElement()
-        ..accept = 'image/png, image/jpeg, image/jpg, image/gif, image/webp';
-      input.click();
-      input.onChange.listen((e) async {
-        final file = input.files?.first;
-        if (file != null) {
-          final allowedTypes = [
-            'image/png',
-            'image/jpeg',
-            'image/jpg',
-            'image/gif',
-            'image/webp'
-          ];
-          if (!allowedTypes.contains(file.type)) {
-            showAppNotification(context,
-                message:
-                    'Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
-                type: NotificationType.error);
-            return;
-          }
-          setState(() => _isUploading = true);
-          try {
-            final auth = Provider.of<AuthProvider>(context, listen: false);
-            await auth.uploadAvatar(file);
-            if (mounted) {
-              showAppNotification(context,
-                  message: 'Аватарка обновлена',
-                  type: NotificationType.success);
-            }
-          } catch (e) {
-            if (mounted) {
-              showAppNotification(context,
-                  message: 'Ошибка загрузки', type: NotificationType.error);
-            }
-          } finally {
-            if (mounted) setState(() => _isUploading = false);
-          }
-        }
-      });
-    } else {
-      final picker = ImagePicker();
-      final XFile? image = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 85,
-      );
-      if (image == null) return;
+    // Единый файловый пикер для всех платформ
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,            // получаем bytes сразу (работает и на мобилках)
+      allowMultiple: false,
+    );
 
-      final ext = image.path.split('.').last.toLowerCase();
-      if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].contains(ext)) {
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+
+    // Проверка расширения
+    final ext = file.extension ?? '';
+    if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].contains(ext.toLowerCase())) {
+      showAppNotification(context,
+          message: 'Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
+          type: NotificationType.error);
+      return;
+    }
+
+    setState(() => _isUploading = true);
+    try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      // Передаём байты и имя файла (bytes гарантированно есть, т.к. withData: true)
+      await auth.uploadAvatar(file.bytes!, file.name);
+      if (mounted) {
         showAppNotification(context,
-            message:
-                'Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
-            type: NotificationType.error);
-        return;
+            message: 'Аватарка обновлена', type: NotificationType.success);
       }
-
-      setState(() => _isUploading = true);
-      try {
-        final auth = Provider.of<AuthProvider>(context, listen: false);
-        await auth.uploadAvatar(image.path);
-        if (mounted) {
-          showAppNotification(context,
-              message: 'Аватарка обновлена', type: NotificationType.success);
-        }
-      } catch (e) {
-        if (mounted) {
-          showAppNotification(context,
-              message: 'Ошибка загрузки', type: NotificationType.error);
-        }
-      } finally {
-        if (mounted) setState(() => _isUploading = false);
+    } catch (e) {
+      if (mounted) {
+        showAppNotification(context,
+            message: 'Ошибка загрузки', type: NotificationType.error);
       }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
