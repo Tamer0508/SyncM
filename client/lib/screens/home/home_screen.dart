@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:syncm/screens/playlist/playlist_tracks_screen.dart';
 import 'package:syncm/screens/settings/settings_screen.dart';
 import 'package:syncm/services/socket_service.dart';
+import '../../services/api_service.dart';
 import '../../widgets/playlist_card.dart';
 import '../../widgets/scrollable_playlist_row.dart';
 import '../../widgets/interactive_card.dart';
@@ -22,7 +23,8 @@ import '../../utils/notifications.dart';
 class _RailIconWidget extends StatefulWidget {
   final IconData icon;
   final bool selected;
-  const _RailIconWidget({Key? key, required this.icon, required this.selected}) : super(key: key);
+  const _RailIconWidget({Key? key, required this.icon, required this.selected})
+      : super(key: key);
   @override
   State<_RailIconWidget> createState() => _RailIconWidgetState();
 }
@@ -33,7 +35,9 @@ class _RailIconWidgetState extends State<_RailIconWidget> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
-    final bgColor = widget.selected ? primary : (_hover ? primary.withOpacity(0.12) : Colors.transparent);
+    final bgColor = widget.selected
+        ? primary
+        : (_hover ? primary.withOpacity(0.12) : Colors.transparent);
     final iconColor = widget.selected ? Colors.white : theme.iconTheme.color;
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
@@ -47,7 +51,12 @@ class _RailIconWidgetState extends State<_RailIconWidget> {
           color: bgColor,
           borderRadius: BorderRadius.circular(14),
           boxShadow: widget.selected
-              ? [BoxShadow(color: primary.withOpacity(0.16), blurRadius: 10, offset: const Offset(0, 4))]
+              ? [
+                  BoxShadow(
+                      color: primary.withOpacity(0.16),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4))
+                ]
               : null,
         ),
         child: Icon(widget.icon, color: iconColor, size: 22),
@@ -59,12 +68,15 @@ class _RailIconWidgetState extends State<_RailIconWidget> {
 class _GlowBackground extends StatefulWidget {
   final Color dominantColor;
   final Color vibrantColor;
-  const _GlowBackground({Key? key, required this.dominantColor, required this.vibrantColor}) : super(key: key);
+  const _GlowBackground(
+      {Key? key, required this.dominantColor, required this.vibrantColor})
+      : super(key: key);
   @override
   State<_GlowBackground> createState() => _GlowBackgroundState();
 }
 
-class _GlowBackgroundState extends State<_GlowBackground> with TickerProviderStateMixin {
+class _GlowBackgroundState extends State<_GlowBackground>
+    with TickerProviderStateMixin {
   late AnimationController _colorController;
   late Animation<Color?> _dominantAnim;
   late Animation<Color?> _vibrantAnim;
@@ -74,9 +86,13 @@ class _GlowBackgroundState extends State<_GlowBackground> with TickerProviderSta
   @override
   void initState() {
     super.initState();
-    _colorController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
-    _dominantAnim = ColorTween(begin: _currentDominant, end: widget.dominantColor).animate(_colorController);
-    _vibrantAnim = ColorTween(begin: _currentVibrant, end: widget.vibrantColor).animate(_colorController);
+    _colorController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1200));
+    _dominantAnim =
+        ColorTween(begin: _currentDominant, end: widget.dominantColor)
+            .animate(_colorController);
+    _vibrantAnim = ColorTween(begin: _currentVibrant, end: widget.vibrantColor)
+        .animate(_colorController);
     _colorController.addListener(() {
       setState(() {
         _currentDominant = _dominantAnim.value!;
@@ -89,9 +105,14 @@ class _GlowBackgroundState extends State<_GlowBackground> with TickerProviderSta
   @override
   void didUpdateWidget(covariant _GlowBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.dominantColor != widget.dominantColor || oldWidget.vibrantColor != widget.vibrantColor) {
-      _dominantAnim = ColorTween(begin: _currentDominant, end: widget.dominantColor).animate(_colorController);
-      _vibrantAnim = ColorTween(begin: _currentVibrant, end: widget.vibrantColor).animate(_colorController);
+    if (oldWidget.dominantColor != widget.dominantColor ||
+        oldWidget.vibrantColor != widget.vibrantColor) {
+      _dominantAnim =
+          ColorTween(begin: _currentDominant, end: widget.dominantColor)
+              .animate(_colorController);
+      _vibrantAnim =
+          ColorTween(begin: _currentVibrant, end: widget.vibrantColor)
+              .animate(_colorController);
       _colorController
         ..reset()
         ..forward();
@@ -124,11 +145,11 @@ class _GlowBackgroundState extends State<_GlowBackground> with TickerProviderSta
 class _NowPlayingPanelCompact extends StatefulWidget {
   const _NowPlayingPanelCompact({Key? key}) : super(key: key);
   @override
-  State<_NowPlayingPanelCompact> createState() => _NowPlayingPanelCompactState();
+  State<_NowPlayingPanelCompact> createState() =>
+      _NowPlayingPanelCompactState();
 }
 
 class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
-  
   double _dragValue = 0.0;
   bool _dragging = false;
   String? _lastTrackUri;
@@ -153,7 +174,8 @@ class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
       final p = pb.paletteCache[imageUrl]!;
       _applyPalette(
         p.dominantColor?.color ?? Colors.blueGrey.shade800,
-        p.vibrantColor?.color ?? (p.lightVibrantColor?.color ?? Colors.blueGrey.shade600),
+        p.vibrantColor?.color ??
+            (p.lightVibrantColor?.color ?? Colors.blueGrey.shade600),
       );
     } else {
       _extractPalette(pb);
@@ -172,12 +194,14 @@ class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
       } else {
         return;
       }
-      final palette = await PaletteGenerator.fromImageProvider(provider, size: const Size(200, 200), maximumColorCount: 16);
+      final palette = await PaletteGenerator.fromImageProvider(provider,
+          size: const Size(200, 200), maximumColorCount: 16);
       if (!mounted) return;
       if (imageUrl != null) pb.paletteCache[imageUrl] = palette;
       _applyPalette(
         palette.dominantColor?.color ?? Colors.blueGrey.shade800,
-        palette.vibrantColor?.color ?? (palette.lightVibrantColor?.color ?? Colors.blueGrey.shade600),
+        palette.vibrantColor?.color ??
+            (palette.lightVibrantColor?.color ?? Colors.blueGrey.shade600),
       );
     } catch (_) {}
   }
@@ -210,14 +234,17 @@ class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
         final durationMs = pb.durationMs;
         final positionMs = pb.positionMs;
         final fraction = durationMs > 0
-            ? (_dragging ? _dragValue : (positionMs / durationMs).clamp(0.0, 1.0))
+            ? (_dragging
+                ? _dragValue
+                : (positionMs / durationMs).clamp(0.0, 1.0))
             : 0.0;
 
         final textColor = theme.colorScheme.onSurface;
         final subtitleColor = theme.colorScheme.onSurface.withOpacity(0.7);
         final timeColor = theme.colorScheme.onSurface.withOpacity(0.6);
         final iconColor = theme.iconTheme.color ?? theme.colorScheme.onSurface;
-        final inactiveTrackColor = theme.colorScheme.onSurface.withOpacity(0.24);
+        final inactiveTrackColor =
+            theme.colorScheme.onSurface.withOpacity(0.24);
 
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
@@ -225,7 +252,10 @@ class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
             color: theme.colorScheme.surface.withOpacity(0.25),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
-              BoxShadow(color: theme.shadowColor.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4)),
+              BoxShadow(
+                  color: theme.shadowColor.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4)),
             ],
           ),
           child: ClipRRect(
@@ -233,7 +263,9 @@ class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: _GlowBackground(dominantColor: _dominantColor, vibrantColor: _vibrantColor),
+                  child: _GlowBackground(
+                      dominantColor: _dominantColor,
+                      vibrantColor: _vibrantColor),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16),
@@ -243,29 +275,41 @@ class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12),
                         child: imageBytes != null
-                            ? Image.memory(imageBytes, width: 120, height: 120, fit: BoxFit.cover)
+                            ? Image.memory(imageBytes,
+                                width: 120, height: 120, fit: BoxFit.cover)
                             : imageUrl != null && imageUrl.isNotEmpty
-                                ? Image.network(imageUrl, width: 120, height: 120, fit: BoxFit.cover)
+                                ? Image.network(imageUrl,
+                                    width: 120, height: 120, fit: BoxFit.cover)
                                 : Container(
                                     width: 120,
                                     height: 120,
-                                    color: theme.colorScheme.primary.withOpacity(0.2),
-                                    child: Icon(Icons.music_note, size: 48, color: theme.colorScheme.primary),
+                                    color: theme.colorScheme.primary
+                                        .withOpacity(0.2),
+                                    child: Icon(Icons.music_note,
+                                        size: 48,
+                                        color: theme.colorScheme.primary),
                                   ),
                       ),
                       const SizedBox(height: 12),
                       Text(title,
-                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: textColor),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700, color: textColor),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 4),
                       Text(artist,
-                          style: theme.textTheme.bodySmall?.copyWith(color: subtitleColor),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: subtitleColor),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 12),
                       _CompactProgressBar(
                         fraction: fraction,
                         onSeek: (val) {
-                          setState(() { _dragValue = val; _dragging = true; });
+                          setState(() {
+                            _dragValue = val;
+                            _dragging = true;
+                          });
                         },
                         onSeekEnd: (val) {
                           setState(() => _dragging = false);
@@ -280,8 +324,12 @@ class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(_formatMs(positionMs), style: TextStyle(color: timeColor, fontSize: 12)),
-                            Text(_formatMs(durationMs), style: TextStyle(color: timeColor, fontSize: 12)),
+                            Text(_formatMs(positionMs),
+                                style:
+                                    TextStyle(color: timeColor, fontSize: 12)),
+                            Text(_formatMs(durationMs),
+                                style:
+                                    TextStyle(color: timeColor, fontSize: 12)),
                           ],
                         ),
                       ),
@@ -298,26 +346,42 @@ class _NowPlayingPanelCompactState extends State<_NowPlayingPanelCompact> {
                             onPressed: () => pb.setShuffle(!pb.shuffleActive),
                           ),
                           IconButton(
-                            icon: Icon(Icons.skip_previous, size: 28, color: iconColor),
-                            onPressed: () { pb.skipPrevious(); setState(() => _dragValue = 0); },
+                            icon: Icon(Icons.skip_previous,
+                                size: 28, color: iconColor),
+                            onPressed: () {
+                              pb.skipPrevious();
+                              setState(() => _dragValue = 0);
+                            },
                           ),
                           Container(
-                            width: 48, height: 48,
-                            decoration: BoxDecoration(shape: BoxShape.circle, color: _vibrantColor),
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                                shape: BoxShape.circle, color: _vibrantColor),
                             child: IconButton(
-                              icon: Icon(pb.isPlaying ? Icons.pause : Icons.play_arrow,
-                                  color: theme.colorScheme.onPrimary, size: 28),
+                              icon: Icon(
+                                  pb.isPlaying ? Icons.pause : Icons.play_arrow,
+                                  color: theme.colorScheme.onPrimary,
+                                  size: 28),
                               onPressed: () => pb.togglePlay(),
                             ),
                           ),
                           IconButton(
-                            icon: Icon(Icons.skip_next, size: 28, color: iconColor),
-                            onPressed: () { pb.skipNext(); setState(() => _dragValue = 0); },
+                            icon: Icon(Icons.skip_next,
+                                size: 28, color: iconColor),
+                            onPressed: () {
+                              pb.skipNext();
+                              setState(() => _dragValue = 0);
+                            },
                           ),
                           IconButton(
                             icon: Icon(
-                              pb.repeatMode == 'track' ? Icons.repeat_one : Icons.repeat,
-                              color: pb.repeatActive ? _vibrantColor : iconColor.withOpacity(0.7),
+                              pb.repeatMode == 'track'
+                                  ? Icons.repeat_one
+                                  : Icons.repeat,
+                              color: pb.repeatActive
+                                  ? _vibrantColor
+                                  : iconColor.withOpacity(0.7),
                               size: 22,
                             ),
                             onPressed: () => pb.cycleRepeatMode(),
@@ -383,10 +447,18 @@ class _CompactProgressBar extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: Stack(
             children: [
-              Container(height: 4, decoration: BoxDecoration(color: inactiveColor, borderRadius: BorderRadius.circular(2))),
+              Container(
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: inactiveColor,
+                      borderRadius: BorderRadius.circular(2))),
               FractionallySizedBox(
                 widthFactor: fraction,
-                child: Container(height: 4, decoration: BoxDecoration(color: activeColor, borderRadius: BorderRadius.circular(2))),
+                child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: activeColor,
+                        borderRadius: BorderRadius.circular(2))),
               ),
             ],
           ),
@@ -429,13 +501,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadAllPlaylists() async {
-    if (mounted) setState(() { _loadingCustom = true; _loadingSpotify = true; });
+    if (mounted)
+      setState(() {
+        _loadingCustom = true;
+        _loadingSpotify = true;
+      });
     final api = Provider.of<AuthProvider>(context, listen: false).api;
     try {
       final custom = await api.getMyPlaylists();
       if (mounted) setState(() => _customPlaylists = custom);
     } catch (e) {
-      if (mounted) showAppNotification(context, message: 'Ошибка загрузки своих плейлистов: $e', type: NotificationType.error);
+      if (mounted && !(e is ApiException && e.suppressUiNotification)) {
+        showAppNotification(context,
+            message: 'Ошибка загрузки своих плейлистов: $e',
+            type: NotificationType.error);
+      }
     } finally {
       if (mounted) setState(() => _loadingCustom = false);
     }
@@ -443,8 +523,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final spotify = await api.getPlaylists();
       if (mounted) setState(() => _spotifyPlaylists = spotify);
     } catch (e) {
-      if (mounted && e.toString().contains('Spotify не подключен') == false)
-        showAppNotification(context, message: 'Ошибка загрузки Spotify плейлистов: $e', type: NotificationType.error);
+      if (mounted &&
+          !(e is ApiException && e.suppressUiNotification) &&
+          e.toString().contains('Spotify не подключен') == false) {
+        showAppNotification(context,
+            message: 'Ошибка загрузки Spotify плейлистов: $e',
+            type: NotificationType.error);
+      }
     } finally {
       if (mounted) setState(() => _loadingSpotify = false);
     }
@@ -462,25 +547,38 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Добро пожаловать в SyncM', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+              Text('Добро пожаловать в SyncM',
+                  style: theme.textTheme.headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
               Text(
                 'Обновлённый интерфейс для музыки и общения. Найдите друзей, создайте сессии и синхронизируйте любимый звук.',
-                style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.78), height: 1.5),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.78),
+                    height: 1.5),
               ),
               const SizedBox(height: 18),
               Wrap(
-                spacing: 12, runSpacing: 12,
+                spacing: 12,
+                runSpacing: 12,
                 children: [
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.add), label: const Text('Новая сессия'),
-                    onPressed: () => Navigator.of(context).pushNamed('/session/create'),
-                    style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Новая сессия'),
+                    onPressed: () =>
+                        Navigator.of(context).pushNamed('/session/create'),
+                    style: ElevatedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18))),
                   ),
                   OutlinedButton.icon(
-                    icon: const Icon(Icons.person_search), label: const Text('Поиск друзей'),
-                    onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
-                    style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+                    icon: const Icon(Icons.person_search),
+                    label: const Text('Поиск друзей'),
+                    onPressed: () =>
+                        Navigator.of(context).pushNamed('/friends/search'),
+                    style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18))),
                   ),
                 ],
               ),
@@ -491,8 +589,13 @@ class _HomeScreenState extends State<HomeScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Плейлисты', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-            IconButton(icon: const Icon(Icons.add_box_outlined), onPressed: _createCustomPlaylist, tooltip: 'Создать плейлист'),
+            Text('Плейлисты',
+                style: theme.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800)),
+            IconButton(
+                icon: const Icon(Icons.add_box_outlined),
+                onPressed: _createCustomPlaylist,
+                tooltip: 'Создать плейлист'),
           ],
         ),
         const SizedBox(height: 12),
@@ -502,9 +605,15 @@ class _HomeScreenState extends State<HomeScreen> {
             length: 2,
             child: Column(
               children: [
-                TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: const [Tab(text: 'Мои'), Tab(text: 'Spotify')]),
+                TabBar(
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    tabs: const [Tab(text: 'Мои'), Tab(text: 'Spotify')]),
                 Expanded(
-                  child: TabBarView(children: [_buildPlaylistsTab(true), _buildPlaylistsTab(false)]),
+                  child: TabBarView(children: [
+                    _buildPlaylistsTab(true),
+                    _buildPlaylistsTab(false)
+                  ]),
                 ),
               ],
             ),
@@ -514,7 +623,9 @@ class _HomeScreenState extends State<HomeScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Приглашения в сессии', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            Text('Приглашения в сессии',
+                style: theme.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800)),
             Consumer<SessionProvider>(
               builder: (_, prov, __) {
                 if (prov.invites.isEmpty) return const SizedBox.shrink();
@@ -533,17 +644,22 @@ class _HomeScreenState extends State<HomeScreen> {
         Consumer<SessionProvider>(
           builder: (_, prov, __) {
             if (prov.invitesLoading && prov.invites.isEmpty) {
-              return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
+              return Center(
+                  child: CircularProgressIndicator(
+                      color: theme.colorScheme.primary));
             }
             if (prov.invites.isEmpty) {
               return Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(22)),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
                   child: Text(
                     'Нет входящих приглашений. Когда друг создаст сессию с вами, уведомление появится здесь.',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.78),
+                      color:
+                          theme.textTheme.bodySmall?.color?.withOpacity(0.78),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -557,13 +673,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    tileColor: theme.colorScheme.primaryContainer.withOpacity(0.35),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                    tileColor:
+                        theme.colorScheme.primaryContainer.withOpacity(0.35),
                     leading: CircleAvatar(
-                      backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
-                      child: Icon(Icons.music_note, color: theme.colorScheme.primary),
+                      backgroundColor:
+                          theme.colorScheme.primary.withOpacity(0.15),
+                      child: Icon(Icons.music_note,
+                          color: theme.colorScheme.primary),
                     ),
-                    title: Text(name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    title: Text(name,
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
                     subtitle: Text('Приглашение от $hostName'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {
@@ -580,27 +702,41 @@ class _HomeScreenState extends State<HomeScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Активные сессии', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            Text('Активные сессии',
+                style: theme.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800)),
             TextButton(
-              onPressed: () async => await Provider.of<SessionProvider>(context, listen: false).fetchMySessions(),
+              onPressed: () async =>
+                  await Provider.of<SessionProvider>(context, listen: false)
+                      .fetchMySessions(),
               child: const Text('Обновить'),
             ),
           ],
         ),
         const SizedBox(height: 12),
         Consumer<SessionProvider>(builder: (_, prov, __) {
-          if (prov.loading) return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
+          if (prov.loading)
+            return Center(
+                child: CircularProgressIndicator(
+                    color: theme.colorScheme.primary));
           if (prov.sessions.isEmpty)
             return Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22)),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
                 child: Column(
                   children: [
-                    Text('Нет активных сессий', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                    Text('Нет активных сессий',
+                        style: theme.textTheme.bodyLarge
+                            ?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
-                    Text('Создайте сессию и пригласите друзей, чтобы начать совместное прослушивание.',
-                        style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.78)),
+                    Text(
+                        'Создайте сессию и пригласите друзей, чтобы начать совместное прослушивание.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.textTheme.bodySmall?.color
+                                ?.withOpacity(0.78)),
                         textAlign: TextAlign.center),
                   ],
                 ),
@@ -611,12 +747,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 .map((s) => Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: ListTile(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
                         tileColor: theme.cardColor,
-                        title: Text(s.name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                        subtitle: Text('Host: ${s.id.substring(0, 6)}', style: theme.textTheme.bodySmall),
+                        title: Text(s.name,
+                            style: theme.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        subtitle: Text('Host: ${s.id.substring(0, 6)}',
+                            style: theme.textTheme.bodySmall),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.of(context).pushNamed('/session'),
+                        onTap: () =>
+                            Navigator.of(context).pushNamed('/session'),
                       ),
                     ))
                 .toList(),
@@ -637,12 +778,15 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(isCustom ? 'Нет своих плейлистов' : 'Нет Spotify плейлистов', style: Theme.of(context).textTheme.bodyMedium),
+            Text(isCustom ? 'Нет своих плейлистов' : 'Нет Spotify плейлистов',
+                style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 8),
             ElevatedButton.icon(
               icon: Icon(isCustom ? Icons.add : Icons.link),
               label: Text(isCustom ? 'Создать плейлист' : 'Подключить Spotify'),
-              onPressed: () => isCustom ? _createCustomPlaylist() : Navigator.of(context).pushNamed('/profile'),
+              onPressed: () => isCustom
+                  ? _createCustomPlaylist()
+                  : Navigator.of(context).pushNamed('/profile'),
             ),
           ],
         ),
@@ -652,13 +796,26 @@ class _HomeScreenState extends State<HomeScreen> {
       itemBuilder: (_, i) {
         final p = playlists[i];
         return PlaylistCard(
-          name: p['name'] ?? '', description: p['description'] ?? '', imageUrl: p['imageUrl'],
+          name: p['name'] ?? '',
+          description: p['description'] ?? '',
+          imageUrl: p['imageUrl'],
           onTap: () {
             if (isDesktop) {
-              setState(() { _selectedPlaylist = {'id': p['id'], 'name': p['name'], 'imageUrl': p['imageUrl'], 'isCustom': isCustom}; });
+              setState(() {
+                _selectedPlaylist = {
+                  'id': p['id'],
+                  'name': p['name'],
+                  'imageUrl': p['imageUrl'],
+                  'isCustom': isCustom
+                };
+              });
             } else {
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => PlaylistTracksScreen(playlistId: p['id'] ?? '', playlistName: p['name'] ?? '', imageUrl: p['imageUrl'], isCustom: isCustom),
+                builder: (_) => PlaylistTracksScreen(
+                    playlistId: p['id'] ?? '',
+                    playlistName: p['name'] ?? '',
+                    imageUrl: p['imageUrl'],
+                    isCustom: isCustom),
               ));
             }
           },
@@ -673,10 +830,17 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Новый плейлист'),
-        content: TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Название')),
+        content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(labelText: 'Название')),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
-          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(nameController.text.trim()), child: const Text('Создать')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Отмена')),
+          ElevatedButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(nameController.text.trim()),
+              child: const Text('Создать')),
         ],
       ),
     );
@@ -686,7 +850,10 @@ class _HomeScreenState extends State<HomeScreen> {
         await api.createCustomPlaylist(name);
         await _loadAllPlaylists();
       } catch (e) {
-        if (mounted) showAppNotification(context, message: 'Ошибка создания плейлиста: $e', type: NotificationType.error);
+        if (mounted)
+          showAppNotification(context,
+              message: 'Ошибка создания плейлиста: $e',
+              type: NotificationType.error);
       }
     }
   }
@@ -698,25 +865,36 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Панель', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          Text('Панель',
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 12),
           InteractiveCard(
-            borderRadius: 16, padding: const EdgeInsets.all(14),
+            borderRadius: 16,
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Быстрые действия', style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+                Text('Быстрые действия',
+                    style: theme.textTheme.bodyLarge
+                        ?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
-                  icon: const Icon(Icons.add), label: const Text('Новая сессия'),
-                  onPressed: () => Navigator.of(context).pushNamed('/session/create'),
-                  style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Новая сессия'),
+                  onPressed: () =>
+                      Navigator.of(context).pushNamed('/session/create'),
+                  style: ElevatedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44)),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.person_search), label: const Text('Найти друзей'),
-                  onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+                  icon: const Icon(Icons.person_search),
+                  label: const Text('Найти друзей'),
+                  onPressed: () =>
+                      Navigator.of(context).pushNamed('/friends/search'),
+                  style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44)),
                 ),
               ],
             ),
@@ -727,8 +905,11 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (_, pb, __) {
                 if (pb.currentTrack == null)
                   return InteractiveCard(
-                    borderRadius: 16, padding: const EdgeInsets.all(16),
-                    child: Center(child: Text('Трек не выбран', style: theme.textTheme.bodyMedium)),
+                    borderRadius: 16,
+                    padding: const EdgeInsets.all(16),
+                    child: Center(
+                        child: Text('Трек не выбран',
+                            style: theme.textTheme.bodyMedium)),
                   );
                 return const _NowPlayingPanelCompact();
               },
@@ -746,59 +927,100 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
         color: theme.scaffoldBackgroundColor,
-        border: Border(bottom: BorderSide(color: theme.dividerColor.withOpacity(0.06))),
+        border: Border(
+            bottom: BorderSide(color: theme.dividerColor.withOpacity(0.06))),
       ),
       child: Row(
         children: [
           if (_selectedPlaylist != null)
-            IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => _selectedPlaylist = null)),
+            IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _selectedPlaylist = null)),
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               child: Text(
-                _selectedPlaylist != null ? _selectedPlaylist!['name'] ?? 'Плейлист' : ['Главная', 'Друзья', 'Профиль', 'Настройки'][_currentIndex],
+                _selectedPlaylist != null
+                    ? _selectedPlaylist!['name'] ?? 'Плейлист'
+                    : [
+                        'Главная',
+                        'Друзья',
+                        'Профиль',
+                        'Настройки'
+                      ][_currentIndex],
                 key: ValueKey(_selectedPlaylist?['id'] ?? _currentIndex),
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
           ),
           Row(
             children: [
               if (_currentIndex == 1) ...[
-                IconButton(icon: const Icon(Icons.person_add_alt_1), onPressed: () => Navigator.of(context).pushNamed('/friends/search')),
-                IconButton(icon: const Icon(Icons.notifications_none), onPressed: () => Navigator.of(context).pushNamed('/friends/requests')),
-                IconButton(icon: const Icon(Icons.refresh), onPressed: () async => await Provider.of<FriendsProvider>(context, listen: false).fetchFriends()),
+                IconButton(
+                    icon: const Icon(Icons.person_add_alt_1),
+                    onPressed: () =>
+                        Navigator.of(context).pushNamed('/friends/search')),
+                IconButton(
+                    icon: const Icon(Icons.notifications_none),
+                    onPressed: () =>
+                        Navigator.of(context).pushNamed('/friends/requests')),
+                IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: () async => await Provider.of<FriendsProvider>(
+                            context,
+                            listen: false)
+                        .fetchFriends()),
               ] else if (_currentIndex == 0) ...[
                 IconButton(
                   icon: Stack(
                     clipBehavior: Clip.none,
                     children: [
                       const Icon(Icons.mail_outline),
-                      if (Provider.of<SessionProvider>(context).unreadInvitesCount > 0)
+                      if (Provider.of<SessionProvider>(context)
+                              .unreadInvitesCount >
+                          0)
                         Positioned(
                           top: -5,
                           right: -10,
                           child: Container(
                             padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(color: Colors.deepPurple, shape: BoxShape.circle),
-                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                            decoration: BoxDecoration(
+                                color: Colors.deepPurple,
+                                shape: BoxShape.circle),
+                            constraints: const BoxConstraints(
+                                minWidth: 18, minHeight: 18),
                             child: Text(
                               '${Provider.of<SessionProvider>(context).unreadInvitesCount}',
-                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold),
                               textAlign: TextAlign.center,
                             ),
                           ),
                         ),
                     ],
                   ),
-                  onPressed: () => Navigator.of(context).pushNamed('/session/invites'),
+                  onPressed: () =>
+                      Navigator.of(context).pushNamed('/session/invites'),
                 ),
-                IconButton(icon: const Icon(Icons.add), onPressed: () => Navigator.of(context).pushNamed('/session/create')),
+                IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: () =>
+                        Navigator.of(context).pushNamed('/session/create')),
               ],
               if (_currentIndex == 2) ...[
-                IconButton(icon: const Icon(Icons.settings), onPressed: () => Navigator.of(context).pushNamed('/settings')),
+                IconButton(
+                    icon: const Icon(Icons.settings),
+                    onPressed: () =>
+                        Navigator.of(context).pushNamed('/settings')),
               ],
-              IconButton(icon: Icon(themeProvider.isDark ? Icons.dark_mode : Icons.light_mode), onPressed: () => themeProvider.toggleTheme()),
+              IconButton(
+                  icon: Icon(themeProvider.isDark
+                      ? Icons.dark_mode
+                      : Icons.light_mode),
+                  onPressed: () => themeProvider.toggleTheme()),
             ],
           ),
         ],
@@ -814,11 +1036,23 @@ class _HomeScreenState extends State<HomeScreen> {
         final isDesktop = constraints.maxWidth >= 900;
         if (!isDesktop && _currentIndex > 2) _currentIndex = 0;
         final unreadCount = Provider.of<FriendsProvider>(context).unreadCount;
-        final tabsMobile = [_buildHomeTab(), FriendsScreen(embedded: true), ProfileScreen(embedded: true)];
-        final tabsDesktop = [_buildHomeTab(), FriendsScreen(embedded: true), ProfileScreen(embedded: true), const SettingsScreen()];
-        final miniPlayerWidget = const Padding(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: MiniPlayer());
+        final tabsMobile = [
+          _buildHomeTab(),
+          FriendsScreen(embedded: true),
+          ProfileScreen(embedded: true)
+        ];
+        final tabsDesktop = [
+          _buildHomeTab(),
+          FriendsScreen(embedded: true),
+          ProfileScreen(embedded: true),
+          const SettingsScreen()
+        ];
+        final miniPlayerWidget = const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: MiniPlayer());
         final navItems = [
-          const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Главная'),
+          const BottomNavigationBarItem(
+              icon: Icon(Icons.home), label: 'Главная'),
           BottomNavigationBarItem(
             icon: Stack(
               clipBehavior: Clip.none,
@@ -834,7 +1068,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         color: Colors.yellow[700],
                         shape: BoxShape.circle,
                       ),
-                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      constraints:
+                          const BoxConstraints(minWidth: 18, minHeight: 18),
                       child: Text(
                         '$unreadCount',
                         style: const TextStyle(
@@ -850,7 +1085,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             label: 'Друзья',
           ),
-          const BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
+          const BottomNavigationBarItem(
+              icon: Icon(Icons.person), label: 'Профиль'),
         ];
         final mobileBottomNav = !isDesktop
             ? SafeArea(
@@ -861,12 +1097,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     miniPlayerWidget,
                     Theme.of(context).platform == TargetPlatform.iOS
                         ? CupertinoTabBar(
-                            currentIndex: _currentIndex, onTap: (i) => setState(() => _currentIndex = i),
+                            currentIndex: _currentIndex,
+                            onTap: (i) => setState(() => _currentIndex = i),
                             activeColor: Theme.of(context).colorScheme.primary,
                             items: navItems,
                           )
                         : BottomNavigationBar(
-                            currentIndex: _currentIndex, onTap: (i) => setState(() => _currentIndex = i),
+                            currentIndex: _currentIndex,
+                            onTap: (i) => setState(() => _currentIndex = i),
                             items: navItems,
                           ),
                   ],
@@ -885,15 +1123,27 @@ class _HomeScreenState extends State<HomeScreen> {
                         onEnter: (_) => setState(() => _railExpanded = true),
                         onExit: (_) => setState(() => _railExpanded = false),
                         child: NavigationRail(
-                          labelType: _railExpanded ? NavigationRailLabelType.all : NavigationRailLabelType.none,
+                          labelType: _railExpanded
+                              ? NavigationRailLabelType.all
+                              : NavigationRailLabelType.none,
                           leading: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 18),
                             child: Column(
                               children: [
                                 Container(
                                   padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
-                                  child: Text('SyncM', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                                  decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(12)),
+                                  child: Text('SyncM',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                              fontWeight: FontWeight.w700)),
                                 ),
                                 const SizedBox(height: 14),
                               ],
@@ -902,17 +1152,52 @@ class _HomeScreenState extends State<HomeScreen> {
                           trailing: Column(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              IconButton(icon: Icon(themeProvider.isDark ? Icons.dark_mode : Icons.light_mode), onPressed: () => themeProvider.toggleTheme()),
+                              IconButton(
+                                  icon: Icon(themeProvider.isDark
+                                      ? Icons.dark_mode
+                                      : Icons.light_mode),
+                                  onPressed: () => themeProvider.toggleTheme()),
                               const SizedBox(height: 8),
                             ],
                           ),
                           selectedIndex: _currentIndex,
-                          onDestinationSelected: (i) => setState(() { _currentIndex = i; _selectedPlaylist = null; }),
+                          onDestinationSelected: (i) => setState(() {
+                            _currentIndex = i;
+                            _selectedPlaylist = null;
+                          }),
                           destinations: [
-                            NavigationRailDestination(icon: _RailIconWidget(icon: Icons.home, selected: _currentIndex == 0), selectedIcon: _RailIconWidget(icon: Icons.home, selected: _currentIndex == 0), label: const Text('Главная')),
-                            NavigationRailDestination(icon: _RailIconWidget(icon: Icons.people, selected: _currentIndex == 1), selectedIcon: _RailIconWidget(icon: Icons.people, selected: _currentIndex == 1), label: const Text('Друзья')),
-                            NavigationRailDestination(icon: _RailIconWidget(icon: Icons.person, selected: _currentIndex == 2), selectedIcon: _RailIconWidget(icon: Icons.person, selected: _currentIndex == 2), label: const Text('Профиль')),
-                            NavigationRailDestination(icon: _RailIconWidget(icon: Icons.settings, selected: _currentIndex == 3), selectedIcon: _RailIconWidget(icon: Icons.settings, selected: _currentIndex == 3), label: const Text('Настройки')),
+                            NavigationRailDestination(
+                                icon: _RailIconWidget(
+                                    icon: Icons.home,
+                                    selected: _currentIndex == 0),
+                                selectedIcon: _RailIconWidget(
+                                    icon: Icons.home,
+                                    selected: _currentIndex == 0),
+                                label: const Text('Главная')),
+                            NavigationRailDestination(
+                                icon: _RailIconWidget(
+                                    icon: Icons.people,
+                                    selected: _currentIndex == 1),
+                                selectedIcon: _RailIconWidget(
+                                    icon: Icons.people,
+                                    selected: _currentIndex == 1),
+                                label: const Text('Друзья')),
+                            NavigationRailDestination(
+                                icon: _RailIconWidget(
+                                    icon: Icons.person,
+                                    selected: _currentIndex == 2),
+                                selectedIcon: _RailIconWidget(
+                                    icon: Icons.person,
+                                    selected: _currentIndex == 2),
+                                label: const Text('Профиль')),
+                            NavigationRailDestination(
+                                icon: _RailIconWidget(
+                                    icon: Icons.settings,
+                                    selected: _currentIndex == 3),
+                                selectedIcon: _RailIconWidget(
+                                    icon: Icons.settings,
+                                    selected: _currentIndex == 3),
+                                label: const Text('Настройки')),
                           ],
                         ),
                       ),
@@ -927,13 +1212,57 @@ class _HomeScreenState extends State<HomeScreen> {
                                 _buildDesktopHeader(),
                                 Expanded(
                                   child: _selectedPlaylist != null
-                                      ? PlaylistTracksScreen(playlistId: _selectedPlaylist!['id'] ?? '', playlistName: _selectedPlaylist!['name'] ?? '', imageUrl: _selectedPlaylist!['imageUrl'], isCustom: _selectedPlaylist!['isCustom'] ?? false, embedded: true)
+                                      ? PlaylistTracksScreen(
+                                          playlistId:
+                                              _selectedPlaylist!['id'] ?? '',
+                                          playlistName:
+                                              _selectedPlaylist!['name'] ?? '',
+                                          imageUrl:
+                                              _selectedPlaylist!['imageUrl'],
+                                          isCustom:
+                                              _selectedPlaylist!['isCustom'] ??
+                                                  false,
+                                          embedded: true)
                                       : Center(
                                           child: ConstrainedBox(
-                                            constraints: const BoxConstraints(maxWidth: 1100),
+                                            constraints: const BoxConstraints(
+                                                maxWidth: 1100),
                                             child: AnimatedSwitcher(
-                                              duration: const Duration(milliseconds: 280),
-                                              child: KeyedSubtree(key: ValueKey('desktop_$_currentIndex'), child: tabsDesktop[_currentIndex]),
+                                              duration: const Duration(
+                                                  milliseconds: 280),
+                                              layoutBuilder:
+                                                  (Widget? currentChild,
+                                                      List<Widget>
+                                                          previousChildren) {
+                                                final seenKeys = <Key?>{};
+                                                final uniquePrevious =
+                                                    <Widget>[];
+                                                for (final child
+                                                    in previousChildren
+                                                        .reversed) {
+                                                  if (seenKeys.add(child.key)) {
+                                                    uniquePrevious.add(child);
+                                                  }
+                                                }
+                                                final children = uniquePrevious
+                                                    .reversed
+                                                    .toList();
+                                                if (currentChild != null) {
+                                                  children.removeWhere(
+                                                      (child) =>
+                                                          child.key ==
+                                                          currentChild.key);
+                                                  children.add(currentChild);
+                                                }
+                                                return Stack(
+                                                    alignment: Alignment.center,
+                                                    children: children);
+                                              },
+                                              child: KeyedSubtree(
+                                                  key: ValueKey(
+                                                      'desktop_$_currentIndex'),
+                                                  child: tabsDesktop[
+                                                      _currentIndex]),
                                             ),
                                           ),
                                         ),
@@ -950,7 +1279,25 @@ class _HomeScreenState extends State<HomeScreen> {
               : SafeArea(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 280),
-                    child: KeyedSubtree(key: ValueKey('mobile_$_currentIndex'), child: tabsMobile[_currentIndex]),
+                    layoutBuilder:
+                        (Widget? currentChild, List<Widget> previousChildren) {
+                      final seenKeys = <Key?>{};
+                      final uniquePrevious = <Widget>[];
+                      for (final child in previousChildren.reversed) {
+                        if (seenKeys.add(child.key)) uniquePrevious.add(child);
+                      }
+                      final children = uniquePrevious.reversed.toList();
+                      if (currentChild != null) {
+                        children.removeWhere(
+                            (child) => child.key == currentChild.key);
+                        children.add(currentChild);
+                      }
+                      return Stack(
+                          alignment: Alignment.center, children: children);
+                    },
+                    child: KeyedSubtree(
+                        key: ValueKey('mobile_$_currentIndex'),
+                        child: tabsMobile[_currentIndex]),
                   ),
                 ),
           bottomNavigationBar: isDesktop ? null : mobileBottomNav,

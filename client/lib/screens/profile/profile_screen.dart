@@ -57,7 +57,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       setState(() => _profileData = data);
     } catch (e) {
-      if (mounted) {
+      if (mounted && !(e is ApiException && e.suppressUiNotification)) {
         showAppNotification(context, message: 'Ошибка загрузки профиля: $e', type: NotificationType.error);
       }
     } finally {

@@ -2,37 +2,35 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // ==================== Light Palette ====================
-  static const Color lightPrimary    = Color(0xFF6800FF);  // фиолетовый акцент
-  static const Color lightBackground = Color(0xFFFFF9EB);  // тёплый светлый
+  static const Color lightPrimary    = Color(0xFF6A7A4E);  // мягкий зелёный
+  static const Color lightBackground = Color(0xFFFBF9F2);  // тёплый кремовый, почти белый
   static const Color lightSurface    = Color(0xFFFFFFFF);  // белые карточки
-  static const Color lightNavBar     = Color(0xFFFFFFFF);  // белая панель
-  static const Color textOnLight     = Color(0xFF1A1C1E);  // почти чёрный
-  static const Color lightDivider    = Color(0xFFF5F0E6);
+  static const Color lightNavBar     = Color(0xFFF5F3ED);  // чуть темнее фона
+  static const Color textOnLight     = Color(0xFF2C2F24);  // тёмно‑оливковый для текста
+  static const Color lightDivider    = Color(0xFFECEAE4);
 
-  // ==================== Dark Palette ====================
-  static const Color darkDeepest      = Color(0xFF12111A);  // фон
-  static const Color darkSurface      = Color(0xFF1E1D2A);  // карточки
-  static const Color darkNavBar       = Color(0xFF2A2936);  // нижняя панель
-  static const Color darkPrimaryColor = Color(0xFFE8B4D8);  // розовый акцент
-  static const Color textOnDark       = Color(0xFFF2E0D0);  // тёплый текст
+  static const Color darkDeepest = Color(0xFF121212); 
+  static const Color darkSurface = Color(0xFF181818); // карточки
+  static const Color darkNavBar = Color(0xFF282828); // нижняя панель
+  static const Color darkPrimaryColor = Color(0xFFC5E384); 
+  static const Color darkSecondary = Color(0xFF1DB954); 
+  static const Color textOnDark = Color(0xFFFFFFFF); // белый текст (максимальный контраст)
 
   // Brand
   static const Color spotifyGreen = Color(0xFF1DB954);
 
-  // ==================== Light Theme ====================
   static ThemeData get light {
     final base = ThemeData.light(useMaterial3: true);
     final colorScheme = ColorScheme.light(
       primary: lightPrimary,
-      secondary: const Color(0xFFE43636),
+      secondary: const Color(0xFFD68C6E),   // тёплый терракотовый для второстепенных акцентов
       background: lightBackground,
       surface: lightSurface,
       onPrimary: Colors.white,
       onSecondary: Colors.white,
       onBackground: textOnLight,
       onSurface: textOnLight,
-      error: const Color(0xFFB00020),
+      error: const Color(0xFFB84A4A),
     );
 
     return base.copyWith(
@@ -112,16 +110,15 @@ class AppTheme {
     );
   }
 
-  // ==================== Dark Theme ====================
   static ThemeData get dark {
     final base = ThemeData.dark(useMaterial3: true);
     final colorScheme = ColorScheme.dark(
-      primary: darkPrimaryColor,
-      secondary: const Color(0xFF9D3ED5),
+      primary: darkPrimaryColor,        // #C5E384
+      secondary: darkSecondary,         // #7ED6C4
       background: darkDeepest,
       surface: darkSurface,
-      onPrimary: Colors.black,          // на розовом акценте чёрный текст
-      onSecondary: Colors.white,
+      onPrimary: const Color(0xFF1A1C12), // очень тёмный зелёный для контраста на лайме
+      onSecondary: const Color(0xFF0A1E1A), // для бирюзового
       onBackground: textOnDark,
       onSurface: textOnDark,
       error: const Color(0xFFEF5350),

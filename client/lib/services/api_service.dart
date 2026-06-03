@@ -15,6 +15,8 @@ class ApiException implements Exception {
 
   String get userMessage => serverMessage ?? message;
 
+  bool get suppressUiNotification => statusCode == 429 || statusCode == 500;
+
   @override
   String toString() => 'ApiException: $message (${statusCode ?? 'n/a'})${serverMessage != null ? ' [$serverMessage]' : ''}';
 }
