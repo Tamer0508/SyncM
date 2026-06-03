@@ -8,6 +8,7 @@ const { acquireLock, releaseLock } = require('../infrastructure/redis');
 const redis = require('../infrastructure/redis');
 const logger = require('../infrastructure/logger');
 const { rateLimitMiddleware } = require('../infrastructure/rateLimiter');
+const { invalidateUserDB } = require('../infrastructure/spotify/cache');
 
 const refreshAccessToken = async (spotifyUser) => {
   const lockKey = `spotify:refresh_lock:${spotifyUser.id}`;
@@ -316,6 +317,8 @@ router.post('/disconnect', rateLimitMiddleware(10, 60), async (req, res) => {
       data: { userId: null },
     });
 
+    await invalidateUserDB(userId);
+
     await Promise.all([
       redis.del(`spotify:status:${userId}`),
       redis.del(`spotify:token-info:${userId}`),
@@ -324,6 +327,7 @@ router.post('/disconnect', rateLimitMiddleware(10, 60), async (req, res) => {
 
     res.json({ message: 'Spotify успешно отключен' });
   } catch (error) {
+    logger.error({ err: error }, 'Disconnect error');
     res.status(500).json({ error: 'Ошибка отключения Spotify' });
   }
 });
