@@ -14,8 +14,6 @@ import 'utils/app_globals.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/home/home_screen.dart';
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
 void main() async {
   runApp(const MyApp());
 }
@@ -114,6 +112,8 @@ class _AuthGateState extends State<_AuthGate> {
         final socket = SocketService();
         socket.init('https://syncm-production.up.railway.app', userId);
         Provider.of<FriendsProvider>(context, listen: false).init(socket);
+        Provider.of<SessionProvider>(context, listen: false).init(socket);
+        Provider.of<SessionProvider>(context, listen: false).fetchInvites();
       }
     });
   }

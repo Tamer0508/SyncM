@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../screens/player/now_playing.dart';
-import '../../main.dart' show navigatorKey;
+import '../../utils/app_globals.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({Key? key}) : super(key: key);

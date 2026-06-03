@@ -420,7 +420,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (userId != null) {
       final socket = SocketService();
       socket.init(auth.api.baseUrl, userId);
-      Provider.of<FriendsProvider>(context, listen: false).listenToSocket();
+      Provider.of<FriendsProvider>(context, listen: false).init(socket);
+      final sessionProv = Provider.of<SessionProvider>(context, listen: false);
+      sessionProv.init(socket);
+      sessionProv.fetchMySessions();
+      sessionProv.fetchInvites();
     }
   }
 
@@ -505,6 +509,72 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+        ),
+        const SizedBox(height: 20),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Приглашения в сессии', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            Consumer<SessionProvider>(
+              builder: (_, prov, __) {
+                if (prov.invites.isEmpty) return const SizedBox.shrink();
+                return TextButton(
+                  onPressed: () {
+                    prov.markInvitesAsRead();
+                    Navigator.of(context).pushNamed('/session/invites');
+                  },
+                  child: Text('Все (${prov.invites.length})'),
+                );
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Consumer<SessionProvider>(
+          builder: (_, prov, __) {
+            if (prov.invitesLoading && prov.invites.isEmpty) {
+              return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
+            }
+            if (prov.invites.isEmpty) {
+              return Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+                  child: Text(
+                    'Нет входящих приглашений. Когда друг создаст сессию с вами, уведомление появится здесь.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.78),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
+            return Column(
+              children: prov.invites.take(3).map((invite) {
+                final name = invite['name'] as String? ?? 'Сессия';
+                final hostName = prov.hostNameForInvite(invite) ?? 'Друг';
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    tileColor: theme.colorScheme.primaryContainer.withOpacity(0.35),
+                    leading: CircleAvatar(
+                      backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
+                      child: Icon(Icons.music_note, color: theme.colorScheme.primary),
+                    ),
+                    title: Text(name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    subtitle: Text('Приглашение от $hostName'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      prov.markInvitesAsRead();
+                      Navigator.of(context).pushNamed('/session/invites');
+                    },
+                  ),
+                );
+              }).toList(),
+            );
+          },
         ),
         const SizedBox(height: 24),
         Row(
@@ -699,6 +769,30 @@ class _HomeScreenState extends State<HomeScreen> {
                 IconButton(icon: const Icon(Icons.notifications_none), onPressed: () => Navigator.of(context).pushNamed('/friends/requests')),
                 IconButton(icon: const Icon(Icons.refresh), onPressed: () async => await Provider.of<FriendsProvider>(context, listen: false).fetchFriends()),
               ] else if (_currentIndex == 0) ...[
+                IconButton(
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.mail_outline),
+                      if (Provider.of<SessionProvider>(context).unreadInvitesCount > 0)
+                        Positioned(
+                          top: -5,
+                          right: -10,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(color: Colors.deepPurple, shape: BoxShape.circle),
+                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                            child: Text(
+                              '${Provider.of<SessionProvider>(context).unreadInvitesCount}',
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  onPressed: () => Navigator.of(context).pushNamed('/session/invites'),
+                ),
                 IconButton(icon: const Icon(Icons.add), onPressed: () => Navigator.of(context).pushNamed('/session/create')),
               ],
               if (_currentIndex == 2) ...[

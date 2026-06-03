@@ -11,6 +11,7 @@ import 'screens/profile/profile_screen.dart';
 import 'screens/player/now_playing.dart';
 import 'screens/settings/settings_screen.dart';
 import 'screens/session/pick_playlist_screen.dart';
+import 'screens/session/session_invites_screen.dart';
 
 Route<dynamic> generateRoute(RouteSettings settings) {
   switch (settings.name) {
@@ -26,6 +27,8 @@ Route<dynamic> generateRoute(RouteSettings settings) {
       return MaterialPageRoute(builder: (_) => const SearchUsersScreen());
     case '/session/create':
       return MaterialPageRoute(builder: (_) => const CreateSessionScreen());
+    case '/session/invites':
+      return MaterialPageRoute(builder: (_) => const SessionInvitesScreen());
     case '/session':
       return MaterialPageRoute(
         builder: (_) => const SessionScreen(),

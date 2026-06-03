@@ -1,6 +1,36 @@
 const prisma = require('../db/prisma');
 const { addNotificationJob } = require('../infrastructure/queue');
 const { getOrSet, invalidateUserDB } = require('../infrastructure/spotify/cache');
+const logger = require('../infrastructure/logger');
+const { getIo } = require('../socket');
+
+async function notifySessionInvite({ toUserId, sessionId, sessionName, hostId }) {
+  const timestamp = Date.now();
+  const payload = { type: 'session_invite', toUserId, sessionId, sessionName, hostId, timestamp };
+  try {
+    await addNotificationJob(payload);
+  } catch (e) {
+    logger.warn({ err: e, toUserId, sessionId }, 'Queue unavailable, emitting session_invite directly');
+    const io = getIo();
+    if (io) {
+      io.to(`user:${toUserId}`).emit('session_invite', { sessionId, sessionName, hostId, timestamp });
+    }
+  }
+}
+
+async function notifyInviteResponse({ toUserId, userId, accept, sessionId }) {
+  const timestamp = Date.now();
+  const payload = { type: 'invite_response', toUserId, userId, accept, sessionId, timestamp };
+  try {
+    await addNotificationJob(payload);
+  } catch (e) {
+    logger.warn({ err: e, toUserId, sessionId }, 'Queue unavailable, emitting invite_response directly');
+    const io = getIo();
+    if (io) {
+      io.to(`user:${toUserId}`).emit('invite_response', { userId, accept, sessionId, timestamp });
+    }
+  }
+}
 
 const createSession = async (req, res) => {
   const { name, friendId } = req.body;
@@ -64,17 +94,14 @@ const createSession = async (req, res) => {
       });
 
       try {
-        await addNotificationJob({
-          type: 'session_invite',
+        await notifySessionInvite({
           toUserId: friendId,
           sessionId: session.id,
           sessionName: session.name,
           hostId: userId,
-          timestamp: Date.now(),
         });
       } catch (e) {
-        // If queueing fails, the session is still created and the client receives a response.
-        logger.error({ err: e }, 'Failed to enqueue session invite notification');
+        logger.error({ err: e }, 'Failed to send session invite notification');
       }
 
       await invalidateUserDB(userId);
@@ -337,16 +364,14 @@ const respondToInvite = async (req, res) => {
       });
 
       try {
-        await addNotificationJob({
-          type: 'invite_response',
+        await notifyInviteResponse({
           toUserId: session.hostId,
           userId,
           accept,
           sessionId,
-          timestamp: Date.now(),
         });
       } catch (e) {
-        logger.error({ err: e }, 'Failed to enqueue invite_response notification');
+        logger.error({ err: e }, 'Failed to send invite_response notification');
       }
 
       await invalidateUserDB(userId);

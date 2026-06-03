@@ -526,35 +526,38 @@ class ApiService {
     });
   }
 
-Future<void> skipToPrevious() async {
-  await http.post(_uri('/spotify/previous'), headers: _headers).timeout(timeout);
-}
+  Future<void> skipToPrevious() async {
+    await http.post(_uri('/spotify/previous'), headers: _headers).timeout(timeout);
+  }
 
-Future<void> seekToPosition(int ms) async {
-  await http.put(_uri('/spotify/seek?position_ms=$ms'), headers: _headers).timeout(timeout);
-}
+  Future<void> seekToPosition(int ms) async {
+    await http.put(_uri('/spotify/seek?position_ms=$ms'), headers: _headers).timeout(timeout);
+  }
 
-Future<List<dynamic>> getDevices() async {
-  final res = await http.get(_uri('/spotify/devices'), headers: _headers).timeout(timeout);
-  if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
-  throw ApiException('Ошибка получения устройств', res.statusCode);
-}
+  Future<List<dynamic>> getDevices() async {
+    final res = await http.get(_uri('/spotify/devices'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+    throw ApiException('Ошибка получения устройств', res.statusCode);
+  }
 
-Future<List<dynamic>> getMyInvites() async {
-  final res = await http.get(_uri('/sessions/invites'), headers: _headers).timeout(timeout);
-  if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
-  return [];
-}
+  Future<List<dynamic>> getMyInvites() async {
+    final res = await http.get(_uri('/sessions/invites'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+    return [];
+  }
 
-Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) async {
-  final res = await http.post(
-    _uri('/sessions/$sessionId/respond'),
-    headers: _headers,
-    body: json.encode({'accept': accept}),
-  ).timeout(timeout);
-  if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
-  return null;
-}
+  Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) async {
+    final operation = 'respondToInvite:$sessionId:$accept';
+    return _retryMutable(operation, () async {
+      final res = await http.post(
+        _uri('/sessions/$sessionId/respond'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({'accept': accept}),
+      ).timeout(timeout);
+      if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
+      throw ApiException('Ошибка ответа на приглашение', res.statusCode, _extractError(res));
+    });
+  }
 
   Future<bool> setShuffle(bool state) async {
     final uri = Uri.parse('$baseUrl/spotify/shuffle?state=$state');
@@ -589,21 +592,12 @@ Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) asy
     }
   }
 
-// Future<Map<String, dynamic>?> respondToInvite(String sessionId, bool accept) async {
-//   final res = await http.post(
-//     _uri('/sessions/$sessionId/respond'),
-//     headers: _headers,
-//     body: json.encode({'accept': accept}),
-//   ).timeout(timeout);
-//   if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
-//   throw ApiException('Ошибка ответа на приглашение', res.statusCode);
-// }
+  Future<Map<String, dynamic>?> getPlayerState() async {
+    final res = await http.get(_uri('/spotify/player'), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
+    return null;
+  }
 
-Future<Map<String, dynamic>?> getPlayerState() async {
-  final res = await http.get(_uri('/spotify/player'), headers: _headers).timeout(timeout);
-  if (res.statusCode == 200) return _decode(res.body) as Map<String, dynamic>;
-  return null;
-}
   void setCookie(String cookie) {
     _cookie = cookie;
   }

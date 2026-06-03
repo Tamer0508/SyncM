@@ -8,12 +8,12 @@ let ioInstance;
 
 async function updateOnlineStatus(userId, isOnline) {
   try {
-    const user = await prisma.appUser.findUnique({ where: { id: userId }, select: { id: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!user) {
       logger.warn({ userId }, 'User not found when updating online status');
       return;
     }
-    await prisma.appUser.update({
+    await prisma.user.update({
       where: { id: userId },
       data: { isOnline, lastSeenAt: isOnline ? null : new Date() }
     });
@@ -79,7 +79,7 @@ const setupSocket = (io) => {
 
       if (wasOffline) {
         await updateOnlineStatus(userId, true);
-        const userSettings = await prisma.appUser.findUnique({
+        const userSettings = await prisma.user.findUnique({
           where: { id: userId },
           select: { isOnlineHidden: true }
         });
@@ -200,7 +200,7 @@ const setupSocket = (io) => {
               if (onlineUsers.has(uid)) return;
               await updateOnlineStatus(uid, false);
               try {
-                const settings = await prisma.appUser.findUnique({
+                const settings = await prisma.user.findUnique({
                   where: { id: uid },
                   select: { isOnlineHidden: true }
                 });
