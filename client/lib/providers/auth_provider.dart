@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../models/user.dart';
 import '../utils/auth_storage.dart';
+import 'dart:typed_data';
 
 class AuthProvider with ChangeNotifier {
   final ApiService api;
@@ -69,8 +70,8 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> uploadAvatar(dynamic fileSource) async {
-    final updated = await api.uploadAvatar(fileSource);
+  Future<void> uploadAvatar(Uint8List bytes, String fileName) async {
+    final updated = await api.uploadAvatar(bytes, fileName);
     if (_user != null) {
       _user = User(
         id: _user!.id,

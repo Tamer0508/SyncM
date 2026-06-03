@@ -1,14 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' as html;
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import '../models/user.dart';
 import '../models/friend.dart';
 import '../utils/retry.dart';
-import 'dart:html' as html if (dart.library.html) '';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ApiException implements Exception {
   final String message;
@@ -101,6 +98,8 @@ class ApiService {
     } catch (_) {}
     return res.body.isNotEmpty ? res.body : 'Неизвестная ошибка';
   }
+
+  // ---------- Все остальные методы без изменений (только не трогал) ----------
 
   Future<User?> getMe() async {
     final res = await http.get(_uri('/auth/me'), headers: _headers).timeout(timeout);
@@ -373,48 +372,30 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>?> getSession(String sessionId) async {
-  final response = await http.get(_uri('/sessions/$sessionId'));
-  if (response.statusCode == 200) {
-    return json.decode(response.body) as Map<String, dynamic>;
+    final response = await http.get(_uri('/sessions/$sessionId'));
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+    return null;
   }
-  return null;
-}
 
-  Future<Map<String, dynamic>> uploadAvatar(dynamic fileSource) async {
-  const operation = 'uploadAvatar';
-  return _retryMutable(operation, () async {
-    final uri = _uri('/auth/avatar');
-    final request = http.MultipartRequest('POST', uri);
-    request.headers['Authorization'] = _headers['Authorization'] ?? '';
-    request.headers['Idempotency-Key'] = _getIdempotencyKey(operation);
-
-    if (kIsWeb) {
-      final htmlFile = fileSource as dynamic;
-      final reader = html.FileReader();
-      reader.readAsArrayBuffer(htmlFile);
-      await reader.onLoad.first;
-      final bytes = reader.result as Uint8List?;
-      if (bytes == null) throw Exception('Не удалось прочитать файл');
-      final multipartFile = http.MultipartFile.fromBytes(
-        'avatar',
-        bytes,
-        filename: htmlFile.name,
-      );
-      request.files.add(multipartFile);
-    } else {
-      final String filePath = fileSource as String;
-      request.files.add(await http.MultipartFile.fromPath('avatar', filePath));
-    }
-
-    final streamed = await request.send().timeout(timeout);
-    final res = await http.Response.fromStream(streamed);
-    if (res.statusCode == 200) {
-      return _decode(res.body);
-    }
-    throw ApiException('Ошибка загрузки аватарки', res.statusCode, _extractError(res));
-  });
-}
-
+  // ---------- ИСПРАВЛЕННЫЙ МЕТОД (без dart:html) ----------
+  Future<Map<String, dynamic>> uploadAvatar(Uint8List bytes, String fileName) async {
+    const operation = 'uploadAvatar';
+    return _retryMutable(operation, () async {
+      final uri = _uri('/auth/avatar');
+      final request = http.MultipartRequest('POST', uri);
+      request.headers['Authorization'] = _headers['Authorization'] ?? '';
+      request.headers['Idempotency-Key'] = _getIdempotencyKey(operation);
+      request.files.add(http.MultipartFile.fromBytes('avatar', bytes, filename: fileName));
+      final streamed = await request.send().timeout(timeout);
+      final res = await http.Response.fromStream(streamed);
+      if (res.statusCode == 200) {
+        return _decode(res.body);
+      }
+      throw ApiException('Ошибка загрузки аватарки', res.statusCode, _extractError(res));
+    });
+  }
 
   Future<Map<String, dynamic>> createCustomPlaylist(String name, {String? description, String? imageUrl}) async {
     final operation = 'createCustomPlaylist:$name:${description ?? ''}:${imageUrl ?? ''}';
@@ -508,7 +489,7 @@ class ApiService {
         return res;
       });
     } catch (_) {
-      /* тихо игнорируем ошибки ну если чо да) */
+      /* тихо игнорируем */
     }
   }
 
@@ -608,7 +589,6 @@ class ApiService {
     }
   }
 
-  /// Устанавливает режим повтора (off, context, track)
   Future<bool> setRepeatMode(String mode) async {
     final uri = Uri.parse('$baseUrl/spotify/repeat?state=$mode');
     try {
@@ -634,5 +614,4 @@ class ApiService {
   void setCookie(String cookie) {
     _cookie = cookie;
   }
-
 }
