@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../widgets/track_card.dart';
+import '../../widgets/app_icon_button.dart';
 import '../player/now_playing.dart';
 import '../../utils/notifications.dart';
 
@@ -141,23 +142,48 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     final theme = Theme.of(context);
     final pb = Provider.of<PlaybackProvider>(context);
 
-    final content = CustomScrollView(
-      slivers: [
-        SliverAppBar(
-          expandedHeight: 260,
-          pinned: true,
-          backgroundColor: theme.colorScheme.surface,
-          foregroundColor: theme.colorScheme.onSurface,
-          flexibleSpace: FlexibleSpaceBar(
-            title: Text(
-              widget.playlistName,
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+    // SliverAppBar только для режима не-embedded (мобильные устройства)
+    final Widget sliverAppBar;
+    if (!widget.embedded) {
+      sliverAppBar = SliverAppBar(
+        expandedHeight: 280,
+        pinned: true,
+        backgroundColor: theme.colorScheme.surface,
+        foregroundColor: theme.colorScheme.onSurface,
+        leading: AppIconButton(
+          icon: Icons.arrow_back,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        flexibleSpace: FlexibleSpaceBar(
+          title: Text(
+            widget.playlistName,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              shadows: [
+                Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black.withOpacity(0.5)),
+              ],
             ),
-            background: widget.imageUrl != null
-                ? Image.network(widget.imageUrl!, fit: BoxFit.cover)
-                : Container(color: theme.colorScheme.primary.withOpacity(0.3)),
+          ),
+          background: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (widget.imageUrl != null)
+                Image.network(widget.imageUrl!, fit: BoxFit.cover)
+              else
+                Container(color: theme.colorScheme.primary.withOpacity(0.3)),
+              Container(color: Colors.black.withOpacity(0.3)),
+            ],
           ),
         ),
+      );
+    } else {
+      // В десктопной версии не показываем SliverAppBar, только отступ
+      sliverAppBar = const SliverToBoxAdapter(child: SizedBox(height: 8));
+    }
+
+    final content = CustomScrollView(
+      slivers: [
+        sliverAppBar,
         if (_loading)
           SliverFillRemaining(
             child: Center(child: CircularProgressIndicator(color: theme.colorScheme.primary)),
@@ -185,15 +211,10 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
               delegate: SliverChildBuilderDelegate(
                 (context, i) {
                   final t = _tracks[i];
-                  final isCurrentTrack =
-                      !_isWindows && pb.currentTrack?['uri'] == t['uri'];
-
                   final trackUri = t['uri'] as String? ?? '';
-
                   return StatefulBuilder(
                     builder: (context, setLocalState) {
                       bool liked = _likedMap[trackUri] ?? false;
-
                       return TrackCard(
                         id: t['id'] ?? '',
                         title: t['name'] ?? '',
@@ -203,29 +224,29 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                         isLiked: liked,
                         onPlay: () => _onTrackTap(Map<String, dynamic>.from(t), i),
                         onLike: () async {
-                            try {
-                              final api = Provider.of<AuthProvider>(context, listen: false).api;
-                              final newLiked = await api.toggleLike(
-                                trackUri,
-                                t['name'] ?? '',
-                                t['artist'] ?? '',
-                              );
-                              setState(() {
-                                if (newLiked) {
-                                  _likedMap[trackUri] = true;
-                                } else {
-                                  _likedMap.remove(trackUri);
-                                }
-                              });
-                              setLocalState(() => liked = newLiked);
-                            } catch (e) {
-                              if (mounted) {
-                                showAppNotification(context,
-                                    message: 'Ошибка: $e',
-                                    type: NotificationType.error);
+                          try {
+                            final api = Provider.of<AuthProvider>(context, listen: false).api;
+                            final newLiked = await api.toggleLike(
+                              trackUri,
+                              t['name'] ?? '',
+                              t['artist'] ?? '',
+                            );
+                            setState(() {
+                              if (newLiked) {
+                                _likedMap[trackUri] = true;
+                              } else {
+                                _likedMap.remove(trackUri);
                               }
+                            });
+                            setLocalState(() => liked = newLiked);
+                          } catch (e) {
+                            if (mounted) {
+                              showAppNotification(context,
+                                  message: 'Ошибка: $e',
+                                  type: NotificationType.error);
                             }
-                          },
+                          }
+                        },
                       );
                     },
                   );
@@ -238,7 +259,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     );
 
     if (widget.embedded) {
-      return content;
+      return content; // возвращаем только список треков без Scaffold
     }
     return Scaffold(
       backgroundColor: theme.colorScheme.background,

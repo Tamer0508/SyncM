@@ -555,17 +555,24 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, allowed.includes(ext));
+    if (allowed.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP'), false);
+    }
   }
 }).single('avatar');
 
 const uploadAvatar = async (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
-      return res.status(400).json({ error: err.message });
+      if (err.message && err.message.includes('Неподдерживаемый формат')) {
+        return res.status(400).json({ error: err.message });
+      }
+      return res.status(400).json({ error: 'Ошибка загрузки файла: ' + err.message });
     }
     if (!req.file) {
-      return res.status(400).json({ error: 'Файл не загружен' });
+      return res.status(400).json({ error: 'Файл не выбран или имеет неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP' });
     }
 
     const userId = req.session?.userId || req.headers.authorization?.replace('Bearer ', '');

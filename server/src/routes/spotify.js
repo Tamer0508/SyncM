@@ -10,6 +10,7 @@ const logger = require('../infrastructure/logger');
 const { rateLimitMiddleware } = require('../infrastructure/rateLimiter');
 const { invalidateUserDB } = require('../infrastructure/spotify/cache');
 
+
 const refreshAccessToken = async (spotifyUser) => {
   const lockKey = `spotify:refresh_lock:${spotifyUser.id}`;
   const locked = await acquireLock(lockKey, 5);

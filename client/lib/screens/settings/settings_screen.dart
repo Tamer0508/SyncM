@@ -1,9 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../utils/notifications.dart';
+import 'dart:html' as html if (dart.library.html) '';
+import '../../utils/error_utils.dart';
 
 class SettingsScreen extends StatelessWidget {
   final bool embedded;
@@ -31,24 +35,81 @@ class _SettingsBodyState extends State<_SettingsBody> {
   bool _isUploading = false;
 
   Future<void> _pickAndUploadAvatar() async {
-    final picker = ImagePicker();
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 512,
-      maxHeight: 512,
-    );
-    if (image == null) return;
+    if (kIsWeb) {
+      final input = html.FileUploadInputElement()
+        ..accept = 'image/png, image/jpeg, image/jpg, image/gif, image/webp';
+      input.click();
+      input.onChange.listen((e) async {
+        final file = input.files?.first;
+        if (file != null) {
+          final allowedTypes = [
+            'image/png',
+            'image/jpeg',
+            'image/jpg',
+            'image/gif',
+            'image/webp'
+          ];
+          if (!allowedTypes.contains(file.type)) {
+            showAppNotification(context,
+                message:
+                    'Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
+                type: NotificationType.error);
+            return;
+          }
+          setState(() => _isUploading = true);
+          try {
+            final auth = Provider.of<AuthProvider>(context, listen: false);
+            await auth.uploadAvatar(file);
+            if (mounted) {
+              showAppNotification(context,
+                  message: 'Аватарка обновлена',
+                  type: NotificationType.success);
+            }
+          } catch (e) {
+            if (mounted) {
+              showAppNotification(context,
+                  message: 'Ошибка загрузки', type: NotificationType.error);
+            }
+          } finally {
+            if (mounted) setState(() => _isUploading = false);
+          }
+        }
+      });
+    } else {
+      final picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+      if (image == null) return;
 
-    setState(() => _isUploading = true);
-    try {
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      await auth.uploadAvatar(image.path);
-    } catch (e) {
-      if (mounted) {
-        showAppNotification(context, message: 'Ошибка загрузки: $e', type: NotificationType.error);
+      final ext = image.path.split('.').last.toLowerCase();
+      if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].contains(ext)) {
+        showAppNotification(context,
+            message:
+                'Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
+            type: NotificationType.error);
+        return;
       }
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
+
+      setState(() => _isUploading = true);
+      try {
+        final auth = Provider.of<AuthProvider>(context, listen: false);
+        await auth.uploadAvatar(image.path);
+        if (mounted) {
+          showAppNotification(context,
+              message: 'Аватарка обновлена', type: NotificationType.success);
+        }
+      } catch (e) {
+        if (mounted) {
+          showAppNotification(context,
+              message: 'Ошибка загрузки', type: NotificationType.error);
+        }
+      } finally {
+        if (mounted) setState(() => _isUploading = false);
+      }
     }
   }
 
@@ -63,7 +124,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       children: [
-        // -------- Профиль: аватар и имя --------
+        // Аватар и имя
         Center(
           child: Column(
             children: [
@@ -145,7 +206,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
                 ),
               ),
               const SizedBox(height: 12),
-              // Редактор имени
               _NameEditor(
                 currentName: user?.displayName ?? '',
                 onSaved: (newName) async {
@@ -153,7 +213,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
                     await auth.updateProfile(username: newName.trim());
                   } catch (e) {
                     if (mounted) {
-                      showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
+                      showAppNotification(context,
+                          message: 'Ошибка', type: NotificationType.error);
                     }
                   }
                 },
@@ -161,10 +222,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
             ],
           ),
         ),
-
         const SizedBox(height: 32),
 
-        // -------- Тема оформления --------
+        // Тема оформления
         Text(
           'Тема',
           style: theme.textTheme.titleMedium?.copyWith(
@@ -205,10 +265,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
             ),
           ),
         ),
-
         const SizedBox(height: 32),
 
-        // -------- Приватность --------
+        // Приватность
         Text(
           'Приватность',
           style: theme.textTheme.titleMedium?.copyWith(
@@ -225,7 +284,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
             try {
               await auth.updateSettings({'isFriendsHidden': val});
             } catch (e) {
-              showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
+              showAppNotification(context,
+                  message: 'Ошибка', type: NotificationType.error);
             }
           },
         ),
@@ -239,7 +299,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
             try {
               await auth.updateSettings({'isActivityHidden': val});
             } catch (e) {
-              showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
+              showAppNotification(context,
+                  message: 'Ошибка', type: NotificationType.error);
             }
           },
         ),
@@ -253,16 +314,12 @@ class _SettingsBodyState extends State<_SettingsBody> {
             try {
               await auth.updateSettings({'isOnlineHidden': val});
             } catch (e) {
-              showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
+              showAppNotification(context,
+                  message: 'Ошибка', type: NotificationType.error);
             }
           },
         ),
-
         const SizedBox(height: 32),
-
-        // Здесь можно добавлять новые разделы, например:
-        // Text('Уведомления', ...),
-        // ... переключатели для уведомлений ...
       ],
     );
   }
@@ -272,7 +329,8 @@ class _NameEditor extends StatefulWidget {
   final String currentName;
   final Future<void> Function(String) onSaved;
 
-  const _NameEditor({Key? key, required this.currentName, required this.onSaved})
+  const _NameEditor(
+      {Key? key, required this.currentName, required this.onSaved})
       : super(key: key);
 
   @override
@@ -295,26 +353,34 @@ class _NameEditorState extends State<_NameEditor> {
     super.dispose();
   }
 
-    Future<void> _save() async {
+  Future<void> _save() async {
     final newName = _controller.text.trim();
     if (newName.isEmpty || newName == widget.currentName) {
       setState(() => _editing = false);
       return;
     }
     if (newName.length < 2) {
-      showAppNotification(context, message: 'Имя должно содержать минимум 2 символа', type: NotificationType.error);
+      showAppNotification(context,
+          message: 'Имя должно содержать минимум 2 символа',
+          type: NotificationType.error);
       return;
     }
     if (newName.length > 50) {
-      showAppNotification(context, message: 'Имя должно содержать не более 50 символов', type: NotificationType.error);
+      showAppNotification(context,
+          message: 'Имя должно содержать не более 50 символов',
+          type: NotificationType.error);
       return;
     }
     if (RegExp(r'^\s+$').hasMatch(newName)) {
-      showAppNotification(context, message: 'Имя не может состоять только из пробелов', type: NotificationType.error);
+      showAppNotification(context,
+          message: 'Имя не может состоять только из пробелов',
+          type: NotificationType.error);
       return;
     }
     if (!RegExp(r'^[\p{L}\p{N} _\-\.]+$', unicode: true).hasMatch(newName)) {
-      showAppNotification(context, message: 'Имя содержит недопустимые символы', type: NotificationType.error);
+      showAppNotification(context,
+          message: 'Имя содержит недопустимые символы',
+          type: NotificationType.error);
       return;
     }
 
@@ -334,8 +400,11 @@ class _NameEditorState extends State<_NameEditor> {
                   child: TextField(
                     controller: _controller,
                     autofocus: true,
+                    maxLength: 50,
+                    maxLengthEnforcement: MaxLengthEnforcement.enforced,
                     decoration: InputDecoration(
                       isDense: true,
+                      counterText: '',
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 10,
@@ -370,7 +439,8 @@ class _NameEditorState extends State<_NameEditor> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.edit, size: 18, color: theme.colorScheme.primary),
+                    Icon(Icons.edit,
+                        size: 18, color: theme.colorScheme.primary),
                     const SizedBox(width: 8),
                     Text(
                       'Редактировать имя',

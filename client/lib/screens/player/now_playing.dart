@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
 import '../../providers/playback_provider.dart';
+import '../../widgets/app_icon_button.dart';
 
 class _AnimatedGlowBackground extends StatefulWidget {
   final Color dominantColor;
@@ -442,9 +443,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Row(
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                                size: 32, color: Colors.white),
+                          AppIconButton(
+                            icon: Icons.keyboard_arrow_down_rounded,
+                            size: 32,
+                            color: Colors.white,
                             onPressed: () => Navigator.of(context).pop(),
                           ),
                           const Spacer(),
@@ -469,7 +471,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                           ? MediaQuery.of(context).size.height * 0.28
                           : MediaQuery.of(context).size.width * 0.58,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(32),
+                        borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
                             color: _displayDominant.withOpacity(0.4),
@@ -486,7 +488,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         ],
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(32),
+                        borderRadius: BorderRadius.circular(12),
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
@@ -517,7 +519,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                             Positioned.fill(
                               child: Container(
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(32),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: Colors.white.withOpacity(0.15),
                                     width: 1.5,
@@ -567,7 +569,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       ),
                     ),
                     const SizedBox(height: 20),
-                    // Прогресс-бар (исправленный, без обрезания)
                     _NowPlayingProgressBar(
                       positionMs: _positionMs,
                       durationMs: duration,
@@ -579,26 +580,27 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       formatMs: _formatMs,
                     ),
                     const SizedBox(height: 20),
-                    // Кнопки управления (стиль как в правой панели)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          IconButton(
-                            icon: Icon(Icons.shuffle,
-                                color: pb.shuffleActive
-                                    ? _displayVibrant
-                                    : Colors.white70,
-                                size: 26),
+                          AppIconButton(
+                            icon: Icons.shuffle,
                             onPressed: () => pb.setShuffle(!pb.shuffleActive),
+                            color: pb.shuffleActive
+                                ? _displayVibrant
+                                : Colors.white70,
+                            size: 26,
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.skip_previous, size: 36, color: Colors.white),
+                          AppIconButton(
+                            icon: Icons.skip_previous,
                             onPressed: () {
                               setState(() => _positionMs = 0);
                               pb.skipPrevious();
                             },
+                            size: 36,
+                            color: Colors.white,
                           ),
                           Container(
                             width: 56,
@@ -607,29 +609,27 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                               shape: BoxShape.circle,
                               color: _displayVibrant,
                             ),
-                            child: IconButton(
-                              icon: Icon(
-                                pb.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                color: Colors.white,
-                                size: 30,
-                              ),
+                            child: AppIconButton(
+                              icon: pb.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                               onPressed: () => pb.togglePlay(),
+                              color: Colors.white,
+                              size: 30,
                             ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.skip_next, size: 36, color: Colors.white),
+                          AppIconButton(
+                            icon: Icons.skip_next,
                             onPressed: () {
                               setState(() => _positionMs = 0);
                               pb.skipNext();
                             },
+                            size: 36,
+                            color: Colors.white,
                           ),
-                          IconButton(
-                            icon: Icon(
-                              pb.repeatMode == 'track' ? Icons.repeat_one : Icons.repeat,
-                              color: pb.repeatActive ? _displayVibrant : Colors.white70,
-                              size: 26,
-                            ),
+                          AppIconButton(
+                            icon: pb.repeatMode == 'track' ? Icons.repeat_one : Icons.repeat,
                             onPressed: () => pb.cycleRepeatMode(),
+                            color: pb.repeatActive ? _displayVibrant : Colors.white70,
+                            size: 26,
                           ),
                         ],
                       ),
@@ -684,13 +684,22 @@ class _NowPlayingProgressBarState extends State<_NowPlayingProgressBar> {
       child: Column(
         children: [
           GestureDetector(
-            onTapDown: (details) {
-              _draggingLocal = true;
-              _updateFromTap(details);
+            onTapUp: (details) {
+              final box = context.findRenderObject() as RenderBox;
+              final localX = details.localPosition.dx.clamp(0.0, box.size.width);
+              final newValue = localX / box.size.width;
+              setState(() {
+                _localValue = newValue;
+              });
+              widget.onSeek((newValue * widget.durationMs).toInt());
             },
-            onTapUp: (_) {
-              _draggingLocal = false;
-              widget.onSeek((_localValue * widget.durationMs).toInt());
+            onHorizontalDragStart: (details) {
+              _draggingLocal = true;
+              final box = context.findRenderObject() as RenderBox;
+              final localX = details.localPosition.dx.clamp(0.0, box.size.width);
+              setState(() {
+                _localValue = localX / box.size.width;
+              });
             },
             onHorizontalDragUpdate: (details) {
               if (!_draggingLocal) return;
@@ -700,12 +709,15 @@ class _NowPlayingProgressBarState extends State<_NowPlayingProgressBar> {
                 _localValue = localX / box.size.width;
               });
             },
+            onHorizontalDragEnd: (details) {
+              _draggingLocal = false;
+              widget.onSeek((_localValue * widget.durationMs).toInt());
+            },
             child: SizedBox(
-              height: 24, // достаточно места для ползунка
+              height: 24,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // Фоновая дорожка
                   Positioned.fill(
                     child: Align(
                       alignment: Alignment.centerLeft,
@@ -719,7 +731,6 @@ class _NowPlayingProgressBarState extends State<_NowPlayingProgressBar> {
                       ),
                     ),
                   ),
-                  // Активная дорожка
                   Positioned.fill(
                     child: Align(
                       alignment: Alignment.centerLeft,
@@ -735,7 +746,6 @@ class _NowPlayingProgressBarState extends State<_NowPlayingProgressBar> {
                       ),
                     ),
                   ),
-                  // Ползунок
                   Positioned(
                     left: (fraction * (MediaQuery.of(context).size.width - 48))
                         .clamp(0.0, MediaQuery.of(context).size.width - 48),
@@ -791,14 +801,5 @@ class _NowPlayingProgressBarState extends State<_NowPlayingProgressBar> {
         ],
       ),
     );
-  }
-
-  void _updateFromTap(TapDownDetails details) {
-    final box = context.findRenderObject() as RenderBox;
-    final localX = details.localPosition.dx.clamp(0.0, box.size.width);
-    setState(() {
-      _localValue = localX / box.size.width;
-    });
-    widget.onSeek((_localValue * widget.durationMs).toInt());
   }
 }

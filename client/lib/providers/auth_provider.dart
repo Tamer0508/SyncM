@@ -69,8 +69,8 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> uploadAvatar(String filePath) async {
-    final updated = await api.uploadAvatar(filePath);
+  Future<void> uploadAvatar(dynamic fileSource) async {
+    final updated = await api.uploadAvatar(fileSource);
     if (_user != null) {
       _user = User(
         id: _user!.id,

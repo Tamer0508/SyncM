@@ -4,7 +4,8 @@ import 'package:syncm/services/api_service.dart';
 import '../../providers/friends_provider.dart';
 import '../../widgets/friend_tile.dart';
 import '../../utils/notifications.dart';
-  
+import '../../widgets/app_icon_button.dart';
+
 class FriendsScreen extends StatefulWidget {
   final bool embedded;
   const FriendsScreen({Key? key, this.embedded = false}) : super(key: key);
@@ -27,20 +28,39 @@ class _FriendsScreenState extends State<FriendsScreen> {
   Future<bool> _confirmRemove(BuildContext context, String name) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Подтвердите удаление'),
-        content: Text('Удалить пользователя "$name" из друзей?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Icon(Icons.person_remove, color: theme.colorScheme.error),
+              const SizedBox(width: 12),
+              Text('Подтвердите удаление',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Удалить'),
+          content: Text(
+            'Удалить "$name" из друзей? Это действие нельзя отменить.',
+            style: theme.textTheme.bodyMedium,
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Отмена'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.error,
+                foregroundColor: theme.colorScheme.onError,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Удалить'),
+            ),
+          ],
+        );
+      },
     );
     return result ?? false;
   }
@@ -48,134 +68,89 @@ class _FriendsScreenState extends State<FriendsScreen> {
   @override
   Widget build(BuildContext context) {
     final prov = Provider.of<FriendsProvider>(context);
-    final isMobile = MediaQuery.of(context).size.width < 900;   // ← ключевая проверка
+    final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 900;
 
-    Widget bodyContent = prov.friends.isEmpty
-        ? Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('У вас пока нет друзей',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Нажмите на кнопку ниже, чтобы найти людей и начать общение.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.color
-                            ?.withOpacity(0.78)),
+    // Анимированное переключение состояний (загрузка / пусто / список)
+    Widget bodyContent = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: prov.friendsLoading && prov.friends.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : prov.friends.isEmpty
+              ? _EmptyFriendsView()
+              : _FriendsListView(
+                  friends: prov.friends,
+                  hasMore: prov.hasMoreFriends,
+                  onLoadMore: () => prov.fetchFriends(),
+                  isLoadingMore: prov.friendsLoading,
+                  onViewProfile: (f) => Navigator.of(context).pushNamed(
+                    '/profile',
+                    arguments: {'name': f.name, 'friendId': f.id},
                   ),
-                  const SizedBox(height: 18),
-                  ElevatedButton.icon(
-                    onPressed: () =>
-                        Navigator.of(context).pushNamed('/friends/search'),
-                    icon: const Icon(Icons.person_add),
-                    label: const Text('Найти друзей'),
-                  ),
-                ],
-              ),
-            ),
-          )
-        : ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            itemCount: prov.friends.length + (prov.hasMoreFriends ? 1 : 0),
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (_, i) {
-              if (i >= prov.friends.length) {
-                if (prov.friendsLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                return Center(
-                  child: TextButton(
-                    onPressed: () => prov.fetchFriends(),
-                    child: const Text('Загрузить ещё'),
-                  ),
-                );
-              }
-              final f = prov.friends[i];
-              return FriendTile(
-                friend: f,
-                onViewProfile: () => Navigator.of(context).pushNamed(
-                  '/profile',
-                  arguments: {'name': f.name, 'friendId': f.id},
-                ),
-                onRemoveFriend: () async {
-                  final shouldDelete = await _confirmRemove(context, f.name);
-                  if (!shouldDelete) return;
+                  onRemoveFriend: (f) async {
+                    final shouldDelete = await _confirmRemove(context, f.name);
+                    if (!shouldDelete) return;
 
-                  final prov =
-                      Provider.of<FriendsProvider>(context, listen: false);
-
-                  String? friendshipId = f.friendshipId;
-                  if (friendshipId == null) {
-                    try {
-                      await prov.fetchFriends(refresh: true);
-                      final matches = prov.friends
-                          .where((x) => x.id == f.id)
-                          .toList();
-                      if (matches.isNotEmpty) {
-                        friendshipId = matches.first.friendshipId;
+                    final prov = Provider.of<FriendsProvider>(context, listen: false);
+                    String? friendshipId = f.friendshipId;
+                    if (friendshipId == null) {
+                      try {
+                        await prov.fetchFriends(refresh: true);
+                        final matches = prov.friends.where((x) => x.id == f.id).toList();
+                        if (matches.isNotEmpty) {
+                          friendshipId = matches.first.friendshipId;
+                        }
+                      } catch (e) {
+                        showAppNotification(context,
+                            message: 'Ошибка обновления списка: $e',
+                            type: NotificationType.error);
+                        return;
                       }
-                    } catch (e) {
-                      showAppNotification(context, message: 'Ошибка обновления списка: $e', type: NotificationType.error);
-
+                    }
+                    if (friendshipId == null) {
+                      showAppNotification(context,
+                          message: 'Ошибка: идентификатор связи отсутствует. Обновите список и повторите попытку.',
+                          type: NotificationType.error);
                       return;
                     }
-                  }
-
-                  if (friendshipId == null) {
-                    showAppNotification(context, message: 'Ошибка: идентификатор связи отсутствует. Обновите список и повторите попытку.'
-                    , type: NotificationType.error);
-                    return;
-                  }
-
-                  try {
-                    final success = await prov.removeFriend(friendshipId);
-                    if (success) {
-                      showAppNotification(context, message: 'Друг удалён', type: NotificationType.success);
-                    } else {
-                      showAppNotification(context, message: 'Не удалось удалить друга', type: NotificationType.error);
+                    try {
+                      final success = await prov.removeFriend(friendshipId);
+                      if (success) {
+                        showAppNotification(context,
+                            message: 'Друг удалён', type: NotificationType.success);
+                      } else {
+                        showAppNotification(context,
+                            message: 'Не удалось удалить друга', type: NotificationType.error);
+                      }
+                    } catch (e) {
+                      final msg = (e is ApiException) ? e.userMessage : 'Ошибка удаления: $e';
+                      showAppNotification(context, message: msg, type: NotificationType.error);
                     }
-                  } catch (e) {
-                    final msg = (e is ApiException)
-                        ? e.userMessage
-                        : 'Ошибка удаления: $e';
-                    showAppNotification(context, message: msg, type: NotificationType.error);
-                  }
-                },
-              );
-            },
-          );
+                  },
+                ),
+    );
+
+    final appBarActions = [
+      AppIconButton(
+        icon: Icons.person_add_alt_1,
+        onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+        tooltip: 'Поиск друзей',
+      ),
+      AppIconButton(
+        icon: Icons.notifications_none,
+        onPressed: () => Navigator.of(context).pushNamed('/friends/requests'),
+        tooltip: 'Запросы',
+      ),
+      AppIconButton(
+        icon: Icons.refresh,
+        onPressed: () async => await prov.fetchFriends(refresh: true),
+        tooltip: 'Обновить',
+      ),
+    ];
 
     if (widget.embedded && isMobile) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Друзья'),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.person_add_alt_1),
-              onPressed: () =>
-                  Navigator.of(context).pushNamed('/friends/search'),
-            ),
-            IconButton(
-              icon: const Icon(Icons.notifications_none),
-              onPressed: () =>
-                  Navigator.of(context).pushNamed('/friends/requests'),
-            ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () async => await prov.fetchFriends(refresh: true),
-            ),
-          ],
-        ),
+        appBar: AppBar(title: const Text('Друзья'), actions: appBarActions),
         body: bodyContent,
       );
     }
@@ -185,32 +160,110 @@ class _FriendsScreenState extends State<FriendsScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Друзья'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add_alt_1),
-            onPressed: () =>
-                Navigator.of(context).pushNamed('/friends/search'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: () =>
-                Navigator.of(context).pushNamed('/friends/requests'),
-          ),
-          IconButton(
-            onPressed: () async {
-              await prov.fetchFriends(refresh: true);
-            },
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
+      appBar: AppBar(title: const Text('Друзья'), actions: appBarActions),
+      body: RefreshIndicator(
+        onRefresh: () => prov.fetchFriends(refresh: true),
+        child: bodyContent,
       ),
-      body: bodyContent,
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
-        child: const Icon(Icons.person_add),
+        icon: const Icon(Icons.person_add),
+        label: const Text('Найти друзей'),
+        elevation: 4,
       ),
+    );
+  }
+}
+
+class _EmptyFriendsView extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.people_outline, size: 96, color: theme.colorScheme.primary.withOpacity(0.4)),
+            const SizedBox(height: 24),
+            Text('У вас пока нет друзей',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            Text(
+              'Нажмите на кнопку ниже, чтобы найти людей и начать общение.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.textTheme.bodySmall?.color?.withOpacity(0.78)),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+              icon: const Icon(Icons.person_add),
+              label: const Text('Найти друзей'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FriendsListView extends StatelessWidget {
+  final List<dynamic> friends;
+  final bool hasMore;
+  final VoidCallback onLoadMore;
+  final bool isLoadingMore;
+  final Function(dynamic) onViewProfile;
+  final Function(dynamic) onRemoveFriend;
+
+  const _FriendsListView({
+    Key? key,
+    required this.friends,
+    required this.hasMore,
+    required this.onLoadMore,
+    required this.isLoadingMore,
+    required this.onViewProfile,
+    required this.onRemoveFriend,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      itemCount: friends.length + (hasMore || isLoadingMore ? 1 : 0),
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (_, i) {
+        if (i >= friends.length) {
+          if (isLoadingMore) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: OutlinedButton(
+              onPressed: onLoadMore,
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Загрузить ещё'),
+            ),
+          );
+        }
+        final f = friends[i];
+        return FriendTile(
+          friend: f,
+          onViewProfile: () => onViewProfile(f),
+          onRemoveFriend: () => onRemoveFriend(f),
+        );
+      },
     );
   }
 }

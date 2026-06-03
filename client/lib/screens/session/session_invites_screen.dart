@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/session_provider.dart';
 import '../../utils/notifications.dart';
+import '../../widgets/app_icon_button.dart';
 
 class SessionInvitesScreen extends StatefulWidget {
   const SessionInvitesScreen({Key? key}) : super(key: key);
@@ -62,93 +63,170 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
       appBar: AppBar(
         title: const Text('Приглашения в сессии'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => Provider.of<SessionProvider>(context, listen: false).fetchInvites(refresh: true),
+          AppIconButton(
+            icon: Icons.refresh,
+            tooltip: 'Обновить',
+            onPressed: () => Provider.of<SessionProvider>(context, listen: false)
+                .fetchInvites(refresh: true),
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Consumer<SessionProvider>(
-          builder: (context, prov, _) {
-            if (prov.invitesLoading && prov.invites.isEmpty) {
-              return Center(child: CircularProgressIndicator(color: theme.colorScheme.primary));
-            }
-            if (prov.invites.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.music_off, size: 64, color: theme.colorScheme.primary.withOpacity(0.8)),
-                    const SizedBox(height: 16),
-                    Text('Приглашений нет', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Когда друг пригласит вас в сессию, уведомление появится здесь.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.75),
+      body: Consumer<SessionProvider>(
+        builder: (context, prov, _) {
+          final isLoading = prov.invitesLoading && prov.invites.isEmpty;
+          final isEmpty = prov.invites.isEmpty && !prov.invitesLoading;
+
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : isEmpty
+                    ? _EmptyInvitesView(theme: theme)
+                    : _InvitesList(
+                        theme: theme,
+                        invites: prov.invites as List<Map<String, dynamic>>,
+                        hostNameForInvite: prov.hostNameForInvite,
+                        responding: _responding,
+                        onAccept: (id) => _respond(id, true),
+                        onDecline: (id) => _respond(id, false),
                       ),
-                      textAlign: TextAlign.center,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EmptyInvitesView extends StatelessWidget {
+  final ThemeData theme;
+  const _EmptyInvitesView({required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.mail_outline, size: 80, color: theme.colorScheme.primary.withOpacity(0.4)),
+            const SizedBox(height: 24),
+            Text('Приглашений нет',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            Text(
+              'Когда друг пригласит вас в сессию, уведомление появится здесь.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.textTheme.bodySmall?.color?.withOpacity(0.75),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InvitesList extends StatelessWidget {
+  final ThemeData theme;
+  final List<Map<String, dynamic>> invites;
+  final String? Function(Map<String, dynamic>) hostNameForInvite;
+  final Set<String> responding;
+  final Function(String) onAccept;
+  final Function(String) onDecline;
+
+  const _InvitesList({
+    required this.theme,
+    required this.invites,
+    required this.hostNameForInvite,
+    required this.responding,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: invites.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (_, i) {
+        final invite = invites[i];
+        final sessionId = invite['id'] as String;
+        final name = invite['name'] as String? ?? 'Сессия';
+        final hostName = hostNameForInvite(invite) ?? 'Друг';
+        final isResponding = responding.contains(sessionId);
+
+        return Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          elevation: 0,
+          color: theme.cardColor,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.music_note, size: 24, color: theme.colorScheme.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ],
                 ),
-              );
-            }
-
-            return ListView.separated(
-              itemCount: prov.invites.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 14),
-              itemBuilder: (_, i) {
-                final invite = prov.invites[i];
-                final sessionId = invite['id'] as String;
-                final name = invite['name'] as String? ?? 'Сессия';
-                final hostName = prov.hostNameForInvite(invite) ?? 'Друг';
-                final isResponding = _responding.contains(sessionId);
-
-                return Card(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 6),
-                        Text('От: $hostName', style: theme.textTheme.bodyMedium),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: isResponding ? null : () => _respond(sessionId, false),
-                                child: const Text('Отклонить'),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: isResponding ? null : () => _respond(sessionId, true),
-                                child: isResponding
-                                    ? const SizedBox(
-                                        height: 18,
-                                        width: 18,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : const Text('Принять'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                const SizedBox(height: 8),
+                Text(
+                  'Приглашение от $hostName',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
                   ),
-                );
-              },
-            );
-          },
-        ),
-      ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: isResponding ? null : () => onDecline(sessionId),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.error,
+                          side: BorderSide(color: theme.colorScheme.error),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('Отклонить'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: isResponding ? null : () => onAccept(sessionId),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.colorScheme.primary,
+                          foregroundColor: theme.colorScheme.onPrimary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: isResponding
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text('Принять'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
