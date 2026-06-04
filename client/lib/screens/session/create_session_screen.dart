@@ -98,104 +98,117 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
     final friends = Provider.of<FriendsProvider>(context).friends;
     final colorScheme = theme.colorScheme;
 
-    final body = SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Card(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            margin: EdgeInsets.zero,
-            child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (!widget.embedded) ...[
-                        Text('Новая музыкальная сессия',
-                            style: theme.textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w800)),
-                        const SizedBox(height: 8),
-                        Text(
-                            'Пригласите друга и слушайте музыку вместе в реальном времени.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.textTheme.bodySmall?.color
-                                    ?.withOpacity(0.78),
-                                height: 1.5)),
-                        const SizedBox(height: 24),
-                      ],
-                      TextField(
-                        controller: _nameController,
-                        maxLength: 100,
-                        maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                              RegExp(r'[а-яА-ЯёЁa-zA-Z0-9 ._\-()]'))
+    // Оборачиваем всё в GestureDetector, чтобы скрывать клавиатуру по тапу на пустое место
+    final body = GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Card(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24)),
+              margin: EdgeInsets.zero,
+              child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (!widget.embedded) ...[
+                          Text('Новая музыкальная сессия',
+                              style: theme.textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
+                          Text(
+                              'Пригласите друга и слушайте музыку вместе в реальном времени.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.textTheme.bodySmall?.color
+                                      ?.withOpacity(0.78),
+                                  height: 1.5)),
+                          const SizedBox(height: 24),
                         ],
-                        decoration: InputDecoration(
-                            labelText: 'Название сессии',
-                            counterText: '',
-                            errorText: _nameError,
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16)),
-                            focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(
-                                    color: _nameError != null
-                                        ? colorScheme.error
-                                        : colorScheme.primary,
-                                    width: 2)),
-                            enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(
-                                    color: _nameError != null
-                                        ? colorScheme.error
-                                        : colorScheme.outline))),
-                        onChanged: (_) => _validateName(),
-                      ),
-                      const SizedBox(height: 24),
-                      Text('Выберите друга',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 12),
-                      if (friends.isEmpty)
-                        Center(
-                            child: Text('Нет друзей',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.textTheme.bodySmall?.color
-                                        ?.withOpacity(0.6))))
-                      else ...[
-                        ...friends.map((f) => _FriendSelectTile(
-                            friend: f,
-                            selected: _selectedFriend?.id == f.id,
-                            onTap: () => setState(() => _selectedFriend = f))),
-                        if (_selectedFriend == null)
-                          Padding(
-                              padding: const EdgeInsets.only(top: 4, left: 4),
-                              child: Text('Обязательно выберите друга',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.error, fontSize: 12))),
-                      ],
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: _creating || !_canSubmit ? null : _create,
-                        style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            backgroundColor: _canSubmit
-                                ? colorScheme.primary
-                                : colorScheme.surfaceVariant,
-                            foregroundColor: _canSubmit
-                                ? colorScheme.onPrimary
-                                : colorScheme.onSurface.withOpacity(0.38)),
-                        child: _creating
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('Создать сессию'),
-                      ),
-                    ]))));
+                        TextField(
+                          controller: _nameController,
+                          maxLength: 100,
+                          maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'[а-яА-ЯёЁa-zA-Z0-9 ._\-()]'))
+                          ],
+                          decoration: InputDecoration(
+                              labelText: 'Название сессии',
+                              counterText: '',
+                              errorText: _nameError,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16)),
+                              focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide(
+                                      color: _nameError != null
+                                          ? colorScheme.error
+                                          : colorScheme.primary,
+                                      width: 2)),
+                              enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide(
+                                      color: _nameError != null
+                                          ? colorScheme.error
+                                          : colorScheme.outline))),
+                          onChanged: (_) => _validateName(),
+                        ),
+                        const SizedBox(height: 24),
+                        Text('Выберите друга',
+                            style: theme.textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 12),
+                        if (friends.isEmpty)
+                          Center(
+                              child: Text('Нет друзей',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: theme.textTheme.bodySmall?.color
+                                          ?.withOpacity(0.6))))
+                        else ...[
+                          ...friends.map((f) => _FriendSelectTile(
+                              friend: f,
+                              selected: _selectedFriend?.id == f.id,
+                              onTap: () => setState(() {
+                                // При повторном нажатии снимаем выделение
+                                if (_selectedFriend?.id == f.id) {
+                                  _selectedFriend = null;
+                                } else {
+                                  _selectedFriend = f;
+                                }
+                              }))),
+                          if (_selectedFriend == null)
+                            Padding(
+                                padding: const EdgeInsets.only(top: 4, left: 4),
+                                child: Text('Обязательно выберите друга',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                        color: colorScheme.error,
+                                        fontSize: 12))),
+                        ],
+                        const SizedBox(height: 24),
+                        ElevatedButton(
+                          onPressed: _creating || !_canSubmit ? null : _create,
+                          style: ElevatedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16)),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
+                              backgroundColor: _canSubmit
+                                  ? colorScheme.primary
+                                  : colorScheme.surfaceVariant,
+                              foregroundColor: _canSubmit
+                                  ? colorScheme.onPrimary
+                                  : colorScheme.onSurface.withOpacity(0.38)),
+                          child: _creating
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Text('Создать сессию'),
+                        ),
+                      ])))),
+    );
 
     if (widget.embedded) return body;
 
@@ -222,40 +235,66 @@ class _FriendSelectTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-              color: selected
-                  ? theme.colorScheme.primary.withOpacity(0.15)
-                  : theme.cardColor,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: selected
+            ? theme.colorScheme.primary.withOpacity(0.15)
+            : theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: theme.colorScheme.primary.withOpacity(0.2),
+          highlightColor: theme.colorScheme.primary.withOpacity(0.1),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                  color:
-                      selected ? theme.colorScheme.primary : Colors.transparent,
-                  width: 2)),
-          child: Row(children: [
-            CircleAvatar(
-                radius: 20,
-                backgroundImage:
-                    friend.avatarUrl != null && friend.avatarUrl!.isNotEmpty
-                        ? NetworkImage(friend.avatarUrl!)
-                        : null,
-                backgroundColor: theme.colorScheme.surfaceVariant,
-                child: friend.avatarUrl == null || friend.avatarUrl!.isEmpty
-                    ? Icon(Icons.person,
-                        color: theme.colorScheme.primary, size: 20)
-                    : null),
-            const SizedBox(width: 12),
-            Expanded(
-                child: Text(friend.name,
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600))),
-            if (selected)
-              Icon(Icons.check_circle, color: theme.colorScheme.primary),
-          ])),
+                color: selected
+                    ? theme.colorScheme.primary
+                    : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundImage:
+                      friend.avatarUrl != null && friend.avatarUrl!.isNotEmpty
+                          ? NetworkImage(friend.avatarUrl!)
+                          : null,
+                  backgroundColor: theme.colorScheme.surfaceVariant,
+                  child: friend.avatarUrl == null || friend.avatarUrl!.isEmpty
+                      ? Icon(Icons.person,
+                          color: theme.colorScheme.primary, size: 20)
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    friend.name,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                // Иконка радио-кнопки для наглядности
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withOpacity(0.4),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

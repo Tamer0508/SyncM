@@ -29,15 +29,16 @@ class GoogleSignInButton extends StatelessWidget {
       return ElevatedButton(
         style: ElevatedButton.styleFrom(
           minimumSize: const Size.fromHeight(48),
-          backgroundColor: theme.colorScheme.primary,
+          // backgroundColor и foregroundColor пусть берутся из темы
         ),
-        onPressed: () => _isWindows ? _handleWindowsSignIn(context) : _handleSignIn(context),
+        onPressed: () =>
+            _isWindows ? _handleWindowsSignIn(context) : _handleSignIn(context),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.login, color: Colors.white),
+            Icon(Icons.login), // цвет унаследуется от кнопки
             SizedBox(width: 8),
-            Text('Войти через Google', style: TextStyle(color: Colors.white)),
+            Text('Войти через Google'), // цвет унаследуется от кнопки
           ],
         ),
       );

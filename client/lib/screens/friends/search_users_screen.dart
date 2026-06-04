@@ -110,166 +110,176 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final body = Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      decoration: const InputDecoration(
-                        hintText: 'Введите имя пользователя',
-                        prefixIcon: Icon(Icons.search),
-                        border: InputBorder.none,
-                      ),
-                      onChanged: _searchSubject.add,
-                      onSubmitted: _search,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 80,
-                    height: 40,
-                    child: ElevatedButton(
-                      onPressed:
-                          _loading ? null : () => _search(_controller.text),
-                      style: ElevatedButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
+    // Оборачиваем всё тело в GestureDetector для скрытия клавиатуры по тапу на пустое место
+    final body = GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        decoration: const InputDecoration(
+                          hintText: 'Начните вводить имя пользователя...',
+                          prefixIcon: Icon(Icons.search),
+                          border: InputBorder.none,
                         ),
-                      ),
-                      child: const Text(
-                        'Найти',
-                        style: TextStyle(fontSize: 14),
+                        onChanged: _searchSubject.add,
+                        onSubmitted: _search,
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _loading
-                ? Center(
-                    child: CircularProgressIndicator(
-                      color: theme.colorScheme.primary,
-                    ),
-                  )
-                : !_searched
-                    ? Center(
-                        child: Text(
-                          'Введите имя пользователя и нажмите "Найти"',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyLarge,
-                        ),
-                      )
-                    : _results.isEmpty
-                        ? Center(
-                            child: Text(
-                              'Пользователи не найдены',
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: theme.textTheme.bodySmall?.color
-                                    ?.withOpacity(0.8),
+            const SizedBox(height: 16),
+            Expanded(
+              child: _loading
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        color: theme.colorScheme.primary,
+                      ),
+                    )
+                  : !_searched
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.person_search,
+                                size: 64,
+                                color: theme.colorScheme.onSurface.withOpacity(0.3),
                               ),
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: _results.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (_, i) {
-                              final u = _results[i];
-                              final isPending =
-                                  _pendingRequests.contains(u.id);
-
-                              return Card(
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Начните вводить имя пользователя',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  color: theme.textTheme.bodySmall?.color
+                                      ?.withOpacity(0.7),
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 24,
-                                        backgroundImage:
-                                            u.avatarUrl != null &&
-                                                    u.avatarUrl!.isNotEmpty
-                                                ? NetworkImage(u.avatarUrl!)
-                                                : null,
-                                        child: u.avatarUrl == null ||
-                                                u.avatarUrl!.isEmpty
-                                            ? const Icon(Icons.person)
-                                            : null,
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Text(
-                                          u.name,
-                                          style: theme
-                                              .textTheme.titleMedium
-                                              ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: 120,
-                                        height: 36,
-                                        child: ElevatedButton(
-                                          onPressed: isPending
-                                              ? null
-                                              : () => _sendRequest(u.id),
-                                          style: ElevatedButton.styleFrom(
-                                            padding: EdgeInsets.zero,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                            ),
-                                            backgroundColor: isPending
-                                                ? theme.disabledColor
-                                                : theme.colorScheme.primary,
-                                          ),
-                                          child: Text(
-                                            isPending
-                                                ? 'Отправлено'
-                                                : 'Добавить',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: isPending
-                                                  ? theme
-                                                      .colorScheme.onSurface
-                                                      .withOpacity(0.7)
-                                                  : theme
-                                                      .colorScheme.onPrimary,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
+                              ),
+                            ],
                           ),
-          ),
-        ],
+                        )
+                      : _results.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.sentiment_dissatisfied,
+                                    size: 64,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.3),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Пользователи не найдены',
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      color: theme.textTheme.bodySmall?.color
+                                          ?.withOpacity(0.8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: _results.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (_, i) {
+                                final u = _results[i];
+                                final isPending =
+                                    _pendingRequests.contains(u.id);
+
+                                return Card(
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 24,
+                                          backgroundImage:
+                                              u.avatarUrl != null &&
+                                                      u.avatarUrl!.isNotEmpty
+                                                  ? NetworkImage(u.avatarUrl!)
+                                                  : null,
+                                          child: u.avatarUrl == null ||
+                                                  u.avatarUrl!.isEmpty
+                                              ? const Icon(Icons.person)
+                                              : null,
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Text(
+                                            u.name,
+                                            style: theme
+                                                .textTheme.titleMedium
+                                                ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 120,
+                                          height: 36,
+                                          child: ElevatedButton(
+                                            onPressed: isPending
+                                                ? null
+                                                : () => _sendRequest(u.id),
+                                            style: ElevatedButton.styleFrom(
+                                              padding: EdgeInsets.zero,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              backgroundColor: isPending
+                                                  ? theme.disabledColor
+                                                  : theme.colorScheme.primary,
+                                            ),
+                                            child: Text(
+                                              isPending
+                                                  ? 'Отправлено'
+                                                  : 'Добавить',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: isPending
+                                                    ? theme
+                                                        .colorScheme.onSurface
+                                                        .withOpacity(0.7)
+                                                    : theme
+                                                        .colorScheme.onPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+            ),
+          ],
+        ),
       ),
     );
 

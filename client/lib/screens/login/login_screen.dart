@@ -437,8 +437,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                 GoogleSignInButton(onSignInSuccess: () {}),
                                 const SizedBox(height: 18),
                                 TextButton(
+                                  style: TextButton.styleFrom(
+                                    foregroundColor:
+                                        theme.colorScheme.secondary,
+                                    textStyle: const TextStyle(
+                                        decoration: TextDecoration.underline),
+                                  ),
                                   onPressed: _signInWithGoogle,
-                                  child: const Text('Использовать Google с веб-авторизацией'),
+                                  child: const Text(
+                                      'Использовать Google с веб-авторизацией'),
                                 ),
                               ],
                             ),

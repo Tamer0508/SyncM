@@ -1009,7 +1009,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildDesktopHeader() {
     final theme = Theme.of(context);
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    final sessionProvider = Provider.of<SessionProvider>(context);
 
     // Режим встроенного окна (Поиск или Запросы)
     if (_activeFriendView != null) {
@@ -1147,30 +1146,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 tooltip: 'Обновить'),
             const SizedBox(width: 8),
           ] else if (_currentIndex == 0) ...[
-            Stack(clipBehavior: Clip.none, children: [
-              AppIconButton(
-                  icon: Icons.mail_outline,
-                  onPressed: () =>
-                      Navigator.of(context).pushNamed('/session/invites'),
-                  tooltip: 'Приглашения'),
-              if (sessionProvider.unreadInvitesCount > 0)
-                Positioned(
-                    top: -5,
-                    right: -10,
-                    child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                            color: Colors.deepPurple, shape: BoxShape.circle),
-                        constraints:
-                            const BoxConstraints(minWidth: 18, minHeight: 18),
-                        child: Text('${sessionProvider.unreadInvitesCount}',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold),
-                            textAlign: TextAlign.center))),
-            ]),
-            const SizedBox(width: 8),
             AppIconButton(
                 icon: Icons.add,
                 onPressed: () => setState(() => _creatingSession = true),
