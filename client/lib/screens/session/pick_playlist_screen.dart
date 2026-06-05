@@ -71,6 +71,8 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
         'spotifyUri': t['uri'],
         'trackName': t['name'],
         'artistName': t['artist'],
+        'imageUrl': t['imageUrl'],
+        'durationMs': t['durationMs'],
       }).toList());
 
       if (mounted) {

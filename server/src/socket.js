@@ -130,6 +130,20 @@ const setupSocket = (io) => {
       socket.to(sessionId).emit('play', { spotifyUri, position_ms, userId: uid });
     });
 
+    socket.on('session_play', async ({ sessionId, spotifyUri, trackIndex, tracks, addedById }) => {
+      const uid = socket.data.userId;
+      if (!uid || !(await isSessionMember(sessionId, uid))) {
+        return socket.emit('error', { message: 'Нет доступа' });
+      }
+      socket.to(sessionId).emit('session_play', {
+        spotifyUri,
+        trackIndex,
+        tracks,
+        addedById: addedById || uid,
+      });
+      logger.debug({ userId: uid, sessionId, trackIndex }, 'Session play relayed');
+    });
+
     socket.on('pause', async ({ sessionId }) => {
       const uid = socket.data.userId;
       if (!uid || !(await isSessionMember(sessionId, uid))) {

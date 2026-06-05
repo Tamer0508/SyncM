@@ -129,10 +129,24 @@ const notificationWorker = hasRedis ? new Worker(
         break;
       }
       case 'tracks_added': {
-        const { sessionId, tracks } = data;
+        const { sessionId, tracks, allTracks, autoplayUri, autoplayIndex, addedById } = data;
         if (!sessionId) throw new Error('Missing sessionId for tracks_added');
-        io.to(sessionId).emit('tracks-added', tracks);
-        logger.info({ sessionId, trackCount: tracks?.length }, 'Tracks added notification sent');
+        io.to(sessionId).emit('tracks-added', {
+          tracks,
+          allTracks,
+          autoplayUri,
+          autoplayIndex,
+          addedById,
+        });
+        if (autoplayUri && autoplayIndex >= 0) {
+          io.to(sessionId).emit('session_play', {
+            spotifyUri: autoplayUri,
+            trackIndex: autoplayIndex,
+            addedById,
+            tracks: allTracks,
+          });
+        }
+        logger.info({ sessionId, trackCount: tracks?.length, autoplayIndex }, 'Tracks added notification sent');
         break;
       }
       case 'track_rated': {

@@ -191,24 +191,58 @@ const addTracks = async (req, res) => {
             spotifyUri: t.spotifyUri,
             trackName: t.trackName,
             artistName: t.artistName || '',
+            imageUrl: t.imageUrl || null,
             durationMs: t.durationMs || null,
           },
           include: { addedBy: { select: { username: true } } },
         })
       ));
 
+      const allTracks = await prisma.sessionTrack.findMany({
+        where: { sessionId },
+        orderBy: { addedAt: 'asc' },
+        include: { addedBy: { select: { username: true } } },
+      });
+
+      const autoplayIndex = allTracks.findIndex((t) => t.id === createdTracks[0].id);
+      const autoplayUri = createdTracks[0].spotifyUri;
+
       const userIds = session.members.map(m => m.userId);
       await Promise.all(userIds.map(uid => invalidateUserDB(uid)));
 
+      const tracksPayload = {
+        type: 'tracks_added',
+        sessionId,
+        tracks: createdTracks,
+        allTracks,
+        autoplayUri,
+        autoplayIndex,
+        addedById: userId,
+        timestamp: Date.now(),
+      };
+
       try {
-        await addNotificationJob({
-          type: 'tracks_added',
-          sessionId,
-          tracks: createdTracks,
-          timestamp: Date.now(),
-        });
+        await addNotificationJob(tracksPayload);
       } catch (e) {
-        logger.error({ err: e }, 'Failed to enqueue tracks-added notification');
+        logger.warn({ err: e, sessionId }, 'Queue unavailable, emitting tracks-added directly');
+        const io = getIo();
+        if (io) {
+          io.to(sessionId).emit('tracks-added', {
+            tracks: createdTracks,
+            allTracks,
+            autoplayUri,
+            autoplayIndex,
+            addedById: userId,
+          });
+          if (autoplayUri != null && autoplayIndex >= 0) {
+            io.to(sessionId).emit('session_play', {
+              spotifyUri: autoplayUri,
+              trackIndex: autoplayIndex,
+              addedById: userId,
+              tracks: allTracks,
+            });
+          }
+        }
       }
 
       res.json({ message: `Добавлено ${createdTracks.length} треков`, tracks: createdTracks });

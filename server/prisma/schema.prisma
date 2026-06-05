@@ -162,6 +162,7 @@ model SessionTrack {
   spotifyUri String
   trackName  String
   artistName String
+  imageUrl   String?
   durationMs Int?
   addedAt    DateTime      @default(now())
 
