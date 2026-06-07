@@ -6,10 +6,10 @@ import 'package:palette_generator/palette_generator.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:spotify_sdk/models/player_state.dart';
 import 'package:spotify_sdk/models/image_uri.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import '../services/api_service.dart';
 import '../config.dart';
+import '../services/socket_service.dart';
 
 typedef SessionTracksCallback = void Function(Map<String, dynamic> data);
 typedef SessionPlaybackCallback = void Function(Map<String, dynamic> track);
@@ -30,7 +30,7 @@ class PlaybackProvider extends ChangeNotifier {
   Timer? _pollingTimer;
   Timer? _trackChangeTimer;
 
-  IO.Socket? _socket;
+  SocketService? _socketService;
   String? _currentSessionId;
   String? _userId;
 
@@ -111,7 +111,7 @@ class PlaybackProvider extends ChangeNotifier {
     final track = Map<String, dynamic>.from(_sessionQueue[index]);
 
     if (syncToSession && !_isRemoteSync && _currentSessionId != null) {
-      _socket?.emit('session_play', {
+      _socketService?.emit('session_play', {
         'sessionId': _currentSessionId,
         'spotifyUri': track['uri'],
         'trackIndex': index,
@@ -217,75 +217,57 @@ class PlaybackProvider extends ChangeNotifier {
     });
   }
 
-  void initSocket(String sessionId, String userId) {
-    if (_socket != null && _socket!.connected && _currentSessionId == sessionId) {
-      return;
+
+void initSession(String sessionId, String userId, SocketService socketService) {
+  _currentSessionId = sessionId;
+  _userId = userId;
+  _socketService = socketService;
+
+  // Присоединяемся к комнате сессии
+  socketService.emit('join_session', {'sessionId': sessionId});
+
+  // Слушаем события сессии
+  socketService.on('session_play', (data) {
+    if (data is Map) handleSessionPlayEvent(Map<String, dynamic>.from(data));
+  });
+
+  socketService.on('play', (data) {
+    final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    if (map['spotifyUri'] != _currentTrack?['uri']) {
+      playTrack({'uri': map['spotifyUri']}, positionMs: map['position_ms'] as int?);
     }
+  });
 
-    _socket?.disconnect();
-    _socket?.dispose();
-
-    _currentSessionId = sessionId;
-    _userId = userId;
-
-    _socket = IO.io(
-        _socketUrl,
-        IO.OptionBuilder()
-            .setTransports(['websocket'])
-            .enableReconnection()
-            .setReconnectionAttempts(5)
-            .setReconnectionDelay(2000)
-            .build());
-
-    _socket!.onConnect((_) {
-      _socket!.emit('authenticate', {'token': userId});
-      _socket!.emit('join_session', {'sessionId': sessionId});
-    });
-
-    _socket!.onDisconnect((_) => print('[Socket] Disconnected'));
-    _socket!.onConnectError((err) => print('[Socket] Connect error: $err'));
-
-    _socket!.on('play', (data) {
-      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
-      if (map['spotifyUri'] != _currentTrack?['uri']) {
-        playTrack({'uri': map['spotifyUri']}, positionMs: map['position_ms'] as int?);
-      }
-    });
-
-    _socket!.on('pause', (_) async {
-      if (_isPlaying) {
-        if (_isWindows || _isWeb) {
-          try { await _apiService?.pausePlayback(); } catch (_) {}
-        } else {
-          try { await SpotifySdk.pause(); } catch (_) {}
-        }
-        _isPlaying = false;
-        notifyListeners();
-      }
-    });
-
-    _socket!.on('next_track', (data) {
-      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
-      if (_sessionMode) {
-        _advanceSessionQueue();
+  socketService.on('pause', (_) async {
+    if (_isPlaying) {
+      if (_isWindows || _isWeb) {
+        try { await _apiService?.pausePlayback(); } catch (_) {}
       } else {
-        playTrack({'uri': map['spotifyUri']});
+        try { await SpotifySdk.pause(); } catch (_) {}
       }
-    });
+      _isPlaying = false;
+      notifyListeners();
+    }
+  });
 
-    _socket!.on('seek', (data) {
-      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
-      seekTo(map['position_ms'] as int? ?? 0);
-    });
+  socketService.on('next_track', (data) {
+    final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    if (_sessionMode) {
+      _advanceSessionQueue();
+    } else {
+      playTrack({'uri': map['spotifyUri']});
+    }
+  });
 
-    _socket!.on('session_play', (data) {
-      if (data is Map) handleSessionPlayEvent(Map<String, dynamic>.from(data));
-    });
+  socketService.on('seek', (data) {
+    final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    seekTo(map['position_ms'] as int? ?? 0);
+  });
 
-    _socket!.on('tracks-added', (data) {
-      if (data is Map) onTracksAdded?.call(Map<String, dynamic>.from(data));
-    });
-  }
+  socketService.on('tracks-added', (data) {
+    if (data is Map) onTracksAdded?.call(Map<String, dynamic>.from(data));
+  });
+}
 
   Future<bool> connect() async {
     try {
@@ -330,7 +312,7 @@ class PlaybackProvider extends ChangeNotifier {
         };
 
         if (trackChanged && _currentSessionId != null && !_sessionMode) {
-          _socket?.emit('next_track', {'sessionId': _currentSessionId, 'spotifyUri': trackUri});
+          _socketService?.emit('next_track', {'sessionId': _currentSessionId, 'spotifyUri': trackUri});
         }
 
         if (_sessionMode && state.isPaused && state.track != null) {
@@ -470,7 +452,7 @@ class PlaybackProvider extends ChangeNotifier {
       _isPlaying = true;
 
       if (_currentSessionId != null && !_sessionMode && !_isRemoteSync) {
-        _socket?.emit('play', {
+        _socketService?.emit('play', {
           'sessionId': _currentSessionId,
           'spotifyUri': uri,
           'position_ms': positionMs ?? 0
@@ -517,11 +499,11 @@ class PlaybackProvider extends ChangeNotifier {
       if (_isPlaying) {
         await SpotifySdk.pause();
         _isPlaying = false;
-        _socket?.emit('pause', {'sessionId': _currentSessionId});
+        _socketService?.emit('pause', {'sessionId': _currentSessionId});
       } else {
         await SpotifySdk.resume();
         _isPlaying = true;
-        _socket?.emit('play', {
+        _socketService?.emit('play', {
           'sessionId': _currentSessionId,
           'spotifyUri': _currentTrack?['uri'],
           'position_ms': _positionMs
@@ -778,7 +760,7 @@ class PlaybackProvider extends ChangeNotifier {
     try {
       await SpotifySdk.seekTo(positionedMilliseconds: ms);
       _positionMs = ms;
-      _socket?.emit('seek', {'sessionId': _currentSessionId, 'position_ms': ms});
+      _socketService?.emit('seek', {'sessionId': _currentSessionId, 'position_ms': ms});
       notifyListeners();
     } catch (e) {
       print('[Spotify] Seek error: $e');
@@ -789,9 +771,9 @@ class PlaybackProvider extends ChangeNotifier {
     _pollingTimer?.cancel();
     _trackChangeTimer?.cancel();
     if (_currentSessionId != null && _userId != null) {
-      _socket?.emit('leave_session', {'sessionId': _currentSessionId, 'userId': _userId});
+      _socketService?.emit('leave_session', {'sessionId': _currentSessionId, 'userId': _userId});
     }
-    _socket?.disconnect();
+    _socketService?.disconnect();
     _isPlaying = false;
     _currentTrack = null;
     _isConnected = false;
@@ -865,7 +847,7 @@ class PlaybackProvider extends ChangeNotifier {
   void dispose() {
     _pollingTimer?.cancel();
     _trackChangeTimer?.cancel();
-    _socket?.disconnect();
+    _socketService?.disconnect();
     super.dispose();
   }
 }

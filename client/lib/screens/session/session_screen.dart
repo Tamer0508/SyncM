@@ -6,6 +6,7 @@ import '../../providers/session_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../utils/notifications.dart';
 import '../player/now_playing.dart';
+import '../../services/socket_service.dart';
 
 class SessionScreen extends StatefulWidget {
   final bool embedded;
@@ -119,7 +120,8 @@ class _SessionScreenState extends State<SessionScreen> {
       if (_session != null) {
         final auth = Provider.of<AuthProvider>(context, listen: false);
         final pb = Provider.of<PlaybackProvider>(context, listen: false);
-        pb.initSocket(_session!['id'], auth.user?.id ?? '');
+        final socket = Provider.of<SocketService>(context, listen: false);
+        pb.initSession(_session!['id'], auth.user?.id ?? '', socket);
         _setupPlaybackCallbacks();
         _syncSessionQueue();
       }
