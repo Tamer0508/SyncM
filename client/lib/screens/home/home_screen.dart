@@ -482,17 +482,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openSession(String sessionId) async {
-    try {
-      final api = Provider.of<AuthProvider>(context, listen: false).api;
-      final sessionData = await api.getSession(sessionId);
-      if (sessionData != null && mounted) {
-        setState(() => _activeSession = sessionData);
-      }
-    } catch (e) {
-      showAppNotification(context,
-          message: 'Ошибка загрузки сессии: $e', type: NotificationType.error);
+  try {
+    final api = Provider.of<AuthProvider>(context, listen: false).api;
+    final sessions = await api.getMySessions();
+    final session = (sessions as List).firstWhere(
+      (s) => s['id'] == sessionId,
+      orElse: () => null,
+    );
+    if (session != null && mounted) {
+      setState(() => _activeSession = Map<String, dynamic>.from(session));
     }
+  } catch (e) {
+    if (mounted) showAppNotification(context,
+        message: 'Ошибка загрузки сессии: $e',
+        type: NotificationType.error);
   }
+}
 
   Future<void> _loadAllPlaylists() async {
     if (mounted)
