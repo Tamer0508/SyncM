@@ -1,23 +1,98 @@
 const prisma = require('./db/prisma');
 const logger = require('./infrastructure/logger');
 
-const onlineUsers = new Map();      // userId -> Set(socketId)
-const offlineTimers = new Map();    // userId -> Timeout
-const OFFLINE_DELAY_MS = 5000;      // 5 секунд grace period
+const onlineUsers = new Map();
+const offlineTimers = new Map();
+const OFFLINE_DELAY_MS = 5000;
+
+// Фаза 1-6: Состояние сессий
+const sessionStates = new Map();  // sessionId -> state
+const readyClients = new Map();   // sessionId -> Set(socketId)
+const clientRtt = new Map();      // socketId -> rttMs
+const syncIntervals = new Map();  // sessionId -> intervalId
+
 let ioInstance;
+
+// ─── Хелперы ──────────────────────────────────────────────────────────────
+
+function getSessionState(sessionId) {
+  return sessionStates.get(sessionId) || null;
+}
+
+function getCurrentPosition(state) {
+  if (!state || state.state !== 'playing') return state?.positionMs || 0;
+  return state.positionMs + (Date.now() - state.serverTime);
+}
+
+function stopSyncInterval(sessionId) {
+  const interval = syncIntervals.get(sessionId);
+  if (interval) {
+    clearInterval(interval);
+    syncIntervals.delete(sessionId);
+  }
+}
+
+function startSyncInterval(io, sessionId) {
+  stopSyncInterval(sessionId);
+  const interval = setInterval(() => {
+    const state = sessionStates.get(sessionId);
+    if (!state || state.state !== 'playing') {
+      stopSyncInterval(sessionId);
+      return;
+    }
+    const positionMs = getCurrentPosition(state);
+    io.to(sessionId).emit('session_sync', {
+      trackId: state.trackId,
+      positionMs,
+      serverTime: Date.now(),
+      state: state.state,
+    });
+  }, 5000);
+  syncIntervals.set(sessionId, interval);
+}
+
+function startFromPosition(io, sessionId, trackId, positionMs) {
+  const rtts = [];
+  const room = ioInstance?.sockets.adapter.rooms.get(sessionId);
+  if (room) {
+    room.forEach(socketId => {
+      const rtt = clientRtt.get(socketId);
+      if (rtt) rtts.push(rtt);
+    });
+  }
+
+  const maxPing = rtts.length > 0 ? Math.max(...rtts) : 600;
+  const guard = Math.min(maxPing * 2 + 300, 2000); // не более 2 секунд
+  const startAt = Date.now() + guard;
+
+  const state = sessionStates.get(sessionId) || {};
+  sessionStates.set(sessionId, {
+    ...state,
+    trackId,
+    state: 'playing',
+    positionMs,
+    serverTime: startAt,
+    startAt,
+  });
+
+  io.to(sessionId).emit('session_start', {
+    trackId,
+    startAt,
+    positionMs,
+    serverTime: Date.now(),
+  });
+
+  startSyncInterval(io, sessionId);
+}
 
 async function updateOnlineStatus(userId, isOnline) {
   try {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
-    if (!user) {
-      logger.warn({ userId }, 'User not found when updating online status');
-      return;
-    }
+    if (!user) return;
     await prisma.user.update({
       where: { id: userId },
       data: { isOnline, lastSeenAt: isOnline ? null : new Date() }
     });
-    logger.debug({ userId, isOnline }, 'Online status updated');
   } catch (err) {
     logger.error({ err, userId }, 'Update online status error');
   }
@@ -26,19 +101,11 @@ async function updateOnlineStatus(userId, isOnline) {
 async function getFriendIds(userId) {
   try {
     const friendships = await prisma.friendship.findMany({
-      where: {
-        status: 'accepted',
-        OR: [{ senderId: userId }, { receiverId: userId }]
-      },
+      where: { status: 'accepted', OR: [{ senderId: userId }, { receiverId: userId }] },
       select: { senderId: true, receiverId: true }
     });
-    const ids = new Set();
-    friendships.forEach(f => {
-      ids.add(f.senderId === userId ? f.receiverId : f.senderId);
-    });
-    return [...ids];
+    return [...new Set(friendships.map(f => f.senderId === userId ? f.receiverId : f.senderId))];
   } catch (err) {
-    logger.error({ err, userId }, 'Get friend ids error');
     return [];
   }
 }
@@ -50,10 +117,11 @@ async function isSessionMember(sessionId, userId) {
     });
     return member && member.status === 'accepted';
   } catch (err) {
-    logger.error({ err, sessionId, userId }, 'Check session member error');
     return false;
   }
 }
+
+// ─── Setup ────────────────────────────────────────────────────────────────
 
 const setupSocket = (io) => {
   ioInstance = io;
@@ -80,8 +148,7 @@ const setupSocket = (io) => {
       if (wasOffline) {
         await updateOnlineStatus(userId, true);
         const userSettings = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { isOnlineHidden: true }
+          where: { id: userId }, select: { isOnlineHidden: true }
         });
         if (!userSettings?.isOnlineHidden) {
           const friendIds = await getFriendIds(userId);
@@ -92,11 +159,9 @@ const setupSocket = (io) => {
             }
           });
         }
-        logger.info({ userId }, 'User came online');
       }
     };
 
-    // Аутентификация через query или событие
     if (socket.handshake?.query?.userId) {
       const qUserId = socket.handshake.query.userId;
       if (typeof qUserId === 'string' && qUserId.trim()) await connectUser(qUserId.trim());
@@ -107,6 +172,17 @@ const setupSocket = (io) => {
       if (token) await connectUser(token);
     });
 
+    // ─── Фаза 1: Синхронизация часов ───────────────────────────────────────
+    socket.on('ping_time', (data) => {
+      socket.emit('pong_time', {
+        clientTime: data?.clientTime,
+        serverTime: Date.now(),
+      });
+      // Обновляем RTT если клиент прислал
+      if (data?.rtt) clientRtt.set(socket.id, data.rtt);
+    });
+
+    // ─── Подключение к сессии ───────────────────────────────────────────────
     socket.on('join_session', async ({ sessionId }) => {
       const uid = socket.data.userId;
       if (!uid) return socket.emit('error', { message: 'Не авторизован' });
@@ -119,60 +195,168 @@ const setupSocket = (io) => {
       socket.join(sessionId);
       socket.data.sessionId = sessionId;
       io.to(sessionId).emit('user_joined', { userId: uid });
-      logger.info({ userId: uid, sessionId }, 'User joined session');
+
+      // Фаза 6: Отправляем полное состояние новому участнику
+      const state = sessionStates.get(sessionId);
+      if (state) {
+        const positionMs = getCurrentPosition(state);
+        socket.emit('session_state', {
+          trackId: state.trackId,
+          state: state.state,
+          positionMs,
+          serverTime: Date.now(),
+          startAt: state.startAt,
+          durationMs: state.durationMs,
+        });
+      }
+    });
+
+    // ─── Фаза 2: Подготовка трека ───────────────────────────────────────────
+    socket.on('session_prepare', async ({ sessionId, trackId, durationMs }) => {
+      const uid = socket.data.userId;
+      if (!uid || !(await isSessionMember(sessionId, uid))) {
+        return socket.emit('error', { message: 'Нет доступа' });
+      }
+
+      // Сбрасываем готовность
+      readyClients.set(sessionId, new Set());
+      stopSyncInterval(sessionId);
+
+      sessionStates.set(sessionId, {
+        ...(sessionStates.get(sessionId) || {}),
+        trackId,
+        durationMs,
+        state: 'preparing',
+        positionMs: 0,
+        serverTime: Date.now(),
+      });
+
+      // Рассылаем всем включая себя
+      io.to(sessionId).emit('session_prepare', { trackId, durationMs });
+    });
+
+    // ─── Фаза 2: Клиент готов к воспроизведению ────────────────────────────
+    socket.on('client_ready', async ({ sessionId, trackId }) => {
+      const uid = socket.data.userId;
+      if (!uid) return;
+
+      const ready = readyClients.get(sessionId) || new Set();
+      ready.add(socket.id);
+      readyClients.set(sessionId, ready);
+
+      // Проверяем все ли в комнате готовы
+      const room = io.sockets.adapter.rooms.get(sessionId);
+      const roomSize = room ? room.size : 1;
+      const READY_TIMEOUT_MS = 5000;
+
+      if (ready.size >= roomSize) {
+        // Все готовы — стартуем
+        startFromPosition(io, sessionId, trackId, 0);
+        readyClients.delete(sessionId);
+      } else {
+        // Ждём остальных с таймаутом
+        if (!sessionStates.get(sessionId)?._readyTimeout) {
+          const timeout = setTimeout(() => {
+            const state = sessionStates.get(sessionId);
+            if (state) state._readyTimeout = null;
+            startFromPosition(io, sessionId, trackId, 0);
+            readyClients.delete(sessionId);
+          }, READY_TIMEOUT_MS);
+          const state = sessionStates.get(sessionId) || {};
+          state._readyTimeout = timeout;
+          sessionStates.set(sessionId, state);
+        }
+      }
+    });
+
+    // ─── Фаза 5: Команды через сервер ──────────────────────────────────────
+    socket.on('session_command', async ({ sessionId, action, positionMs: seekPos }) => {
+      const uid = socket.data.userId;
+      if (!uid || !(await isSessionMember(sessionId, uid))) {
+        return socket.emit('error', { message: 'Нет доступа' });
+      }
+
+      const state = sessionStates.get(sessionId);
+      if (!state) return;
+
+      if (action === 'pause') {
+        const currentPos = getCurrentPosition(state);
+        state.state = 'paused';
+        state.positionMs = currentPos;
+        state.serverTime = Date.now();
+        sessionStates.set(sessionId, state);
+        stopSyncInterval(sessionId);
+        io.to(sessionId).emit('session_pause', { positionMs: currentPos });
+
+      } else if (action === 'resume') {
+        startFromPosition(io, sessionId, state.trackId, state.positionMs);
+
+      } else if (action === 'seek') {
+        startFromPosition(io, sessionId, state.trackId, seekPos || 0);
+
+      } else if (action === 'next') {
+        // Клиент сам передаёт следующий trackId
+        const nextTrackId = seekPos; // используем поле как trackId
+        if (nextTrackId) {
+          io.to(sessionId).emit('session_prepare', { trackId: nextTrackId });
+          readyClients.set(sessionId, new Set());
+        }
+      }
+    });
+
+    // ─── Фаза 6: Переподключение ────────────────────────────────────────────
+    socket.on('resync', async ({ sessionId }) => {
+      const uid = socket.data.userId;
+      if (!uid) return;
+
+      const state = sessionStates.get(sessionId);
+      if (!state) return;
+
+      const positionMs = getCurrentPosition(state);
+      socket.emit('session_state', {
+        trackId: state.trackId,
+        state: state.state,
+        positionMs,
+        serverTime: Date.now(),
+        startAt: state.startAt,
+        durationMs: state.durationMs,
+      });
+    });
+
+    // ─── Устаревшие события (обратная совместимость) ─────────────────────
+    socket.on('session_play', async ({ sessionId, spotifyUri, trackIndex, tracks, addedById }) => {
+      const uid = socket.data.userId;
+      if (!uid || !(await isSessionMember(sessionId, uid))) return;
+      socket.to(sessionId).emit('session_play', { spotifyUri, trackIndex, tracks, addedById: addedById || uid });
     });
 
     socket.on('play', async ({ sessionId, spotifyUri, position_ms }) => {
       const uid = socket.data.userId;
-      if (!uid || !(await isSessionMember(sessionId, uid))) {
-        return socket.emit('error', { message: 'Нет доступа' });
-      }
+      if (!uid || !(await isSessionMember(sessionId, uid))) return;
       socket.to(sessionId).emit('play', { spotifyUri, position_ms, userId: uid });
-    });
-
-    socket.on('session_play', async ({ sessionId, spotifyUri, trackIndex, tracks, addedById }) => {
-      const uid = socket.data.userId;
-      if (!uid || !(await isSessionMember(sessionId, uid))) {
-        return socket.emit('error', { message: 'Нет доступа' });
-      }
-      socket.to(sessionId).emit('session_play', {
-        spotifyUri,
-        trackIndex,
-        tracks,
-        addedById: addedById || uid,
-      });
-      logger.debug({ userId: uid, sessionId, trackIndex }, 'Session play relayed');
     });
 
     socket.on('pause', async ({ sessionId }) => {
       const uid = socket.data.userId;
-      if (!uid || !(await isSessionMember(sessionId, uid))) {
-        return socket.emit('error', { message: 'Нет доступа' });
-      }
+      if (!uid || !(await isSessionMember(sessionId, uid))) return;
       socket.to(sessionId).emit('pause');
-    });
-
-    socket.on('next_track', async ({ sessionId, spotifyUri }) => {
-      const uid = socket.data.userId;
-      if (!uid || !(await isSessionMember(sessionId, uid))) {
-        return socket.emit('error', { message: 'Нет доступа' });
-      }
-      socket.to(sessionId).emit('next_track', { spotifyUri });
     });
 
     socket.on('seek', async ({ sessionId, position_ms }) => {
       const uid = socket.data.userId;
-      if (!uid || !(await isSessionMember(sessionId, uid))) {
-        return socket.emit('error', { message: 'Нет доступа' });
-      }
+      if (!uid || !(await isSessionMember(sessionId, uid))) return;
       socket.to(sessionId).emit('seek', { position_ms });
+    });
+
+    socket.on('next_track', async ({ sessionId, spotifyUri }) => {
+      const uid = socket.data.userId;
+      if (!uid || !(await isSessionMember(sessionId, uid))) return;
+      socket.to(sessionId).emit('next_track', { spotifyUri });
     });
 
     socket.on('rate_track', async ({ sessionId, trackId, rating }) => {
       const uid = socket.data.userId;
-      if (!uid || !(await isSessionMember(sessionId, uid))) {
-        return socket.emit('error', { message: 'Нет доступа' });
-      }
+      if (!uid || !(await isSessionMember(sessionId, uid))) return;
       try {
         await prisma.trackRating.upsert({
           where: { trackId_userId: { trackId, userId: uid } },
@@ -180,9 +364,7 @@ const setupSocket = (io) => {
           create: { trackId, userId: uid, rating }
         });
         io.to(sessionId).emit('track_rated', { trackId, userId: uid, rating });
-        logger.debug({ sessionId, trackId, userId: uid, rating }, 'Track rated');
       } catch (error) {
-        logger.error({ error, sessionId, trackId, userId: uid }, 'Rate track error');
         socket.emit('error', { message: 'Ошибка сохранения оценки' });
       }
     });
@@ -192,11 +374,10 @@ const setupSocket = (io) => {
       socket.leave(sessionId);
       io.to(sessionId).emit('user_left', { userId: uid });
       socket.data.sessionId = null;
-      logger.info({ userId: uid, sessionId }, 'User left session');
     });
 
     socket.on('disconnect', async () => {
-      logger.info({ socketId: socket.id, userId: socket.data.userId }, 'User disconnected');
+      clientRtt.delete(socket.id);
       const uid = socket.data.userId;
       const sid = socket.data.sessionId;
 
@@ -215,8 +396,7 @@ const setupSocket = (io) => {
               await updateOnlineStatus(uid, false);
               try {
                 const settings = await prisma.user.findUnique({
-                  where: { id: uid },
-                  select: { isOnlineHidden: true }
+                  where: { id: uid }, select: { isOnlineHidden: true }
                 });
                 if (!settings?.isOnlineHidden) {
                   const friendIds = await getFriendIds(uid);
@@ -232,7 +412,6 @@ const setupSocket = (io) => {
               } catch (err) {
                 logger.error({ err, userId: uid }, 'Error processing user offline');
               }
-              logger.info({ userId: uid }, 'User went offline');
             }, OFFLINE_DELAY_MS);
             offlineTimers.set(uid, timer);
           }
@@ -240,22 +419,18 @@ const setupSocket = (io) => {
       }
     });
   });
-
-  logger.info('Socket.io server initialized');
 };
 
-const getIo = () => {
-  if (!ioInstance) logger.warn('Socket.io not initialized yet');
-  return ioInstance;
-};
+const getIo = () => ioInstance;
 
 const closeSocket = async () => {
   if (ioInstance) {
-    for (const timer of offlineTimers.values()) clearTimeout(timer);
+    syncIntervals.forEach(id => clearInterval(id));
+    syncIntervals.clear();
+    offlineTimers.forEach(t => clearTimeout(t));
     offlineTimers.clear();
     onlineUsers.clear();
     await new Promise(resolve => ioInstance.close(resolve));
-    logger.info('Socket.io closed');
   }
 };
 

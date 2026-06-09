@@ -26,6 +26,7 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _initialized = false;
   bool _refreshing = false;
   PlaybackProvider? _playback;
+  bool _isPlayerOpen = false;
 
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
 
@@ -35,17 +36,25 @@ class _SessionScreenState extends State<SessionScreen> {
     Provider.of<PlaybackProvider>(context, listen: false).setSessionQueue(tracks);
   }
 
-  void _openPlayerIfMobile(Map<String, dynamic> track) {
+  void _openPlayerIfMobile(Map<String, dynamic> track) async {
     final isDesktop = MediaQuery.of(context).size.width >= 900;
-    if (!isDesktop && mounted) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => NowPlayingScreen(
-          title: track['title'] as String?,
-          artist: track['artist'] as String?,
-          artworkUrl: track['imageUrl'] as String?,
-        ),
-      ));
-    }
+    
+    // Если мы на десктопе или плеер УЖЕ открыт — ничего не делаем
+    if (isDesktop || !mounted || _isPlayerOpen) return;
+
+    _isPlayerOpen = true;
+
+    // Ждем, пока пользователь не закроет экран плеера
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => NowPlayingScreen(
+        title: track['title'] as String?,
+        artist: track['artist'] as String?,
+        artworkUrl: track['imageUrl'] as String?,
+      ),
+    ));
+
+    // Как только экран закрылся (пользователь нажал "назад"), сбрасываем флаг
+    _isPlayerOpen = false;
   }
 
   void _setupPlaybackCallbacks() {

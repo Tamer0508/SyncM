@@ -2,7 +2,6 @@
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
@@ -219,10 +218,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     with TickerProviderStateMixin {
   Timer? _timer;
   int _positionMs = 0;
-  bool _dragging = false;
+  bool _dragging = false; // Теперь активно используется!
 
-  late AnimationController _artworkFadeController;
-  late Animation<double> _artworkFadeAnimation;
+  int? _lastSyncPosition;
 
   late AnimationController _colorAnimController;
   late Animation<Color?> _colorDominantAnim;
@@ -233,31 +231,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   Color _targetDominant = Colors.deepPurple;
   Color _targetVibrant = Colors.purpleAccent;
 
-  final Map<String, PaletteGenerator> _paletteCache = {};
-  Uint8List? _lastImageBytes;
-  String? _lastImageUrl;
   String? _lastTrackUri;
-  Uint8List? _previousImageBytes;
 
   @override
   void initState() {
     super.initState();
-    _positionMs =
-        Provider.of<PlaybackProvider>(context, listen: false).positionMs;
+    _positionMs = Provider.of<PlaybackProvider>(context, listen: false).positionMs;
     _startTimer();
-
-    _artworkFadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    _artworkFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _artworkFadeController, curve: Curves.easeInOut),
-    );
-    _artworkFadeController.forward();
 
     _colorAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1200),
     );
     _colorDominantAnim = ColorTween(begin: _displayDominant, end: _displayDominant)
         .animate(_colorAnimController);
@@ -275,22 +259,23 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   @override
   void dispose() {
     _timer?.cancel();
-    _artworkFadeController.dispose();
     _colorAnimController.dispose();
     super.dispose();
   }
 
   void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      final pb = Provider.of<PlaybackProvider>(context, listen: false);
-      if (pb.isPlaying && !_dragging) {
-        setState(() {
-          _positionMs = (_positionMs + 1000).clamp(0, pb.durationMs);
-        });
-      }
-    });
-  }
+  _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+    if (!mounted) return;
+    final pb = Provider.of<PlaybackProvider>(context, listen: false);
+    
+    if (pb.isPlaying && !_dragging) {
+      setState(() {
+        // Добавляем по 200 мс каждые 200 мс для идеальной плавности
+        _positionMs = (_positionMs + 200).clamp(0, pb.durationMs);
+      });
+    }
+  });
+}
 
   String _formatMs(int ms) {
     final d = Duration(milliseconds: ms);
@@ -304,23 +289,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     _targetDominant = dominant;
     _targetVibrant = vibrant;
 
-    _colorDominantAnim = ColorTween(
-      begin: _displayDominant,
-      end: dominant,
-    ).animate(_colorAnimController);
-    _colorVibrantAnim = ColorTween(
-      begin: _displayVibrant,
-      end: vibrant,
-    ).animate(_colorAnimController);
+    _colorDominantAnim = ColorTween(begin: _displayDominant, end: dominant)
+        .animate(_colorAnimController);
+    _colorVibrantAnim = ColorTween(begin: _displayVibrant, end: vibrant)
+        .animate(_colorAnimController);
 
     _colorAnimController
       ..reset()
       ..forward();
   }
 
+  // ФИКС №3: Передаем trackUri, чтобы защититься от Race Condition
   Future<void> _updatePalette({
     Uint8List? imageBytes,
     String? imageUrl,
+    required String? trackUri,
   }) async {
     if (imageBytes == null && (imageUrl == null || imageUrl.isEmpty)) {
       _setTargetColors(Colors.deepPurple, Colors.purpleAccent);
@@ -328,39 +311,48 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     }
 
     final provider = Provider.of<PlaybackProvider>(context, listen: false);
+    
+    // Проверяем кэш
     if (imageUrl != null && provider.paletteCache.containsKey(imageUrl)) {
       final p = provider.paletteCache[imageUrl]!;
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || provider.currentTrack?['uri'] != trackUri) return;
         _setTargetColors(
           p.dominantColor?.color ?? Colors.deepPurple,
-          p.vibrantColor?.color ??
-              (p.lightVibrantColor?.color ?? Colors.purpleAccent),
+          p.vibrantColor?.color ?? (p.lightVibrantColor?.color ?? Colors.purpleAccent),
         );
       });
       return;
     }
 
     try {
-      late ImageProvider providerImg;
+      final ImageProvider<Object> providerImg;
       if (imageBytes != null) {
         providerImg = MemoryImage(imageBytes);
       } else {
         providerImg = NetworkImage(imageUrl!);
       }
+
       final palette = await PaletteGenerator.fromImageProvider(
         providerImg,
-        size: const Size(200, 200),
-        maximumColorCount: 16,
+        size: const Size(150, 150), // Чуть уменьшили размер для ускорения парсинга
+        maximumColorCount: 12,
       );
+
       if (imageUrl != null) {
         provider.paletteCache[imageUrl] = palette;
       }
+
       if (!mounted) return;
+
+      // ПРОВЕРКА: Если пока мы скачивали картинку, трек уже переключили — выходим
+      if (provider.currentTrack?['uri'] != trackUri) return;
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || provider.currentTrack?['uri'] != trackUri) return;
         _setTargetColors(
           palette.dominantColor?.color ?? Colors.deepPurple,
-          palette.vibrantColor?.color ??
-              (palette.lightVibrantColor?.color ?? Colors.purpleAccent),
+          palette.vibrantColor?.color ?? (palette.lightVibrantColor?.color ?? Colors.purpleAccent),
         );
       });
     } catch (e) {
@@ -371,70 +363,72 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDesktop = MediaQuery.of(context).size.width >= 900;
 
     return Consumer<PlaybackProvider>(
       builder: (ctx, pb, _) {
-        final title =
-            pb.currentTrack?['title'] ?? widget.title ?? 'Unknown Title';
-        final artist =
-            pb.currentTrack?['artist'] ?? widget.artist ?? 'Unknown Artist';
+        final title = pb.currentTrack?['title'] ?? widget.title ?? 'Unknown Title';
+        final artist = pb.currentTrack?['artist'] ?? widget.artist ?? 'Unknown Artist';
         final duration = pb.durationMs;
         final imageBytes = pb.currentImageBytes;
         final imageUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
+        final currentUri = pb.currentTrack?['uri'];
 
-        final bool trackChanged = pb.currentTrack?['uri'] != _lastTrackUri;
-        final bool artworkChanged =
-            imageBytes != _lastImageBytes || imageUrl != _lastImageUrl;
-
-        if (trackChanged) {
-          _lastTrackUri = pb.currentTrack?['uri'];
-          _previousImageBytes = _lastImageBytes;
-
-          final cachedPalette = pb.currentTrack?['imageUrl'] != null
-              ? pb.paletteCache[pb.currentTrack!['imageUrl']]
-              : null;
-          if (cachedPalette != null) {
-            _setTargetColors(
-              cachedPalette.dominantColor?.color ?? Colors.blueGrey.shade800,
-              cachedPalette.vibrantColor?.color ?? Colors.blueGrey.shade600,
-            );
-          } else {
-            _setTargetColors(
-                Colors.blueGrey.shade800, Colors.blueGrey.shade600);
+        if (!_dragging) {
+          // Если секунда в провайдере изменилась (или трек переключился/применился seek)
+          if (_lastSyncPosition != pb.positionMs) {
+            _positionMs = pb.positionMs;       // Обновляем визуальную позицию
+            _lastSyncPosition = pb.positionMs; // Запоминаем её
           }
-          _updatePalette(imageBytes: imageBytes, imageUrl: imageUrl);
+        }
+
+        // Отслеживаем смену трека чисто и без побочных эффектов
+        if (currentUri != _lastTrackUri) {
+          _lastTrackUri = currentUri;
+
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _artworkFadeController.reset();
-            _artworkFadeController.forward();
-          });
-        }
+            if (!mounted) return;
+            // Ставим базовые нейтральные цвета на момент загрузки, если нет в кэше
+            final cached = imageUrl != null ? pb.paletteCache[imageUrl] : null;
+            if (cached != null) {
+              _setTargetColors(
+                cached.dominantColor?.color ?? Colors.blueGrey.shade800,
+                cached.vibrantColor?.color ?? Colors.blueGrey.shade600,
+              );
+            } else {
+              _setTargetColors(Colors.blueGrey.shade900, Colors.blueGrey.shade700);
+            }
 
-        if (artworkChanged) {
-          _lastImageBytes = imageBytes;
-          _lastImageUrl = imageUrl;
-          if (!trackChanged) {
-            _updatePalette(imageBytes: imageBytes, imageUrl: imageUrl);
-          }
-        }
-
-        if (isDesktop &&
-            !_dragging &&
-            pb.positionMs > 0 &&
-            (pb.positionMs - _positionMs).abs() > 2000) {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() => _positionMs = pb.positionMs);
+            _updatePalette(imageBytes: imageBytes, imageUrl: imageUrl, trackUri: currentUri);
           });
         }
 
         return Scaffold(
-          body: Stack(
-            fit: StackFit.expand,
-            children: [
-              _AnimatedGlowBackground(
-                dominantColor: _displayDominant,
-                vibrantColor: _displayVibrant,
-              ),
+  body: Stack(
+    fit: StackFit.expand,
+    children: [
+      _AnimatedGlowBackground(
+        dominantColor: _displayDominant,
+        vibrantColor: _displayVibrant,
+      ),
+      
+      // ФИКС ЧИТАЕМОСТИ: Мягкое затемнение сверху и снизу
+      Positioned.fill(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.4), // Затемнение под заголовок
+                Colors.transparent,
+                Colors.transparent,
+                Colors.black.withValues(alpha: 0.55), // Затемнение под элементы управления
+              ],
+              stops: const [0.0, 0.25, 0.65, 1.0],
+            ),
+          ),
+        ),
+      ),
               SafeArea(
                 child: Column(
                   children: [
@@ -464,12 +458,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       ),
                     ),
                     const SizedBox(height: 24),
-                    // Обложка
+                    
+                    // ФИКС №1: Красивый и надежный Cross-Fade обложек через AnimatedSwitcher
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 48),
-                      height: isDesktop
-                          ? MediaQuery.of(context).size.height * 0.28
-                          : MediaQuery.of(context).size.width * 0.58,
+                      height: MediaQuery.of(context).size.width * 0.58,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
@@ -479,66 +472,34 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                             spreadRadius: 5,
                             offset: const Offset(0, 20),
                           ),
-                          BoxShadow(
-                            color: Colors.white.withOpacity(0.1),
-                            blurRadius: 8,
-                            spreadRadius: -2,
-                            offset: const Offset(0, 4),
-                          ),
                         ],
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            if (_previousImageBytes != null && trackChanged)
-                              FadeTransition(
-                                opacity: Tween<double>(begin: 1.0, end: 0.0)
-                                    .animate(_artworkFadeController),
-                                child: Image.memory(
-                                  _previousImageBytes!,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            FadeTransition(
-                              opacity: _artworkFadeAnimation,
-                              child: imageBytes != null
-                                  ? Image.memory(imageBytes,
-                                      fit: BoxFit.cover)
-                                  : imageUrl != null && imageUrl.isNotEmpty
-                                      ? Image.network(imageUrl,
-                                          fit: BoxFit.cover)
-                                      : Container(
-                                          color: Colors.white12,
-                                          child: Icon(Icons.music_note,
-                                              size: 80,
-                                              color: Colors.white38),
-                                        ),
-                            ),
-                            Positioned.fill(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.15),
-                                    width: 1.5,
-                                  ),
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.white.withOpacity(0.08),
-                                      Colors.transparent,
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 500),
+                          transitionBuilder: (child, animation) => FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                          child: Container(
+                          // ФИКС КЛЮЧА: теперь он уникален для каждой комбинации трека и его обложки
+                          key: ValueKey<String>('${currentUri ?? 'empty'}_${imageBytes != null ? 'bytes' : imageUrl ?? 'no_url'}'),
+                          width: double.infinity,
+                          height: double.infinity,
+                          child: imageBytes != null
+                                ? Image.memory(imageBytes, fit: BoxFit.cover)
+                                : imageUrl != null && imageUrl.isNotEmpty
+                                    ? Image.network(imageUrl, fit: BoxFit.cover)
+                                    : Container(
+                                        color: Colors.white12,
+                                        child: const Icon(Icons.music_note, size: 80, color: Colors.white38),
+                                      ),
+                          ),
                         ),
                       ),
                     ),
+                    
                     const SizedBox(height: 32),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -569,16 +530,28 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                       ),
                     ),
                     const SizedBox(height: 20),
+                    
+                    // ФИКС №2: Передаем состояние изменения ползунка onChanged
                     _NowPlayingProgressBar(
                       positionMs: _positionMs,
                       durationMs: duration,
                       activeColor: _displayVibrant,
+                      onChanged: (ms) {
+                        setState(() {
+                          _dragging = true;
+                          _positionMs = ms;
+                        });
+                      },
                       onSeek: (ms) {
-                        setState(() => _positionMs = ms);
+                        setState(() {
+                          _dragging = false;
+                          _positionMs = ms;
+                        });
                         pb.seekTo(ms);
                       },
                       formatMs: _formatMs,
                     ),
+                    
                     const SizedBox(height: 20),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -588,9 +561,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                           AppIconButton(
                             icon: Icons.shuffle,
                             onPressed: () => pb.setShuffle(!pb.shuffleActive),
-                            color: pb.shuffleActive
-                                ? _displayVibrant
-                                : Colors.white70,
+                            color: pb.shuffleActive ? _displayVibrant : Colors.white70,
                             size: 26,
                           ),
                           AppIconButton(
@@ -627,9 +598,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                           ),
                           AppIconButton(
                             icon: pb.repeatMode == 'track' ? Icons.repeat_one : Icons.repeat,
-                            onPressed: () => pb.cycleRepeatMode(),
                             color: pb.repeatActive ? _displayVibrant : Colors.white70,
                             size: 26,
+                            onPressed: () => pb.cycleRepeatMode(),
                           ),
                         ],
                       ),
@@ -646,158 +617,59 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   }
 }
 
-class _NowPlayingProgressBar extends StatefulWidget {
+class _NowPlayingProgressBar extends StatelessWidget {
   final int positionMs;
   final int durationMs;
   final Color activeColor;
-  final Function(int ms) onSeek;
-  final String Function(int ms) formatMs;
+  final ValueChanged<int> onChanged; // Добавлено!
+  final ValueChanged<int> onSeek;
+  final String Function(int) formatMs;
 
   const _NowPlayingProgressBar({
-    Key? key,
     required this.positionMs,
     required this.durationMs,
     required this.activeColor,
+    required this.onChanged,
     required this.onSeek,
     required this.formatMs,
-  }) : super(key: key);
-
-  @override
-  State<_NowPlayingProgressBar> createState() => _NowPlayingProgressBarState();
-}
-
-class _NowPlayingProgressBarState extends State<_NowPlayingProgressBar> {
-  double _localValue = 0.0;
-  bool _draggingLocal = false;
+  });
 
   @override
   Widget build(BuildContext context) {
-    final double fraction = widget.durationMs > 0
-        ? (_draggingLocal
-                ? _localValue
-                : widget.positionMs / widget.durationMs)
-            .clamp(0.0, 1.0)
-        : 0.0;
-
+    // Пример реализации на базе стандартного Slider (или твоего плагина):
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          GestureDetector(
-            onTapUp: (details) {
-              final box = context.findRenderObject() as RenderBox;
-              final localX = details.localPosition.dx.clamp(0.0, box.size.width);
-              final newValue = localX / box.size.width;
-              setState(() {
-                _localValue = newValue;
-              });
-              widget.onSeek((newValue * widget.durationMs).toInt());
-            },
-            onHorizontalDragStart: (details) {
-              _draggingLocal = true;
-              final box = context.findRenderObject() as RenderBox;
-              final localX = details.localPosition.dx.clamp(0.0, box.size.width);
-              setState(() {
-                _localValue = localX / box.size.width;
-              });
-            },
-            onHorizontalDragUpdate: (details) {
-              if (!_draggingLocal) return;
-              final box = context.findRenderObject() as RenderBox;
-              final localX = details.localPosition.dx.clamp(0.0, box.size.width);
-              setState(() {
-                _localValue = localX / box.size.width;
-              });
-            },
-            onHorizontalDragEnd: (details) {
-              _draggingLocal = false;
-              widget.onSeek((_localValue * widget.durationMs).toInt());
-            },
-            child: SizedBox(
-              height: 24,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Container(
-                        height: 4,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: fraction,
-                        child: Container(
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: widget.activeColor,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: (fraction * (MediaQuery.of(context).size.width - 48))
-                        .clamp(0.0, MediaQuery.of(context).size.width - 48),
-                    top: 0,
-                    bottom: 0,
-                    child: Center(
-                      child: Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: widget.activeColor.withOpacity(0.8),
-                              blurRadius: 8,
-                              spreadRadius: 1,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: activeColor,
+              inactiveTrackColor: Colors.white12,
+              thumbColor: Colors.white,
+              trackHeight: 4,
+            ),
+            child: Slider(
+              value: positionMs.toDouble().clamp(0.0, durationMs.toDouble()),
+              min: 0.0,
+              max: durationMs.toDouble() == 0.0 ? 1.0 : durationMs.toDouble(),
+              onChanged: (value) {
+                onChanged(value.toInt()); // Сообщаем экрану, что мы начали тащить ползунок
+              },
+              onChangeEnd: (value) {
+                onSeek(value.toInt()); // Пользователь отпустил палец, делаем seek в аудио-движке
+              },
             ),
           ),
-          const SizedBox(height: 6),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  widget.formatMs(widget.positionMs),
-                  style: GoogleFonts.montserrat(
-                    color: Colors.white54,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  widget.formatMs(widget.durationMs),
-                  style: GoogleFonts.montserrat(
-                    color: Colors.white54,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(formatMs(positionMs), style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                Text(formatMs(durationMs), style: const TextStyle(color: Colors.white60, fontSize: 12)),
               ],
             ),
-          ),
+          )
         ],
       ),
     );
