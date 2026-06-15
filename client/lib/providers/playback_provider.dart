@@ -106,13 +106,19 @@ class PlaybackProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> playSessionTrack(int index, {bool syncToSession = true, int? positionMs}) async {
+Future<void> playSessionTrack(int index, {bool syncToSession = true, int? positionMs}) async {
     if (index < 0 || index >= _sessionQueue.length) return;
 
     _sessionMode = true;
     _queueEnded = false;
     _sessionQueueIndex = index;
     final track = Map<String, dynamic>.from(_sessionQueue[index]);
+
+    // Сразу обновляем позицию/длительность чтобы _checkSessionTrackEnd
+    // не сработал повторно на старых значениях предыдущего трека
+    _positionMs = positionMs ?? 0;
+    _durationMs = (track['durationMs'] as num?)?.toInt() ?? 0;
+    notifyListeners();
 
     if (syncToSession && !_isRemoteSync && _currentSessionId != null) {
       _socketService?.emit('session_play', {

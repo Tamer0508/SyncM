@@ -61,8 +61,8 @@ function startFromPosition(io, sessionId, trackId, positionMs) {
     });
   }
 
-  const maxPing = rtts.length > 0 ? Math.max(...rtts) : 600;
-  const guard = Math.min(maxPing * 2 + 300, 2000); // не более 2 секунд
+  const maxPing = rtts.length > 0 ? Math.max(...rtts) : 300;
+  const guard = Math.min(maxPing * 1.5 + 150, 800); // не более 800мс
   const startAt = Date.now() + guard;
 
   const state = sessionStates.get(sessionId) || {};
