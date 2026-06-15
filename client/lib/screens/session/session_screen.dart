@@ -127,13 +127,14 @@ class _SessionScreenState extends State<SessionScreen> {
         if (args is Map<String, dynamic>) _session = args;
       }
       if (_session != null) {
-        final auth = Provider.of<AuthProvider>(context, listen: false);
-        final pb = Provider.of<PlaybackProvider>(context, listen: false);
-        final socket = Provider.of<SocketService>(context, listen: false);
-        pb.initSession(_session!['id'], auth.user?.id ?? '', socket);
-        _setupPlaybackCallbacks();
-        _syncSessionQueue();
-      }
+  final auth = Provider.of<AuthProvider>(context, listen: false);
+  final pb = Provider.of<PlaybackProvider>(context, listen: false);
+  final socket = Provider.of<SocketService>(context, listen: false);
+  final isHost = _session!['hostId'] == auth.user?.id;
+  pb.initSession(_session!['id'], auth.user?.id ?? '', socket, isHost: isHost);
+  _setupPlaybackCallbacks();
+  _syncSessionQueue();
+}
     }
   }
 

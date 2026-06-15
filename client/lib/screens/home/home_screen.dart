@@ -471,13 +471,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final userId = auth.user?.id;
     if (userId != null) {
-      final socket = SocketService();
-      socket.init(auth.api.baseUrl, userId);
-      Provider.of<FriendsProvider>(context, listen: false).init(socket);
-      final sessionProv = Provider.of<SessionProvider>(context, listen: false);
-      sessionProv.init(socket);
-      sessionProv.fetchMySessions();
-      sessionProv.fetchInvites();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final socket = SocketService();
+        socket.init(auth.api.baseUrl, userId);
+        Provider.of<FriendsProvider>(context, listen: false).init(socket);
+        final sessionProv = Provider.of<SessionProvider>(context, listen: false);
+        sessionProv.init(socket);
+        sessionProv.fetchMySessions();
+        sessionProv.fetchInvites();
+      });
     }
   }
 

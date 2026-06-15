@@ -50,6 +50,8 @@ class PlaybackProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _sessionQueue = [];
   int _sessionQueueIndex = -1;
   bool _sessionMode = false;
+  bool _sessionPaused = false;
+  bool _isHost = false;
   bool _isRemoteSync = false;
   bool _queueEnded = false;
   SessionTracksCallback? onTracksAdded;
@@ -171,11 +173,11 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   void _checkSessionTrackEnd() {
-    if (!_sessionMode || _queueEnded || !_isPlaying || _isAdvancingQueue) return;
-    if (_durationMs > 0 && _positionMs >= _durationMs - 900) {
-      _advanceSessionQueue();
-    }
+  if (!_sessionMode || !_isHost || _queueEnded || !_isPlaying || _isAdvancingQueue) return;
+  if (_durationMs > 0 && _positionMs >= _durationMs - 900) {
+    _advanceSessionQueue();
   }
+}
 
   void _startPolling() {
     if (_apiService == null) return;
@@ -196,6 +198,7 @@ class PlaybackProvider extends ChangeNotifier {
         try {
           final state = await _apiService?.getPlayerState();
           if (state == null) return;
+          if (_sessionPaused) return;
           _isPlaying = state['is_playing'] ?? false;
           _positionMs = state['progress_ms'] ?? 0;
           _durationMs = state['item']?['duration_ms'] ?? 0;
@@ -219,7 +222,8 @@ class PlaybackProvider extends ChangeNotifier {
     });
   }
 
-  void initSession(String sessionId, String userId, SocketService socketService) {
+void initSession(String sessionId, String userId, SocketService socketService, {bool isHost = false}) {
+    _isHost = isHost;
     _currentSessionId = sessionId;
     _userId = userId;
     _socketService = socketService;
@@ -231,6 +235,7 @@ class PlaybackProvider extends ChangeNotifier {
 
     // ─── Фаза 3: Синхронный старт ───────────────────────────────────────────
     socketService.on('session_start', (data) async {
+      _sessionPaused = false;
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final trackId = map['trackId'] as String?;
       final startAt = map['startAt'] as int?;      // серверное время старта
@@ -287,19 +292,22 @@ class PlaybackProvider extends ChangeNotifier {
 
     // ─── Фаза 5: Пауза от сервера ───────────────────────────────────────────
     socketService.on('session_pause', (data) async {
-      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
-      final positionMs = map['positionMs'] as int?;
+  print('[Socket] Получен session_pause: $data');
+  final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+  final positionMs = map['positionMs'] as int?;
 
-      _isPlaying = false;
-      if (positionMs != null) _positionMs = positionMs;
+  _isPlaying = false;              
+  _sessionPaused = true;
+  _isPlaying = false;
+  if (positionMs != null) _positionMs = positionMs;
+  notifyListeners();                           // ← уже есть
 
-      if (_isWindows || _isWeb) {
-        try { await _apiService?.pausePlayback(); } catch (_) {}
-      } else {
-        try { await SpotifySdk.pause(); } catch (_) {}
-      }
-      notifyListeners();
-    });
+  if (_isWindows || _isWeb) {
+    try { await _apiService?.pausePlayback(); } catch (_) {}
+  } else {
+    try { await SpotifySdk.pause(); } catch (_) {}
+  }
+});
 
     // ─── Фаза 6: Полное состояние при подключении/переподключении ──────────
     socketService.on('session_state', (data) async {
@@ -331,6 +339,7 @@ class PlaybackProvider extends ChangeNotifier {
 
     // ─── Исправленный блок Паузы / Возобновления ───────────────────────────
     socketService.on('play', (data) async {
+      _sessionPaused = false;
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final String? uri = map['spotifyUri'] as String?;
       final int? pos = map['position_ms'] as int?;
@@ -440,115 +449,98 @@ class PlaybackProvider extends ChangeNotifier {
 
   void _subscribeToPlayerState() {
   SpotifySdk.subscribePlayerState().listen((PlayerState state) async {
-      _isPlaying = !state.isPaused;
-      _durationMs = state.track?.duration ?? 0;
-      _positionMs = state.playbackPosition;
+    _isPlaying = !state.isPaused;
+    _durationMs = state.track?.duration ?? 0;
+    _positionMs = state.playbackPosition;
+ 
+    if (state.track != null) {
+      final trackUri = state.track!.uri;
+      final imageUriId = state.track!.imageUri.raw;
+      final trackChanged = trackUri != _currentTrack?['uri'];
+      final imageChanged = imageUriId != _lastImageUri;
 
-      if (state.track != null) {
-        final trackUri = state.track!.uri;
-        final imageUriId = state.track!.imageUri.raw;
-        final trackChanged = trackUri != _currentTrack?['uri'];
-
-        // ФИКС ОЧЕРЕДИ: Снимаем блокировку скипа ТОЛЬКО когда трек РЕАЛЬНО изменился
-        if (trackChanged) { // Переносим проверку картинок строго внутрь trackChanged
-          _lastImageUri = imageUriId;
-          _currentImageBytes = null; // Жёстко зануляем прошлые байты
-          notifyListeners();         // Заставляем UI показать заглушку вместо старой обложки
-          
-          try {
-            final imageBytes = await SpotifySdk.getImage(
-              imageUri: state.track!.imageUri,
-              dimension: ImageDimension.large,
-            );
-            
-            // Проверяем, не успел ли пользователь скипнуть трек еще раз, пока качалась картинка
-            if (_lastImageUri == imageUriId) {
-              _currentImageBytes = imageBytes;
-              notifyListeners();
-            }
-          } catch (e) {
-            print('[Spotify] Ошибка скачивания обложки: $e');
-            _currentImageBytes = null;
-            notifyListeners();
-          }
-        } else {
-          // Если трек тот же, просто пушим апдейт позиции ползунка
-          notifyListeners();
-        }
-
-        // =====================================================================
-        // ИНТЕГРАЦИЯ ФАЗЫ 2.2: Проверка готовности под твой бэк
-        if (_preparedTrackId != null && !_isReadySent) {
-          final activeTrackId = trackUri.split(':').last; 
-          
-          if (activeTrackId == _preparedTrackId && state.isPaused) {
-            _isReadySent = true;
-            print('[SyncPlay] Spotify загрузил трек. Отправляем "client_ready"');
-            
-            _socketService?.emit('client_ready', {
-              'sessionId': _currentSessionId,
-              'trackId': _preparedTrackId,
-            });
-          }
-        }
-        // =====================================================================
-
-        _currentTrack = {
-          ..._currentTrack ?? {},
-          'title': state.track!.name,
-          'artist': state.track!.artist.name,
-          'uri': trackUri,
-        };
-
-        if (trackChanged && _currentSessionId != null && !_sessionMode) {
-          _socketService?.emit('next_track', {'sessionId': _currentSessionId, 'spotifyUri': trackUri});
-        }
-
-        // АВТОПЕРЕКЛЮЧЕНИЕ: Теперь без всяких whenComplete
-        if (_sessionMode && state.isPaused && state.track != null && !_isAdvancingQueue) {
-          final dur = state.track!.duration;
-          if (dur > 0 && state.playbackPosition >= dur - 1200) {
-            _isAdvancingQueue = true; // Закрываем капкан. Откроется только на новом trackChanged
-            print('[SyncM] Трек завершился. Запрос на переключение...');
-            _advanceSessionQueue(); // Просто вызываем асинхронно
-          }
-        }
-
-        if (trackChanged && _shuffleActive && _currentPlaylistId != null && !_suppressAutoCorrection) {
-          try {
-            await _ensurePlaylistTracksLoaded();
-            final found = _currentPlaylistTracks?.any((t) => (t['uri'] as String?) == trackUri) ?? false;
-            if (!found) {
-              _playRandomFromCurrentPlaylist();
-            }
-          } catch (e) {
-            print('[PlaybackProvider] Error validating track against playlist: $e');
-          }
-        }
-
-        if (trackChanged && imageUriId != _lastImageUri) {
-          _lastImageUri = imageUriId;
-          _currentImageBytes = null;
-          notifyListeners();
-          try {
-            final imageBytes = await SpotifySdk.getImage(
-              imageUri: state.track!.imageUri,
-              dimension: ImageDimension.large,
-            );
-            if (_lastImageUri == imageUriId) {
-              _currentImageBytes = imageBytes;
-              notifyListeners();
-            }
-          } catch (e) {
-            print('[Spotify] Image fetch error: $e');
-          }
-        } else {
-          notifyListeners();
-        }
-      } else {
-        notifyListeners();
+      if (trackChanged) {
+        _isAdvancingQueue = false;
       }
-    }, onError: (err) => print('[Spotify] PlayerState stream error: $err'));
+
+      if (imageChanged) {
+         _lastImageUri = imageUriId;
+        _currentImageBytes = null;
+          notifyListeners();
+  try {
+    final imageBytes = await SpotifySdk.getImage(
+      imageUri: state.track!.imageUri,
+      dimension: ImageDimension.large,
+    );
+    if (_lastImageUri == imageUriId) {
+      _currentImageBytes = imageBytes;
+      notifyListeners();
+    }
+  } catch (e) {
+    print('[Spotify] Ошибка скачивания обложки: $e');
+    _currentImageBytes = null;
+    notifyListeners();
+  }
+} else {
+  notifyListeners();
+}
+ 
+      // Фаза 2.2: Проверка готовности
+      if (_preparedTrackId != null && !_isReadySent) {
+        final activeTrackId = trackUri.split(':').last;
+        if (activeTrackId == _preparedTrackId && state.isPaused) {
+          _isReadySent = true;
+          print('[SyncPlay] Spotify загрузил трек. Отправляем client_ready');
+          _socketService?.emit('client_ready', {
+            'sessionId': _currentSessionId,
+            'trackId': _preparedTrackId,
+          });
+        }
+      }
+ 
+      _currentTrack = {
+        ..._currentTrack ?? {},
+        'title': state.track!.name,
+        'artist': state.track!.artist.name,
+        'uri': trackUri,
+      };
+ 
+      if (trackChanged && _currentSessionId != null && !_sessionMode) {
+        _socketService?.emit('next_track', {
+          'sessionId': _currentSessionId,
+          'spotifyUri': trackUri,
+        });
+      }
+ 
+      // Автопереключение очереди — только если флаг ещё не стоит
+      if (_sessionMode && _isHost && state.isPaused && !_isAdvancingQueue) {
+        final dur = state.track!.duration;
+        if (dur > 0 && state.playbackPosition >= dur - 1200) {
+          print('[SyncM] Трек завершился. Переключаем...');
+          _advanceSessionQueue(); // флаг ставится внутри метода
+        }
+      }
+ 
+      // Shuffle коррекция только вне session mode
+      if (!_sessionMode &&
+          trackChanged &&
+          _shuffleActive &&
+          _currentPlaylistId != null &&
+          !_suppressAutoCorrection) {
+        try {
+          await _ensurePlaylistTracksLoaded();
+          final found = _currentPlaylistTracks
+                  ?.any((t) => (t['uri'] as String?) == trackUri) ??
+              false;
+          if (!found) _playRandomFromCurrentPlaylist();
+        } catch (e) {
+          print('[PlaybackProvider] Error validating track against playlist: $e');
+        }
+      }
+    } else {
+      notifyListeners();
+    }
+  }, onError: (err) => print('[Spotify] PlayerState stream error: $err'));
 }
   
   Future<void> playTrack(Map<String, dynamic> track,
@@ -665,25 +657,44 @@ class PlaybackProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> togglePlay() async {
-  if (_sessionMode && _currentSessionId != null) {
-    if (_isPlaying) {
-      print('[Socket] Отправляем команду паузы на сервер...');
-      // Шлём оба варианта на случай, если бэк капризничает к именам событий
-      _socketService?.emit('pause', {'sessionId': _currentSessionId, 'positionMs': _positionMs});
-      _socketService?.emit('session_pause', {'sessionId': _currentSessionId, 'positionMs': _positionMs});
-    } else {
-      print('[Socket] Отправляем команду плей на сервер...');
-      _socketService?.emit('play', {
-        'sessionId': _currentSessionId,
-        'spotifyUri': _currentTrack?['uri'],
-        'position_ms': _positionMs,
-      });
-    }
-    return;
-  }
+  DateTime? _lastToggle;
 
-  // Логика для соло-режима
+  Future<void> togglePlay() async {
+  final now = DateTime.now();
+  if (_lastToggle != null && now.difference(_lastToggle!) < const Duration(milliseconds: 500)) return;
+  _lastToggle = now;
+  if (_sessionMode && _currentSessionId != null) {
+  if (_isPlaying) {
+    print('[Socket] Пауза → session_command');
+    _isPlaying = false;
+    _sessionPaused = true;
+    notifyListeners();
+    try {
+      if (_isWindows || _isWeb) {
+        await _apiService?.pausePlayback();
+      } else {
+        await SpotifySdk.pause();
+      }
+    } catch (e) {
+      print('[togglePlay] local pause error: $e');
+    }
+    _socketService?.emit('session_command', {
+      'sessionId': _currentSessionId,
+      'action': 'pause',
+    });
+  } else {
+    print('[Socket] Возобновление → session_command');
+    _sessionPaused = false;
+    _isPlaying = true;
+    notifyListeners();
+    _socketService?.emit('session_command', {
+      'sessionId': _currentSessionId,
+      'action': 'resume',
+    });
+  }
+  return;
+}
+ // Соло-режим
   try {
     if (_isPlaying) {
       if (_isWindows || _isWeb) {
