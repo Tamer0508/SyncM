@@ -121,14 +121,13 @@ Future<void> playSessionTrack(int index, {bool syncToSession = true, int? positi
     notifyListeners();
 
     if (syncToSession && !_isRemoteSync && _currentSessionId != null) {
-      _socketService?.emit('session_play', {
-        'sessionId': _currentSessionId,
-        'spotifyUri': track['uri'],
-        'trackIndex': index,
-        'tracks': _sessionQueue,
-        'addedById': _userId,
-      });
-    }
+  final trackId = (track['uri'] as String).split(':').last;
+  _socketService?.emit('session_prepare', {
+    'sessionId': _currentSessionId,
+    'trackId': trackId,
+    'durationMs': track['durationMs'],
+  });
+}
 
     await playTrack(track, positionMs: positionMs, fromSession: true);
     onSessionPlaybackStarted?.call(track);
@@ -315,6 +314,21 @@ void initSession(String sessionId, String userId, SocketService socketService, {
   }
 });
 
+socketService.on('session_resume', (data) async {
+  _sessionPaused = false;
+  _isPlaying = true;
+  notifyListeners();
+  try {
+    if (_isWindows || _isWeb) {
+      await _apiService?.resumePlayback();
+    } else {
+      await SpotifySdk.resume();
+    }
+  } catch (e) {
+    print('[Socket] Resume error: $e');
+  }
+});
+
     // ─── Фаза 6: Полное состояние при подключении/переподключении ──────────
     socketService.on('session_state', (data) async {
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
@@ -464,10 +478,6 @@ void initSession(String sessionId, String userId, SocketService socketService, {
       final imageUriId = state.track!.imageUri.raw;
       final trackChanged = trackUri != _currentTrack?['uri'];
       final imageChanged = imageUriId != _lastImageUri;
-
-      if (trackChanged) {
-        _isAdvancingQueue = false;
-      }
 
       if (imageChanged) {
          _lastImageUri = imageUriId;

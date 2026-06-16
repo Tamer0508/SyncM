@@ -289,7 +289,12 @@ const setupSocket = (io) => {
         io.to(sessionId).emit('session_pause', { positionMs: currentPos });
 
       } else if (action === 'resume') {
-        startFromPosition(io, sessionId, state.trackId, state.positionMs);
+        const currentPos = state.positionMs;
+        state.state = 'playing';
+        state.serverTime = Date.now();
+        sessionStates.set(sessionId, state);
+        io.to(sessionId).emit('session_resume', { positionMs: currentPos });
+        startSyncInterval(io, sessionId);
 
       } else if (action === 'seek') {
         startFromPosition(io, sessionId, state.trackId, seekPos || 0);
