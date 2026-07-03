@@ -66,6 +66,7 @@ class PlaybackProvider extends ChangeNotifier {
   bool _queueEnded = false;
   SessionTracksCallback? onTracksAdded;
   SessionPlaybackCallback? onSessionPlaybackStarted;
+  void Function(String message)? onPrepareError;
 
   List<Map<String, dynamic>> get sessionQueue => List.unmodifiable(_sessionQueue);
   int get sessionQueueIndex => _sessionQueueIndex;
@@ -1303,14 +1304,18 @@ class PlaybackProvider extends ChangeNotifier {
         });
       } catch (e) {
         print('[SyncM] Error preparing track via API: $e');
-        // Всё равно шлём client_ready, чтобы сессия не зависла
-        if (!_isReadySent) {
-          _isReadySent = true;
-          _socketService?.emit('client_ready', {
-            'sessionId': _currentSessionId,
-            'trackId': trackId,
-          });
-        }
+        // Восстанавливаем громкость — иначе она останется приглушённой
+        await _restoreVolumeIfMuted();
+        // Если ошибка связана с отсутствием активного устройства (404 → 409
+        // от нашего сервера) — сообщаем пользователю, НЕ шлём client_ready.
+        // Иначе сессия стартует, но у этого участника ничего не играет.
+        final msg = e is ApiException
+            ? e.userMessage
+            : 'Откройте Spotify и запустите любой трек, затем повторите.';
+        onPrepareError?.call(msg);
+        // client_ready НЕ отправляем: без активного устройства трек
+        // не запустится, а сессия начнёт играть у всех кроме этого участника.
+        // Сервер через READY_TIMEOUT_MS (5с) всё равно стартует без нас.
       }
     }
   }

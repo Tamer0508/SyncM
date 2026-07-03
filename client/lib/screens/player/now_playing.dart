@@ -51,6 +51,18 @@ class _AnimatedGlowBackgroundState extends State<_AnimatedGlowBackground>
   }
 
   @override
+  void didUpdateWidget(_AnimatedGlowBackground oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // При смене трека цвета в widget уже обновлены (через _setTargetColors
+    // родителя), но CustomPaint перерисовывается только на тике контроллера —
+    // раз в 60 секунд. Форсируем rebuild немедленно.
+    if (oldWidget.dominantColor != widget.dominantColor ||
+        oldWidget.vibrantColor != widget.vibrantColor) {
+      setState(() {});
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseDominant = widget.dominantColor;

@@ -75,6 +75,10 @@ class _SessionScreenState extends State<SessionScreen> {
       }
     };
     pb.onSessionPlaybackStarted = _openPlayerIfMobile;
+    pb.onPrepareError = (msg) {
+      if (!mounted) return;
+      showAppNotification(context, message: msg, type: NotificationType.error);
+    };
   }
 
   Future<void> _onTrackTap(Map<String, dynamic> rawTrack, int index) async {
@@ -142,6 +146,7 @@ class _SessionScreenState extends State<SessionScreen> {
   void dispose() {
     _playback?.onTracksAdded = null;
     _playback?.onSessionPlaybackStarted = null;
+    _playback?.onPrepareError = null;
     super.dispose();
   }
 

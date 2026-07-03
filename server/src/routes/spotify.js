@@ -260,13 +260,15 @@ router.post('/play', rateLimitMiddleware(15, 60), async (req, res) => {
   const { uri, deviceId, contextUri, offset } = req.body;
   if (!uri && !contextUri) return res.status(400).json({ error: 'Missing uri or contextUri' });
 
-  // Отвечаем мгновенно
-  res.json({ success: true });
-
-  // Асинхронно выполняем запрос к Spotify
+  // ВАЖНО: раньше здесь сразу отвечали success:true (fire-and-forget), из-за
+  // чего клиент не знал об ошибке "нет активного устройства" (404 от Spotify)
+  // и отправлял client_ready вслепую — сессия стартовала, но у хоста ничего
+  // не играло. Теперь ждём реальный ответ Spotify.
   try {
     const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser?.accessToken) return;
+    if (!spotifyUser?.accessToken) {
+      return res.status(409).json({ error: 'Spotify не подключён' });
+    }
 
     let accessToken = getAccessToken(spotifyUser);
     const playUrl = deviceId
@@ -300,8 +302,14 @@ router.post('/play', rateLimitMiddleware(15, 60), async (req, res) => {
       redis.del(`spotify:player:${userId}`),
       redis.del(`spotify:devices:${userId}`),
     ]);
+    return res.json({ success: true });
   } catch (error) {
     logger.error({ err: error }, 'Play error');
+    const status = error?.response?.status;
+    if (status === 404) {
+      return res.status(409).json({ error: 'Нет активного устройства Spotify. Откройте Spotify и начните любое воспроизведение, затем повторите.' });
+    }
+    return res.status(502).json({ error: 'Не удалось запустить воспроизведение' });
   }
 });
 
