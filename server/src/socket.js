@@ -254,7 +254,27 @@ const setupSocket = (io) => {
     // сразу переводим состояние в paused и уведомляем комнату.
     function tryStartAfterHandshake(sessionId, trackId) {
       const state = sessionStates.get(sessionId);
-      if (state?.pausedDuringPrepare) {
+      if (!state) return;
+
+      // Клиент присылал trackId из своего замыкания в момент отправки
+      // client_ready — если с тех пор сессия уже успела уйти на подготовку
+      // СЛЕДУЮЩЕГО трека (устаревший/запоздавший client_ready), не стартуем
+      // по старому trackId поверх актуального состояния.
+      if (state.trackId !== trackId) return;
+
+      // ГЛАВНЫЙ ФИКС: если этот трек уже реально играет — не стартуем его
+      // заново. roomSize у комнаты Socket.IO может на мгновение "просесть"
+      // (кратковременный разрыв соединения / переподключение одного из
+      // участников), из-за чего ready.size >= roomSize срабатывает раньше
+      // срока, а следом ещё раз — от таймаута или от запоздавшего
+      // client_ready второго участника. Раньше каждое такое срабатывание
+      // безусловно вызывало startFromPosition() с positionMs=0, из-за чего
+      // уже играющий трек резко перезапускался с нуля — по несколько раз
+      // подряд ("играет пару секунд и снова на начало"), а локальная позиция
+      // на клиентах при этом расходилась с реальным треком в Spotify.
+      if (state.state === 'playing') return;
+
+      if (state.pausedDuringPrepare) {
         state.pausedDuringPrepare = false;
         state.state = 'paused';
         state.positionMs = 0;
