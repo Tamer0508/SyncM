@@ -399,6 +399,34 @@ router.post('/previous', rateLimitMiddleware(20, 60), async (req, res) => {
   }
 });
 
+router.put('/volume', rateLimitMiddleware(30, 60), async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  // Дожидаемся ответа Spotify: это используется для приглушения звука перед
+  // служебным "preview-play" при подготовке трека в сессии (см. клиент,
+  // handleServerPrepare) — если запрос молча потеряется, звук может остаться
+  // приглушённым, поэтому клиенту важно знать, прошла ли команда.
+  try {
+    const spotifyUser = await getSpotifyUser(userId);
+    if (!spotifyUser?.accessToken) {
+      return res.status(409).json({ error: 'Spotify не подключён' });
+    }
+    const { volume_percent } = req.query;
+    await axios.put(`https://api.spotify.com/v1/me/player/volume?volume_percent=${volume_percent}`, {}, {
+      headers: { Authorization: `Bearer ${getAccessToken(spotifyUser)}` },
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, 'Volume error');
+    const status = error?.response?.status;
+    if (status === 404) {
+      return res.status(409).json({ error: 'Нет активного устройства Spotify' });
+    }
+    return res.status(502).json({ error: 'Не удалось изменить громкость' });
+  }
+});
+
 router.put('/seek', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });

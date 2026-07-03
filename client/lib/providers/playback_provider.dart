@@ -34,6 +34,9 @@ class PlaybackProvider extends ChangeNotifier {
   // естественного завершения трека часто уже сброшен в 0.
   int _lastActivePositionMs = 0;
   int _lastActiveDurationMs = 0;
+  // Сохранённая громкость на время "preview-play" при подготовке трека
+  // (Windows/Web). См. handleServerPrepare и обработчик session_start.
+  int? _preMuteVolume;
 
   SocketService? _socketService;
   String? _currentSessionId;
@@ -179,6 +182,7 @@ class PlaybackProvider extends ChangeNotifier {
     _queueEnded = true;
     _isPlaying = false;
     _sessionPaused = true;
+    await _restoreVolumeIfMuted(); // страховка на случай прерванного хендшейка
     if (_isWindows || _isWeb) {
       try {
         await _apiService?.pausePlayback();
@@ -311,6 +315,7 @@ class PlaybackProvider extends ChangeNotifier {
         // Опоздали — режим восстановления
         final int actualPos = positionMs + (now - localStart).abs();
         await _playAtPosition(trackId, actualPos);
+        await _restoreVolumeIfMuted();
         socketService.emit('resync', {'sessionId': sessionId});
         return;
       }
@@ -321,6 +326,7 @@ class PlaybackProvider extends ChangeNotifier {
       }
 
       await _playAtPosition(trackId, positionMs);
+      await _restoreVolumeIfMuted();
     });
 
     // ─── Фаза 4: Периодическая синхронизация ────────────────────────────────
@@ -359,6 +365,7 @@ class PlaybackProvider extends ChangeNotifier {
       _sessionPaused = true;
       if (positionMs != null) _positionMs = positionMs;
       notifyListeners();
+      await _restoreVolumeIfMuted();
 
       if (_isWindows || _isWeb) {
         try {
@@ -491,6 +498,20 @@ class PlaybackProvider extends ChangeNotifier {
     socketService.on('tracks-added', (data) {
       if (data is Map) onTracksAdded?.call(Map<String, dynamic>.from(data));
     });
+  }
+
+  // Возвращает громкость назад после того, как приглушали её на время
+  // технического "preview-play" в handleServerPrepare (Windows/Web).
+  Future<void> _restoreVolumeIfMuted() async {
+    if (!_isWindows && !_isWeb) return;
+    final vol = _preMuteVolume;
+    if (vol == null) return;
+    _preMuteVolume = null;
+    try {
+      await _apiService?.setVolume(vol);
+    } catch (e) {
+      print('[SyncM] Volume restore error: $e');
+    }
   }
 
   // Вспомогательный метод воспроизведения в позиции
@@ -1234,6 +1255,23 @@ class PlaybackProvider extends ChangeNotifier {
       }
     } else {
       // Windows/Web: REST API — загружаем трек, ставим на паузу, сигналим готовность.
+      // Перед этим приглушаем звук: play() здесь запускает РЕАЛЬНОЕ
+      // воспроизведение на устройстве (у Spotify Web API нет метода
+      // "загрузить, но не играть"), и раньше это было слышно как лишний,
+      // несинхронный "первый запуск" трека перед настоящим стартом через
+      // session_start. Громкость возвращается назад в обработчике
+      // session_start, ровно к моменту настоящего синхронного старта.
+      try {
+        if (_preMuteVolume == null) {
+          final state = await _apiService?.getPlayerState();
+          final vol = (state?['device']?['volume_percent'] as num?)?.toInt();
+          _preMuteVolume = (vol != null && vol > 0) ? vol : 100;
+        }
+        await _apiService?.setVolume(0);
+      } catch (e) {
+        print('[SyncM] Volume mute error: $e');
+      }
+
       try {
         await _apiService?.playTrack(spotifyUri);
         // Раньше здесь ждали 800мс "на всякий случай" перед паузой — это и

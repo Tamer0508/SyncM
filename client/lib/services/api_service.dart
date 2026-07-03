@@ -551,6 +551,11 @@ class ApiService {
     }
   }
 
+  Future<void> setVolume(int percent) async {
+    final clamped = percent.clamp(0, 100);
+    await http.put(_uri('/spotify/volume?volume_percent=$clamped'), headers: _headers).timeout(timeout);
+  }
+
   Future<List<dynamic>> getDevices() async {
     final res = await http.get(_uri('/spotify/devices'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
