@@ -348,9 +348,21 @@ class PlaybackProvider extends ChangeNotifier {
       if (drift > 500 && _isPlaying) {
         _positionMs = expectedPos;
         notifyListeners();
-        // Для мобильных — seek
         if (!_isWindows && !_isWeb && _isConnected) {
+          // Мобильные
           SpotifySdk.seekTo(positionedMilliseconds: expectedPos).catchError((_) {});
+        } else if (_isWindows || _isWeb) {
+          // Раньше здесь корректировалась только цифра в UI (_positionMs выше),
+          // а РЕАЛЬНОЕ воспроизведение в Spotify не трогалось вообще — из-за
+          // этого дрейф между устройствами накапливался и никогда не лечился
+          // сам собой в течение сессии. Теперь физически подтягиваем позицию
+          // и на Windows/Web тоже, той же командой, что и ручная перемотка.
+          final svc = _apiService;
+          if (svc != null) {
+            svc.seekToPosition(expectedPos).catchError((e) {
+              print('[SyncM] session_sync авто-коррекция позиции не удалась: $e');
+            });
+          }
         }
       }
     });

@@ -47,7 +47,7 @@ function startSyncInterval(io, sessionId) {
       serverTime: Date.now(),
       state: state.state,
     });
-  }, 5000);
+  }, 2000);
   syncIntervals.set(sessionId, interval);
 }
 
