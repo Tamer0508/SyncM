@@ -1236,8 +1236,15 @@ class PlaybackProvider extends ChangeNotifier {
       // Windows/Web: REST API — загружаем трек, ставим на паузу, сигналим готовность.
       try {
         await _apiService?.playTrack(spotifyUri);
-        // Даём Spotify немного времени загрузить трек
-        await Future.delayed(const Duration(milliseconds: 800));
+        // Раньше здесь ждали 800мс "на всякий случай" перед паузой — это и
+        // создавало заметный слышимый "дёрг" при подготовке каждого трека
+        // (Spotify реально играет почти секунду, потом пауза, потом ещё раз
+        // настоящий синхронный старт). К этому моменту play() уже гарантированно
+        // доставлен и принят Spotify (мы дожидаемся ответа самого запроса
+        // строкой выше), так что 800мс — избыточный запас. Сокращаем окно
+        // до минимума, достаточного чтобы Spotify успел отреагировать на play
+        // прежде чем мы пришлём pause следом.
+        await Future.delayed(const Duration(milliseconds: 250));
         await _apiService?.pausePlayback();
         _isReadySent = true;
         _socketService?.emit('client_ready', {
