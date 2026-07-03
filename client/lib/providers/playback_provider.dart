@@ -29,6 +29,11 @@ class PlaybackProvider extends ChangeNotifier {
   Timer? _pollingTimer;
   Timer? _trackChangeTimer;
   bool _isAdvancingQueue = false; // Защита от спама переключений
+  // Последние известные позиция/длительность ДО паузы (Android/spotify_sdk).
+  // Нужны, т.к. state.playbackPosition в момент самой паузы после
+  // естественного завершения трека часто уже сброшен в 0.
+  int _lastActivePositionMs = 0;
+  int _lastActiveDurationMs = 0;
 
   SocketService? _socketService;
   String? _currentSessionId;
@@ -538,6 +543,17 @@ class PlaybackProvider extends ChangeNotifier {
       _durationMs = state.track?.duration ?? 0;
       _positionMs = state.playbackPosition;
 
+      // Запоминаем последнюю позицию/длительность ДО паузы. Многие плееры
+      // (включая Spotify SDK) при естественном завершении трека шлют
+      // isPaused=true с playbackPosition, сброшенной в 0 — из-за этого
+      // проверка "конец ли это трека" ниже не должна опираться на
+      // state.playbackPosition в момент самой паузы, а на последнее известное
+      // значение непосредственно перед ней.
+      if (!state.isPaused) {
+        _lastActivePositionMs = state.playbackPosition;
+        if (state.track != null) _lastActiveDurationMs = state.track!.duration;
+      }
+
       if (state.track != null) {
         final trackUri = state.track!.uri;
         final imageUriId = state.track!.imageUri.raw;
@@ -593,10 +609,18 @@ class PlaybackProvider extends ChangeNotifier {
           });
         }
 
-        // Автопереключение очереди — только если флаг ещё не стоит
-        if (_sessionMode && _isHost && state.isPaused && !_isAdvancingQueue) {
-          final dur = state.track!.duration;
-          if (dur > 0 && state.playbackPosition >= dur - 1200) {
+        // Автопереключение очереди — только если флаг ещё не стоит.
+        // Исключаем случай, когда пауза вызвана НАМЕРЕННО из handleServerPrepare
+        // (play+pause для предзагрузки следующего трека) — иначе это тоже
+        // прочитается как "конец трека" и вызовет повторный/ложный скип.
+        final bool isIntentionalPreparePause = _preparedTrackId != null && !_isReadySent;
+        if (_sessionMode &&
+            _isHost &&
+            state.isPaused &&
+            !_isAdvancingQueue &&
+            !isIntentionalPreparePause) {
+          final dur = _lastActiveDurationMs;
+          if (dur > 0 && _lastActivePositionMs >= dur - 1200) {
             print('[SyncM] Трек завершился. Переключаем...');
             _isAdvancingQueue = true; // Ставим флаг ДО вызова async метода
             _advanceSessionQueue();
@@ -1050,7 +1074,24 @@ class PlaybackProvider extends ChangeNotifier {
           await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
         }
       } catch (e) {
-        print('[Session Seek] Ошибка локальной перемотки: $e');
+        // Частая причина сбоя здесь — временное отсутствие активного
+        // устройства Spotify сразу после паузы (например, во время
+        // хендшейка session_prepare/session_start). Раньше сервер отвечал
+        // success:true ещё до реального запроса к Spotify, поэтому такие
+        // сбои были не видны — ползунок визуально двигался, а звук нет.
+        // Теперь ошибка доходит до клиента, и мы даём одну повторную попытку
+        // с небольшой задержкой перед тем, как сдаться.
+        print('[Session Seek] Ошибка локальной перемотки, повтор через 400мс: $e');
+        try {
+          await Future.delayed(const Duration(milliseconds: 400));
+          if (_isWindows || _isWeb) {
+            await _apiService?.seekToPosition(positionMs);
+          } else {
+            await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
+          }
+        } catch (e2) {
+          print('[Session Seek] Повторная попытка тоже не удалась: $e2');
+        }
       }
 
       _socketService?.emit('seek', {
@@ -1161,6 +1202,22 @@ class PlaybackProvider extends ChangeNotifier {
 
     _preparedTrackId = trackId;
     _isReadySent = false;
+
+    // Останавливаем поллинг-таймер СРАЗУ. Иначе он продолжает тикать со
+    // старого playTrack() (Windows/Web) поверх уже сброшенных на новый трек
+    // _positionMs/_durationMs, пока идёт хендшейк session_prepare→client_ready→
+    // session_start — и может спровоцировать повторный/ложный вызов
+    // _checkSessionTrackEnd ещё до реального старта нового трека.
+    _pollingTimer?.cancel();
+    _isPlaying = false;
+    // Сбрасываем "последнюю активную" позицию/длительность (Android-детектор
+    // конца трека) здесь же, а не только при получении isPaused=false от SDK —
+    // если SDK не пришлёт промежуточное "playing"-событие между play() и
+    // pause() ниже, детектор мог бы иначе сработать повторно по устаревшим
+    // значениям ПРЕДЫДУЩЕГО трека.
+    _lastActivePositionMs = 0;
+    _lastActiveDurationMs = 0;
+    notifyListeners();
 
     final spotifyUri = 'spotify:track:$trackId';
     final bool isMobile = !_isWindows && !_isWeb;

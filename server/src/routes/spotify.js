@@ -403,11 +403,17 @@ router.put('/seek', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  res.json({ success: true });
-
+  // ВАЖНО: раньше здесь отвечали клиенту success:true ДО реального запроса
+  // к Spotify (fire-and-forget). Из-за этого при ошибке (чаще всего — нет
+  // активного устройства, потому что Spotify только что был на паузе во
+  // время хендшейка сессии) клиент считал, что перемотка прошла, оптимистично
+  // сдвигал позицию в UI, а реального звука это не меняло. Теперь дожидаемся
+  // ответа Spotify и пробрасываем результат клиенту.
   try {
     const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser?.accessToken) return;
+    if (!spotifyUser?.accessToken) {
+      return res.status(409).json({ error: 'Spotify не подключён' });
+    }
     const { position_ms } = req.query;
     await axios.put(`https://api.spotify.com/v1/me/player/seek?position_ms=${position_ms}`, {}, {
       headers: { Authorization: `Bearer ${getAccessToken(spotifyUser)}` },
@@ -416,8 +422,14 @@ router.put('/seek', rateLimitMiddleware(20, 60), async (req, res) => {
       redis.del(`spotify:player:${userId}`),
       redis.del(`spotify:devices:${userId}`),
     ]);
+    return res.json({ success: true });
   } catch (error) {
     logger.error({ err: error }, 'Seek error');
+    const status = error?.response?.status;
+    if (status === 404) {
+      return res.status(409).json({ error: 'Нет активного устройства Spotify' });
+    }
+    return res.status(502).json({ error: 'Не удалось перемотать трек' });
   }
 });
 

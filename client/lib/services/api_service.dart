@@ -545,7 +545,10 @@ class ApiService {
   }
 
   Future<void> seekToPosition(int ms) async {
-    await http.put(_uri('/spotify/seek?position_ms=$ms'), headers: _headers).timeout(timeout);
+    final res = await http.put(_uri('/spotify/seek?position_ms=$ms'), headers: _headers).timeout(timeout);
+    if (res.statusCode != 200) {
+      throw ApiException('Ошибка перемотки', res.statusCode, _decode(res.body) is Map ? (_decode(res.body) as Map)['error']?.toString() : null);
+    }
   }
 
   Future<List<dynamic>> getDevices() async {
