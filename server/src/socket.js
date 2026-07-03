@@ -289,12 +289,14 @@ const setupSocket = (io) => {
         io.to(sessionId).emit('session_pause', { positionMs: currentPos });
 
       } else if (action === 'resume') {
-        const currentPos = state.positionMs;
-        state.state = 'playing';
-        state.serverTime = Date.now();
-        sessionStates.set(sessionId, state);
-        io.to(sessionId).emit('session_resume', { positionMs: currentPos });
-        startSyncInterval(io, sessionId);
+  const currentPos = getCurrentPosition(state);
+  state.state = 'playing';
+  state.positionMs = currentPos;
+  state.serverTime = Date.now();
+  sessionStates.set(sessionId, state);
+  startSyncInterval(io, sessionId);
+  // Шлём session_resume, а не session_start
+  io.to(sessionId).emit('session_resume', { positionMs: currentPos });
 
       } else if (action === 'seek') {
         startFromPosition(io, sessionId, state.trackId, seekPos || 0);
@@ -350,6 +352,18 @@ const setupSocket = (io) => {
     socket.on('seek', async ({ sessionId, position_ms }) => {
       const uid = socket.data.userId;
       if (!uid || !(await isSessionMember(sessionId, uid))) return;
+
+      // Обновляем базовую позицию в состоянии сессии — иначе периодический
+      // session_sync (раз в 5с) продолжит считать позицию от точки ДО
+      // перемотки и отправит клиентам устаревшее значение, визуально
+      // "откатывая" слайдер назад через несколько секунд после перемотки.
+      const state = sessionStates.get(sessionId);
+      if (state) {
+        state.positionMs = position_ms || 0;
+        state.serverTime = Date.now();
+        sessionStates.set(sessionId, state);
+      }
+
       socket.to(sessionId).emit('seek', { position_ms });
     });
 
