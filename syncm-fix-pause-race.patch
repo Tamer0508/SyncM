@@ -1,0 +1,100 @@
+diff --git a/server/src/socket.js b/server/src/socket.js
+index 0dff123..39e29fe 100644
+--- a/server/src/socket.js
++++ b/server/src/socket.js
+@@ -222,19 +222,50 @@ const setupSocket = (io) => {
+       readyClients.set(sessionId, new Set());
+       stopSyncInterval(sessionId);
+ 
++      const prevState = sessionStates.get(sessionId);
++      // ВАЖНО: если предыдущий хендшейк (session_prepare → client_ready) не
++      // успел собрать всех участников и уже поставил READY_TIMEOUT, этот
++      // таймер раньше "переживал" новую подготовку трека — spread ниже
++      // копировал ссылку на него в новое состояние, но сам setTimeout не
++      // отменялся. Через 5с он стрелял startFromPosition() со СВОИМ, уже
++      // устаревшим trackId — это и вызывало повторный запуск трека с нуля
++      // ("играет 2-3 секунды и снова на начало").
++      if (prevState?._readyTimeout) {
++        clearTimeout(prevState._readyTimeout);
++      }
++
+       sessionStates.set(sessionId, {
+-        ...(sessionStates.get(sessionId) || {}),
++        ...(prevState || {}),
+         trackId,
+         durationMs,
+         state: 'preparing',
+         positionMs: 0,
+         serverTime: Date.now(),
++        _readyTimeout: null,
++        pausedDuringPrepare: false,
+       });
+ 
+       // Рассылаем всем включая себя
+       io.to(sessionId).emit('session_prepare', { trackId, durationMs });
+     });
+ 
++    // Стартуем воспроизведение после хендшейка — если за это время сессию
++    // поставили на паузу (см. session_command:pause ниже), не стартуем, а
++    // сразу переводим состояние в paused и уведомляем комнату.
++    function tryStartAfterHandshake(sessionId, trackId) {
++      const state = sessionStates.get(sessionId);
++      if (state?.pausedDuringPrepare) {
++        state.pausedDuringPrepare = false;
++        state.state = 'paused';
++        state.positionMs = 0;
++        state.serverTime = Date.now();
++        sessionStates.set(sessionId, state);
++        io.to(sessionId).emit('session_pause', { positionMs: 0 });
++        return;
++      }
++      startFromPosition(io, sessionId, trackId, 0);
++    }
++
+     // ─── Фаза 2: Клиент готов к воспроизведению ────────────────────────────
+     socket.on('client_ready', async ({ sessionId, trackId }) => {
+       const uid = socket.data.userId;
+@@ -251,7 +282,7 @@ const setupSocket = (io) => {
+ 
+       if (ready.size >= roomSize) {
+         // Все готовы — стартуем
+-        startFromPosition(io, sessionId, trackId, 0);
++        tryStartAfterHandshake(sessionId, trackId);
+         readyClients.delete(sessionId);
+       } else {
+         // Ждём остальных с таймаутом
+@@ -259,7 +290,7 @@ const setupSocket = (io) => {
+           const timeout = setTimeout(() => {
+             const state = sessionStates.get(sessionId);
+             if (state) state._readyTimeout = null;
+-            startFromPosition(io, sessionId, trackId, 0);
++            tryStartAfterHandshake(sessionId, trackId);
+             readyClients.delete(sessionId);
+           }, READY_TIMEOUT_MS);
+           const state = sessionStates.get(sessionId) || {};
+@@ -280,10 +311,17 @@ const setupSocket = (io) => {
+       if (!state) return;
+ 
+       if (action === 'pause') {
++        // Если пауза пришла ПОКА идёт хендшейк подготовки следующего трека —
++        // одного "state.state = 'paused'" недостаточно: handshake всё равно
++        // завершится и tryStartAfterHandshake() запустит воспроизведение,
++        // молча "отменяя" паузу пользователя. Помечаем это явным флагом,
++        // который проверяется в момент завершения хендшейка.
++        const wasPreparing = state.state === 'preparing';
+         const currentPos = getCurrentPosition(state);
+         state.state = 'paused';
+         state.positionMs = currentPos;
+         state.serverTime = Date.now();
++        if (wasPreparing) state.pausedDuringPrepare = true;
+         sessionStates.set(sessionId, state);
+         stopSyncInterval(sessionId);
+         io.to(sessionId).emit('session_pause', { positionMs: currentPos });
+@@ -291,6 +329,7 @@ const setupSocket = (io) => {
+       } else if (action === 'resume') {
+   const currentPos = getCurrentPosition(state);
+   state.state = 'playing';
++  state.pausedDuringPrepare = false;
+   state.positionMs = currentPos;
+   state.serverTime = Date.now();
+   sessionStates.set(sessionId, state);
