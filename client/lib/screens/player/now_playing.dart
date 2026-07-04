@@ -244,6 +244,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   Color _targetVibrant = Colors.purpleAccent;
 
   String? _lastTrackUri;
+  // Сигнатура обложки, по которой уже посчитана палитра. Нужна, чтобы
+  // поймать ПОЗДНЮЮ загрузку картинки: при обычном переключении uri меняется
+  // раньше, чем догружаются байты обложки, и без этого поля палитра осталась
+  // бы на нейтральных цветах до следующей смены трека.
+  int? _lastPaletteImageSig;
 
   @override
   void initState() {
@@ -279,10 +284,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
     if (!mounted) return;
     final pb = Provider.of<PlaybackProvider>(context, listen: false);
-    
-    if (pb.isPlaying && !_dragging) {
+
+    if (_dragging) return; // пока тащим ползунок — не трогаем позицию
+
+    if (pb.sessionMode) {
+      // Фаза 4.3: в сессии позиция считается провайдером от серверного
+      // времени — просто отражаем её, чтобы прогресс-бар был синхронен
+      // у всех участников, а не тикал локально вразнобой.
+      final serverPos = pb.positionMs;
+      if (serverPos != _positionMs) {
+        setState(() => _positionMs = serverPos);
+      }
+    } else if (pb.isPlaying) {
       setState(() {
-        // Добавляем по 200 мс каждые 200 мс для идеальной плавности
+        // Вне сессии — прежнее плавное локальное наращивание.
         _positionMs = (_positionMs + 200).clamp(0, pb.durationMs);
       });
     }
@@ -294,6 +309,31 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  // Устойчивая сигнатура обложки: комбинирует uri трека и хеш содержимого
+  // картинки (по сэмплам байтов — быстро, без полного прохода по мегабайтам).
+  // uri в основе — чтобы смена трека всегда триггерила пересчёт, даже если
+  // обложка побайтово идентична (треки одного альбома). Содержимое в хеше —
+  // чтобы поймать позднюю догрузку картинки в рамках того же uri.
+  int _imageSignature(Uint8List bytes, String? uri) {
+    int hash = (uri?.hashCode ?? 0) ^ 0x9E3779B1;
+    hash = 0x1fffffff & (hash + bytes.length);
+    // Сэмплируем ~64 точки по всей длине — этого достаточно, чтобы различать
+    // разные картинки, и дёшево даже для больших обложек.
+    final int len = bytes.length;
+    if (len > 0) {
+      final int step = len < 64 ? 1 : len ~/ 64;
+      for (int i = 0; i < len; i += step) {
+        hash = 0x1fffffff & (hash + bytes[i]);
+        hash = 0x1fffffff & (hash + (0x0007ffff & (hash << 10)));
+        hash ^= (hash >> 6);
+      }
+    }
+    hash = 0x1fffffff & (hash + (0x03ffffff & (hash << 3)));
+    hash ^= (hash >> 11);
+    hash = 0x1fffffff & (hash + (0x00003fff & (hash << 15)));
+    return hash;
   }
 
   void _setTargetColors(Color dominant, Color vibrant) {
@@ -317,23 +357,23 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     String? imageUrl,
     required String? trackUri,
   }) async {
+    print('[PaletteDebug] _updatePalette ENTER bytes=${imageBytes?.length} url=$imageUrl uri=$trackUri');
     if (imageBytes == null && (imageUrl == null || imageUrl.isEmpty)) {
       _setTargetColors(Colors.deepPurple, Colors.purpleAccent);
       return;
     }
 
     final provider = Provider.of<PlaybackProvider>(context, listen: false);
-    
+
+    // Ключ кэша: imageUrl если есть, иначе uri трека (на Android imageUrl
+    // часто null — обложка приходит байтами, кэшировать по url нельзя).
+    final String? cacheKey = imageUrl ?? trackUri;
+
     // Проверяем кэш
-    if (imageUrl != null && provider.paletteCache.containsKey(imageUrl)) {
-      final p = provider.paletteCache[imageUrl]!;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || provider.currentTrack?['uri'] != trackUri) return;
-        _setTargetColors(
-          p.dominantColor?.color ?? Colors.deepPurple,
-          p.vibrantColor?.color ?? (p.lightVibrantColor?.color ?? Colors.purpleAccent),
-        );
-      });
+    if (cacheKey != null && provider.paletteCache.containsKey(cacheKey)) {
+      final p = provider.paletteCache[cacheKey]!;
+      print('[PaletteDebug] cache HIT key=$cacheKey');
+      _applyPalette(p, trackUri, provider);
       return;
     }
 
@@ -351,25 +391,34 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         maximumColorCount: 12,
       );
 
-      if (imageUrl != null) {
-        provider.paletteCache[imageUrl] = palette;
+      if (cacheKey != null) {
+        provider.paletteCache[cacheKey] = palette;
       }
 
       if (!mounted) return;
-
-      // ПРОВЕРКА: Если пока мы скачивали картинку, трек уже переключили — выходим
-      if (provider.currentTrack?['uri'] != trackUri) return;
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || provider.currentTrack?['uri'] != trackUri) return;
-        _setTargetColors(
-          palette.dominantColor?.color ?? Colors.deepPurple,
-          palette.vibrantColor?.color ?? (palette.lightVibrantColor?.color ?? Colors.purpleAccent),
-        );
-      });
+      print('[PaletteDebug] computed dominant=${palette.dominantColor?.color} → apply');
+      _applyPalette(palette, trackUri, provider);
     } catch (e) {
-      print('Palette error: $e');
+      print('[PaletteDebug] Palette error: $e');
     }
+  }
+
+  // Применяет палитру напрямую. Раньше это было обёрнуто в
+  // addPostFrameCallback + проверку uri, которая на Android при частых
+  // обновлениях состояния плеера могла молча отменять валидный пересчёт.
+  // Проверяем актуальность трека мягко: если uri уже сменился — просто
+  // не применяем (следующий трек сам себя пересчитает).
+  void _applyPalette(PaletteGenerator p, String? trackUri, PlaybackProvider provider) {
+    if (!mounted) return;
+    final current = provider.currentTrack?['uri'];
+    if (trackUri != null && current != null && current != trackUri) {
+      print('[PaletteDebug] apply SKIP: track changed ($current != $trackUri)');
+      return;
+    }
+    _setTargetColors(
+      p.dominantColor?.color ?? Colors.deepPurple,
+      p.vibrantColor?.color ?? (p.lightVibrantColor?.color ?? Colors.purpleAccent),
+    );
   }
 
   @override
@@ -399,8 +448,18 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
+            // ВАЖНО: берём картинку СВЕЖЕЙ из провайдера прямо здесь, а не из
+            // imageBytes/imageUrl, захваченных в билде. При обычном (не-shuffle)
+            // переключении трека uri в провайдере меняется раньше, чем
+            // подгружаются новые байты обложки — поэтому захваченный imageBytes
+            // мог быть ещё от предыдущего трека или null, и палитра не
+            // обновлялась. В shuffle порядок обновления другой, там байты
+            // успевали, поэтому фон менялся — отсюда "меняется только в перемешку".
+            final freshBytes = pb.currentImageBytes;
+            final freshUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
+
             // Ставим базовые нейтральные цвета на момент загрузки, если нет в кэше
-            final cached = imageUrl != null ? pb.paletteCache[imageUrl] : null;
+            final cached = freshUrl != null ? pb.paletteCache[freshUrl] : null;
             if (cached != null) {
               _setTargetColors(
                 cached.dominantColor?.color ?? Colors.blueGrey.shade800,
@@ -410,7 +469,36 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
               _setTargetColors(Colors.blueGrey.shade900, Colors.blueGrey.shade700);
             }
 
-            _updatePalette(imageBytes: imageBytes, imageUrl: imageUrl, trackUri: currentUri);
+            _updatePalette(imageBytes: freshBytes, imageUrl: freshUrl, trackUri: currentUri);
+          });
+        }
+
+        // Ловим ПОЗДНЮЮ загрузку обложки: uri мог смениться раньше, чем
+        // подгрузились байты картинки (типичный случай при обычном
+        // переключении трека на Android). Как только байты реально
+        // появились/сменились — пересчитываем палитру.
+        //
+        // ВАЖНО: сигнатура — хеш СОДЕРЖИМОГО обложки, а не её длина. У треков
+        // одного альбома (напр. несколько песен Skillet с одной обложкой
+        // альбома, либо разные обложки одинакового размера) длина байтов
+        // часто совпадает — из-за этого пересчёт по длине пропускался и фон
+        // застревал. Плюс привязываем к uri: даже если у двух треков обложка
+        // побайтово идентична, смена uri всё равно инициирует пересчёт.
+        final int? imageSig =
+            imageBytes != null ? _imageSignature(imageBytes, currentUri) : null;
+        print('[PaletteDebug] build uri=$currentUri bytes=${imageBytes?.length} sig=$imageSig last=$_lastPaletteImageSig');
+        if (imageSig != null && imageSig != _lastPaletteImageSig) {
+          print('[PaletteDebug] → recompute palette');
+          _lastPaletteImageSig = imageSig;
+          final captUri = currentUri;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            if (pb.currentTrack?['uri'] != captUri) return;
+            _updatePalette(
+              imageBytes: pb.currentImageBytes,
+              imageUrl: pb.currentTrack?['imageUrl'] ?? widget.artworkUrl,
+              trackUri: captUri,
+            );
           });
         }
 

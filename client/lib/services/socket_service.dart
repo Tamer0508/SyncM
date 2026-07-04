@@ -24,6 +24,12 @@ class SocketService {
     return DateTime.now().add(Duration(milliseconds: _masterOffset));
   }
 
+  // Текущее серверное время в миллисекундах (Unix epoch). Используется для
+  // вычисления визуальной позиции трека по серверному времени (Фаза 4.3).
+  int serverNow() {
+    return DateTime.now().millisecondsSinceEpoch + _masterOffset;
+  }
+
   DateTime serverToLocal(dynamic serverTime) {
     if (serverTime == null) return DateTime.now();
     DateTime utcTime;

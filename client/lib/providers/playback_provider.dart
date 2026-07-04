@@ -44,6 +44,13 @@ class PlaybackProvider extends ChangeNotifier {
   String? _preparedTrackId;
   bool _isReadySent = false;
   bool _isSeekingFromRemote = false;
+  // Активна программная перемотка через session_start (Фаза 5.3). На время
+  // перемотки детект "конец трека" должен молчать: после seek близко к концу
+  // трека позиция оказывается рядом с длительностью, а SDK при перезапуске
+  // мигает isPaused=true — из-за чего трек ложно считался завершённым и
+  // сессия перескакивала на следующий (баг "перемотка на первом треке
+  // переключает трек вместо перемотки").
+  bool _isSessionSeeking = false;
   bool _isSkipping = false;
   DateTime? _lastToggle;
 
@@ -64,6 +71,13 @@ class PlaybackProvider extends ChangeNotifier {
   bool _isHost = false;
   bool _isRemoteSync = false;
   bool _queueEnded = false;
+  // ─── Фаза 4.3: визуальная позиция по серверному времени ───────────────────
+  // Якорь: в момент серверного времени _syncAnchorServerTime трек был в
+  // позиции _syncAnchorPositionMs. UI считает текущую позицию как
+  // anchorPos + (сейчас_по_серверу - anchorServerTime), а не по локальному
+  // тику плеера — тогда прогресс-бар у всех участников идеально совпадает.
+  int _syncAnchorPositionMs = 0;
+  int? _syncAnchorServerTime; // null → якоря нет, используем обычный _positionMs
   SessionTracksCallback? onTracksAdded;
   SessionPlaybackCallback? onSessionPlaybackStarted;
   void Function(String message)? onPrepareError;
@@ -77,7 +91,25 @@ class PlaybackProvider extends ChangeNotifier {
   bool get isPlaying => _isPlaying;
   bool get isConnected => _isConnected;
   int get durationMs => _durationMs;
-  int get positionMs => _positionMs;
+  // Фаза 4.3: в активной сессии во время воспроизведения позиция для UI
+  // считается от серверного якоря, а не от локального тикера/плеера — так
+  // прогресс-бар синхронен у всех участников. Вне сессии (или на паузе, или
+  // если якорь ещё не установлен) — обычная локальная позиция.
+  int get positionMs {
+    if (_sessionMode &&
+        _isPlaying &&
+        !_sessionPaused &&
+        _syncAnchorServerTime != null) {
+      final nowServer = _socketService?.serverNow();
+      if (nowServer != null) {
+        final int elapsed = nowServer - _syncAnchorServerTime!;
+        final int pos = _syncAnchorPositionMs + elapsed;
+        if (_durationMs > 0) return pos.clamp(0, _durationMs);
+        return pos < 0 ? 0 : pos;
+      }
+    }
+    return _positionMs;
+  }
   Uint8List? get currentImageBytes => _currentImageBytes;
 
   bool get shuffleActive => _shuffleActive;
@@ -292,6 +324,7 @@ class PlaybackProvider extends ChangeNotifier {
     }
 
     socketService.emit('join_session', {'sessionId': sessionId});
+    _startSessionUiTicker();
 
     // ─── Фаза 2: Получаем команду подготовить трек ─────────────────────────
     socketService.on('session_prepare', handleServerPrepare);
@@ -315,6 +348,8 @@ class PlaybackProvider extends ChangeNotifier {
       if (delayMs < -1000) {
         // Опоздали — режим восстановления
         final int actualPos = positionMs + (now - localStart).abs();
+        // Якорь: в серверное время startAt трек был в позиции positionMs.
+        _setSyncAnchor(actualPos, socketService.serverNow());
         await _playAtPosition(trackId, actualPos);
         await _restoreVolumeIfMuted();
         socketService.emit('resync', {'sessionId': sessionId});
@@ -326,8 +361,43 @@ class PlaybackProvider extends ChangeNotifier {
         await Future.delayed(Duration(milliseconds: delayMs));
       }
 
+      // Якорь ставим на момент фактического старта: серверное время сейчас
+      // соответствует позиции positionMs.
+      _setSyncAnchor(positionMs, socketService.serverNow());
+
+      // Подавляем детект конца трека на время программной перемотки/ре-старта:
+      // после seek близко к концу позиция ~= длительность, а SDK мигает
+      // паузой при перезапуске — иначе трек ложно считается завершённым и
+      // сессия скачет на следующий (баг "перемотка переключает трек").
+      _isSessionSeeking = true;
+
+      // Оптимизация seek-в-текущем-треке (Фаза 5.3): если этот же трек уже
+      // играет, session_start — это перемотка, а не смена трека. Делаем чистый
+      // seek вместо полного ре-старта playTrack: мгновенно, без провала звука,
+      // но синхронно по общему startAt (мы уже дождались localStart выше).
+      final String currentUri = _currentTrack?['uri'] as String? ?? '';
+      final String targetUri = trackId.startsWith('spotify:') ? trackId : 'spotify:track:$trackId';
+      if (_isPlaying && currentUri == targetUri) {
+        try {
+          if (_isWindows || _isWeb) {
+            await _apiService?.seekToPosition(positionMs);
+          } else {
+            await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
+          }
+          _positionMs = positionMs;
+          notifyListeners();
+        } catch (e) {
+          print('[Session Seek] Чистый seek не удался, полный ре-старт: $e');
+          await _playAtPosition(trackId, positionMs);
+        }
+        await _restoreVolumeIfMuted();
+        _clearSessionSeekingSoon();
+        return;
+      }
+
       await _playAtPosition(trackId, positionMs);
       await _restoreVolumeIfMuted();
+      _clearSessionSeekingSoon();
     });
 
     // ─── Фаза 4: Периодическая синхронизация ────────────────────────────────
@@ -343,9 +413,17 @@ class PlaybackProvider extends ChangeNotifier {
       final int currentServerTime =
           rawCurrentServerTime is num ? rawCurrentServerTime.round() : DateTime.now().millisecondsSinceEpoch;
       final int expectedPos = positionMs + (currentServerTime - serverTime);
+
+      // Фаза 4.3: обновляем якорь визуальной позиции на каждом sync —
+      // серверная позиция это источник истины для прогресс-бара, поэтому
+      // displayPos всегда совпадает у всех участников.
+      _setSyncAnchor(positionMs, serverTime);
+
       final int drift = (expectedPos - _positionMs).abs();
 
-      // Если расхождение > 500мс — корректируем
+      // Если расхождение > 500мс — физически подтягиваем реальный звук
+      // (seek). Это отдельно от визуальной синхры: seek на Spotify слышен как
+      // рывок, поэтому делаем его только при заметном дрейфе, а не каждый раз.
       if (drift > 500 && _isPlaying) {
         _positionMs = expectedPos;
         notifyListeners();
@@ -377,6 +455,7 @@ class PlaybackProvider extends ChangeNotifier {
       _isPlaying = false;
       _sessionPaused = true;
       if (positionMs != null) _positionMs = positionMs;
+      _clearSyncAnchor(); // на паузе UI показывает застывший _positionMs
       notifyListeners();
       await _restoreVolumeIfMuted();
 
@@ -393,6 +472,12 @@ class PlaybackProvider extends ChangeNotifier {
 
     socketService.on('session_resume', (data) async {
       _sessionPaused = false;
+      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final resumePos = (map['positionMs'] as num?)?.toInt();
+      if (resumePos != null) _positionMs = resumePos;
+      // Якорь заново: с этого момента серверное время соответствует resumePos
+      // (или последней известной позиции, если сервер её не прислал).
+      _setSyncAnchor(resumePos ?? _positionMs, socketService.serverNow());
       if (!_isPlaying) {
         // Получатель: нужно возобновить воспроизведение
         _isPlaying = true;
@@ -428,10 +513,13 @@ class PlaybackProvider extends ChangeNotifier {
         final int currentServerTime =
             rawCurrentServerTime is num ? rawCurrentServerTime.round() : DateTime.now().millisecondsSinceEpoch;
         final int actualPos = positionMs + (currentServerTime - serverTime);
+        // Якорь от серверной опорной точки (serverTime ↔ positionMs).
+        _setSyncAnchor(positionMs, serverTime);
         await _playAtPosition(trackId, actualPos);
       } else if (state == 'paused') {
         _positionMs = positionMs;
         _isPlaying = false;
+        _clearSyncAnchor();
         notifyListeners();
       }
     });
@@ -483,6 +571,11 @@ class PlaybackProvider extends ChangeNotifier {
     });
 
     // ─── Исправленный блок Перемотки (Без зацикливания) ───────────────────
+    // ─── LEGACY: устаревший обработчик прямой перемотки ─────────────────────
+    // Начиная с Фазы 5.3 seek идёт через session_command → session_start
+    // (единый guard-старт), и это событие сервером больше не рассылается.
+    // Оставлено для обратной совместимости со старым сервером; при работе с
+    // актуальным сервером сюда ничего не приходит.
     socketService.on('seek', (data) async {
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final int pos = (map['position_ms'] as num?)?.toInt() ?? 0;
@@ -511,6 +604,47 @@ class PlaybackProvider extends ChangeNotifier {
     socketService.on('tracks-added', (data) {
       if (data is Map) onTracksAdded?.call(Map<String, dynamic>.from(data));
     });
+  }
+
+  // Снимает подавление детекта конца трека через короткую задержку — чтобы
+  // отфильтровать мигание isPaused от SDK сразу после программного seek.
+  Timer? _sessionSeekingTimer;
+  void _clearSessionSeekingSoon() {
+    _sessionSeekingTimer?.cancel();
+    _sessionSeekingTimer = Timer(const Duration(milliseconds: 1500), () {
+      _isSessionSeeking = false;
+    });
+  }
+
+  // ─── Фаза 4.3: якорь визуальной позиции ──────────────────────────────────
+  // UI-тикер: в активной сессии дёргает notifyListeners() каждые 300мс, чтобы
+  // прогресс-бар (который считается от серверного якоря в геттере positionMs)
+  // обновлялся плавно, а не скачками раз в 2с между session_sync.
+  Timer? _sessionUiTicker;
+  void _startSessionUiTicker() {
+    _sessionUiTicker?.cancel();
+    _sessionUiTicker = Timer.periodic(const Duration(milliseconds: 300), (_) {
+      if (_sessionMode && _isPlaying && !_sessionPaused && _syncAnchorServerTime != null) {
+        notifyListeners();
+      }
+    });
+  }
+
+  void _stopSessionUiTicker() {
+    _sessionUiTicker?.cancel();
+    _sessionUiTicker = null;
+  }
+
+  // Устанавливает опорную точку: в серверное время serverTime трек был в
+  // позиции positionMs. Дальше геттер positionMs сам экстраполирует.
+  void _setSyncAnchor(int positionMs, int serverTime) {
+    _syncAnchorPositionMs = positionMs;
+    _syncAnchorServerTime = serverTime;
+    _positionMs = positionMs; // держим _positionMs согласованным для fallback
+  }
+
+  void _clearSyncAnchor() {
+    _syncAnchorServerTime = null;
   }
 
   // Возвращает громкость назад после того, как приглушали её на время
@@ -652,6 +786,7 @@ class PlaybackProvider extends ChangeNotifier {
             _isHost &&
             state.isPaused &&
             !_isAdvancingQueue &&
+            !_isSessionSeeking &&
             !isIntentionalPreparePause) {
           final dur = _lastActiveDurationMs;
           if (dur > 0 && _lastActivePositionMs >= dur - 1200) {
@@ -705,6 +840,20 @@ class PlaybackProvider extends ChangeNotifier {
             contextUri: contextUri,
             offset: track['index'] as int?,
           );
+
+          // Windows/Web: playTrack запускает трек с нуля и НЕ учитывает
+          // positionMs. Раньше это было незаметно (seek шёл отдельным путём),
+          // но с Фазы 5.3 перемотка идёт через session_start → _playAtPosition
+          // → playTrack, и без этой перемотки реальный звук стартовал с 0,
+          // хотя UI показывал позицию seek. Применяем позицию явно.
+          if (positionMs != null && positionMs > 0) {
+            await Future.delayed(const Duration(milliseconds: 300));
+            try {
+              await _apiService?.seekToPosition(positionMs);
+            } catch (e) {
+              print('[Web/Windows] Seek after play error: $e');
+            }
+          }
 
           _currentTrack = track;
           _isPlaying = true;
@@ -1094,43 +1243,21 @@ class PlaybackProvider extends ChangeNotifier {
     _positionMs = positionMs;
     notifyListeners();
 
-    // Если мы в сессии — сначала физически перематываем СВОЙ плеер (сервер
-    // рассылает 'seek' остальным участникам, но не отправителю — см. socket.js,
-    // там используется socket.to(), исключающий текущий сокет), затем уведомляем
-    // сервер, чтобы он разослал перемотку остальным.
+    // ─── Фаза 5.3: перемотка в сессии — единая, через сервер ────────────────
+    // Раньше слайдер использовал legacy-путь: сам перематывал свой плеер и
+    // слал 'seek', сервер пересылал остальным БЕЗ общего момента старта —
+    // отправитель прыгал мгновенно, остальные с задержкой доставки, итог
+    // рассинхрон. Теперь шлём session_command action:seek: сервер назначает
+    // ОБЩИЙ startAt (now + guard по RTT) и рассылает session_start ВСЕМ,
+    // включая отправителя, — все перематываются и стартуют в один серверный
+    // момент. Локально плеер здесь НЕ трогаем: обработчик session_start сам
+    // синхронно выставит позицию и на этом устройстве тоже.
     if (_sessionMode && _currentSessionId != null) {
-      if (_isSeekingFromRemote) return; // Не отправляем обратно эхо от удалённой перемотки
-
-      try {
-        if (_isWindows || _isWeb) {
-          await _apiService?.seekToPosition(positionMs);
-        } else {
-          await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
-        }
-      } catch (e) {
-        // Частая причина сбоя здесь — временное отсутствие активного
-        // устройства Spotify сразу после паузы (например, во время
-        // хендшейка session_prepare/session_start). Раньше сервер отвечал
-        // success:true ещё до реального запроса к Spotify, поэтому такие
-        // сбои были не видны — ползунок визуально двигался, а звук нет.
-        // Теперь ошибка доходит до клиента, и мы даём одну повторную попытку
-        // с небольшой задержкой перед тем, как сдаться.
-        print('[Session Seek] Ошибка локальной перемотки, повтор через 400мс: $e');
-        try {
-          await Future.delayed(const Duration(milliseconds: 400));
-          if (_isWindows || _isWeb) {
-            await _apiService?.seekToPosition(positionMs);
-          } else {
-            await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
-          }
-        } catch (e2) {
-          print('[Session Seek] Повторная попытка тоже не удалась: $e2');
-        }
-      }
-
-      _socketService?.emit('seek', {
+      if (_isSeekingFromRemote) return; // эхо от удалённой перемотки не шлём
+      _socketService?.emit('session_command', {
         'sessionId': _currentSessionId,
-        'position_ms': positionMs,
+        'action': 'seek',
+        'positionMs': positionMs,
       });
       return;
     }
@@ -1170,6 +1297,8 @@ class PlaybackProvider extends ChangeNotifier {
     _sessionQueue = [];
     _sessionQueueIndex = -1;
     _queueEnded = false;
+    _stopSessionUiTicker();
+    _clearSyncAnchor();
     notifyListeners();
   }
 
@@ -1377,6 +1506,8 @@ class PlaybackProvider extends ChangeNotifier {
   void dispose() {
     _pollingTimer?.cancel();
     _trackChangeTimer?.cancel();
+    _sessionUiTicker?.cancel();
+    _sessionSeekingTimer?.cancel();
     // Аналогично stop() — не трогаем общий singleton-сокет здесь.
     super.dispose();
   }
