@@ -27,6 +27,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _displayId;
   Map<String, dynamic>? _profileData;
   bool _loading = false;
+  // Loopback-сервер Spotify OAuth (Windows). Держим ссылку, чтобы закрыть его
+  // при уходе с экрана и не оставлять занятым порт 8282.
+  HttpServer? _oauthServer;
+
+  @override
+  void dispose() {
+    _oauthServer?.close(force: true);
+    _oauthServer = null;
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -159,9 +169,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     if (defaultTargetPlatform == TargetPlatform.windows) {
+      HttpServer? server;
       try {
+        // Если предыдущая попытка логина не закрыла свой сервер (закрыли окно
+        // браузера, не дойдя до callback) — порт 8282 остаётся занят, и новый
+        // bind падает. Сначала закрываем прошлый сервер, если он ещё висит.
+        if (_oauthServer != null) {
+          try { await _oauthServer!.close(force: true); } catch (_) {}
+          _oauthServer = null;
+        }
+
         final completer = Completer<Map<String, dynamic>?>();
-        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8282);
+        // shared:true — как просит текст ошибки OS: разрешает повторный bind
+        // на тот же (address, port), если прошлый сокет ещё не полностью освободился.
+        server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4, 8282, shared: true,
+        );
+        _oauthServer = server;
+
         final state = _encodeState({'returnTo': 'http://localhost:8282/callback', 'userId': userId});
         final authUrl = Uri.parse('${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}');
         await launchUrl(authUrl, mode: LaunchMode.externalApplication);
@@ -171,15 +196,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
           response.headers.set('Content-Type', 'text/html; charset=utf-8');
           response.write('<html><body><h2>Spotify connected! You can close this tab.</h2></body></html>');
           await response.close();
-          await server.close();
-          completer.complete({
-            'token': uri.queryParameters['token'],
-            'cookie': uri.queryParameters['cookie'],
-          });
+          // force:true — закрываем сразу, не дожидаясь keep-alive соединений,
+          // иначе порт освобождается с задержкой и следующий логин падает.
+          await server!.close(force: true);
+          _oauthServer = null;
+          if (!completer.isCompleted) {
+            completer.complete({
+              'token': uri.queryParameters['token'],
+              'cookie': uri.queryParameters['cookie'],
+            });
+          }
         });
         final result = await completer.future.timeout(
           const Duration(minutes: 2),
-          onTimeout: () { server.close(); return null; },
+          onTimeout: () async {
+            try { await server?.close(force: true); } catch (_) {}
+            _oauthServer = null;
+            return null;
+          },
         );
         if (result != null) {
           final token = result['token'] as String?;
@@ -192,7 +226,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           }
         }
       } catch (e) {
-        if (context.mounted) showAppNotification(context, message: 'Ошибка подключения: $e', type: NotificationType.error);
+        // Гарантированно освобождаем порт при любой ошибке.
+        try { await server?.close(force: true); } catch (_) {}
+        _oauthServer = null;
+        final msg = e.toString().contains('bind') || e.toString().contains('port')
+            ? 'Не удалось начать подключение: предыдущая попытка ещё не завершилась. Подождите несколько секунд и попробуйте снова.'
+            : 'Ошибка подключения: $e';
+        if (context.mounted) showAppNotification(context, message: msg, type: NotificationType.error);
       }
       return;
     }

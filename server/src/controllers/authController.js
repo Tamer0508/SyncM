@@ -152,10 +152,22 @@ const callback = async (req, res) => {
       cookie,
     });
   } catch (error) {
+    // Достаём максимум деталей из ответа Spotify — именно тут скрыта
+    // настоящая причина (invalid_grant, invalid_client, redirect_uri_mismatch
+    // и т.п.), а раньше в лог уходило только общее сообщение.
+    const spotifyErr = error.response?.data;
+    const detail = spotifyErr?.error_description || spotifyErr?.error || error.message;
+    const status = error.response?.status;
     if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('OAuth error:', error.response?.data || error.message);
+      req.log.error({
+        spotifyStatus: status,
+        spotifyError: spotifyErr,
+        step: error.config?.url,
+      }, `OAuth error: ${detail}`);
+    } else {
+      console.error('OAuth error:', status, spotifyErr || error.message);
     }
-    res.status(500).json({ error: 'Ошибка авторизации Spotify' });
+    res.status(500).json({ error: 'Ошибка авторизации Spotify', detail });
   }
 };
 
