@@ -18,6 +18,21 @@ class SocketService {
 
   final StreamController<Map<String, dynamic>> _friendRequestController = StreamController.broadcast();
   Stream<Map<String, dynamic>> get onFriendRequest => _friendRequestController.stream;
+
+  // ─── Фаза 6: реконнект и ресинк сессии ───────────────────────────────────
+  // Активная сессия, которую нужно ресинкнуть после переподключения.
+  // Провайдер выставляет её при входе в сессию и очищает при выходе.
+  String? _activeSessionId;
+  void setActiveSession(String? sessionId) => _activeSessionId = sessionId;
+
+  // Уведомление о том, что соединение восстановилось после разрыва (не
+  // первичное подключение). Провайдер слушает и обновляет UI / состояние.
+  final StreamController<void> _reconnectController = StreamController.broadcast();
+  Stream<void> get onReconnect => _reconnectController.stream;
+
+  // Был ли уже установлен коннект хотя бы раз — чтобы отличить первичное
+  // подключение от переподключения.
+  bool _hasConnectedOnce = false;
   bool get isConnected => _socket?.connected ?? false;
 
   DateTime get currentServerTime {
@@ -175,12 +190,34 @@ class SocketService {
     _socket = IO.io(baseUrl, <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': true,
+      // Фаза 6: экспоненциальный reconnect. socket.io сам увеличивает задержку
+      // от reconnectionDelay до reconnectionDelayMax с указанным разбросом.
+      'reconnection': true,
+      'reconnectionAttempts': 9999,        // не сдаёмся
+      'reconnectionDelay': 1000,           // старт 1с
+      'reconnectionDelayMax': 15000,       // потолок 15с (как в спеке)
+      'randomizationFactor': 0.5,
     });
 
     _socket!.onConnect((_) async {
       _socket!.emit('authenticate', {'token': token});
-      await measureMasterOffset(); 
-      _startHeartbeat(); 
+
+      // Фаза 6: после ЛЮБОГО подключения заново измеряем offset часов.
+      // Ускоренная процедура сама по себе быстрая (несколько ping/pong).
+      await measureMasterOffset();
+      _startHeartbeat();
+
+      // Отличаем первичное подключение от переподключения.
+      if (_hasConnectedOnce) {
+        // Это реконнект после разрыва. Если мы в сессии — просим у сервера
+        // полное состояние (session_state), чтобы мгновенно вернуться в
+        // синхру, и уведомляем подписчиков.
+        if (_activeSessionId != null) {
+          _socket!.emit('resync', {'sessionId': _activeSessionId});
+        }
+        if (!_reconnectController.isClosed) _reconnectController.add(null);
+      }
+      _hasConnectedOnce = true;
     });
 
     _socket!.on('friend_request', (data) {

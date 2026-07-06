@@ -357,7 +357,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     String? imageUrl,
     required String? trackUri,
   }) async {
-    print('[PaletteDebug] _updatePalette ENTER bytes=${imageBytes?.length} url=$imageUrl uri=$trackUri');
     if (imageBytes == null && (imageUrl == null || imageUrl.isEmpty)) {
       _setTargetColors(Colors.deepPurple, Colors.purpleAccent);
       return;
@@ -372,7 +371,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     // Проверяем кэш
     if (cacheKey != null && provider.paletteCache.containsKey(cacheKey)) {
       final p = provider.paletteCache[cacheKey]!;
-      print('[PaletteDebug] cache HIT key=$cacheKey');
       _applyPalette(p, trackUri, provider);
       return;
     }
@@ -396,10 +394,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       }
 
       if (!mounted) return;
-      print('[PaletteDebug] computed dominant=${palette.dominantColor?.color} → apply');
       _applyPalette(palette, trackUri, provider);
     } catch (e) {
-      print('[PaletteDebug] Palette error: $e');
     }
   }
 
@@ -412,7 +408,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     if (!mounted) return;
     final current = provider.currentTrack?['uri'];
     if (trackUri != null && current != null && current != trackUri) {
-      print('[PaletteDebug] apply SKIP: track changed ($current != $trackUri)');
       return;
     }
     _setTargetColors(
@@ -486,9 +481,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         // побайтово идентична, смена uri всё равно инициирует пересчёт.
         final int? imageSig =
             imageBytes != null ? _imageSignature(imageBytes, currentUri) : null;
-        print('[PaletteDebug] build uri=$currentUri bytes=${imageBytes?.length} sig=$imageSig last=$_lastPaletteImageSig');
         if (imageSig != null && imageSig != _lastPaletteImageSig) {
-          print('[PaletteDebug] → recompute palette');
           _lastPaletteImageSig = imageSig;
           final captUri = currentUri;
           WidgetsBinding.instance.addPostFrameCallback((_) {

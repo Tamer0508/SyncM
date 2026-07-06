@@ -5,6 +5,11 @@ const onlineUsers = new Map();
 const offlineTimers = new Map();
 const OFFLINE_DELAY_MS = 5000;
 
+// Фаза 6.3: таймеры исключения из АКТИВНОЙ СЕССИИ. Отдельно от offlineTimers
+// (те — про presence-статус для друзей). Ключ: `${sessionId}:${userId}`.
+const sessionDropTimers = new Map();
+const SESSION_DROP_DELAY_MS = 45000; // 45с на переподключение, потом исключаем
+
 // Фаза 1-6: Состояние сессий
 const sessionStates = new Map();  // sessionId -> state
 const readyClients = new Map();   // sessionId -> Set(socketId)
@@ -194,6 +199,12 @@ const setupSocket = (io) => {
       }
       socket.join(sessionId);
       socket.data.sessionId = sessionId;
+      // Фаза 6.3: вернулся до истечения таймаута — отменяем исключение.
+      const dropKey = `${sessionId}:${uid}`;
+      if (sessionDropTimers.has(dropKey)) {
+        clearTimeout(sessionDropTimers.get(dropKey));
+        sessionDropTimers.delete(dropKey);
+      }
       io.to(sessionId).emit('user_joined', { userId: uid });
 
       // Фаза 6: Отправляем полное состояние новому участнику
@@ -375,6 +386,22 @@ const setupSocket = (io) => {
       const uid = socket.data.userId;
       if (!uid) return;
 
+      // После реконнекта это НОВЫЙ сокет — он потерял членство в комнате.
+      // Восстанавливаем join (с проверкой прав), иначе участник получит
+      // состояние разово, но перестанет получать session_sync/pause/resume.
+      const member = await prisma.sessionMember.findUnique({
+        where: { sessionId_userId: { sessionId, userId: uid } }
+      });
+      if (!member || member.status !== 'accepted') return;
+      socket.join(sessionId);
+      socket.data.sessionId = sessionId;
+      // Фаза 6.3: переподключился — отменяем исключение из сессии.
+      const dropKey = `${sessionId}:${uid}`;
+      if (sessionDropTimers.has(dropKey)) {
+        clearTimeout(sessionDropTimers.get(dropKey));
+        sessionDropTimers.delete(dropKey);
+      }
+
       const state = sessionStates.get(sessionId);
       if (!state) return;
 
@@ -462,6 +489,33 @@ const setupSocket = (io) => {
       if (uid) socket.leave(`user:${uid}`);
       if (sid && uid) io.to(sid).emit('user_left', { userId: uid });
 
+      // Фаза 6.3: отпавший участник сессии. Даём время на переподключение;
+      // если не вернулся — исключаем из активной сессии и уведомляем комнату.
+      // Проверяем, что у пользователя не осталось ДРУГИХ живых сокетов
+      // (мультивкладка / несколько устройств) — тогда исключать не нужно.
+      if (sid && uid) {
+        const dropKey = `${sid}:${uid}`;
+        if (sessionDropTimers.has(dropKey)) {
+          clearTimeout(sessionDropTimers.get(dropKey));
+        }
+        const dropTimer = setTimeout(async () => {
+          sessionDropTimers.delete(dropKey);
+          // Есть ли ещё живые сокеты этого пользователя в этой комнате?
+          const room = ioInstance?.sockets.adapter.rooms.get(sid);
+          if (room) {
+            for (const sockId of room) {
+              const s = ioInstance.sockets.sockets.get(sockId);
+              if (s?.data?.userId === uid) return; // переподключился — не исключаем
+            }
+          }
+          // Реально отпал — сообщаем комнате. Запись в БД не трогаем (участник
+          // остаётся в списке приглашённых и может вернуться), но для активной
+          // синхронизации помечаем как выбывшего.
+          io.to(sid).emit('participant_dropped', { userId: uid });
+        }, SESSION_DROP_DELAY_MS);
+        sessionDropTimers.set(dropKey, dropTimer);
+      }
+
       if (uid) {
         const userSockets = onlineUsers.get(uid);
         if (userSockets) {
@@ -507,6 +561,8 @@ const closeSocket = async () => {
     syncIntervals.clear();
     offlineTimers.forEach(t => clearTimeout(t));
     offlineTimers.clear();
+    sessionDropTimers.forEach(t => clearTimeout(t));
+    sessionDropTimers.clear();
     onlineUsers.clear();
     await new Promise(resolve => ioInstance.close(resolve));
   }

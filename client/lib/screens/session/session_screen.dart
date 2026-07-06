@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
@@ -26,6 +27,7 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _initialized = false;
   bool _refreshing = false;
   PlaybackProvider? _playback;
+  SocketService? _sessionSocket; // Фаза 6: для отписки в dispose
   bool _isPlayerOpen = false;
 
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
@@ -137,9 +139,33 @@ class _SessionScreenState extends State<SessionScreen> {
   final isHost = _session!['hostId'] == auth.user?.id;
   pb.initSession(_session!['id'], auth.user?.id ?? '', socket, isHost: isHost);
   _setupPlaybackCallbacks();
+  _setupSessionSocketListeners(socket);
   _syncSessionQueue();
 }
     }
+  }
+
+  StreamSubscription<void>? _reconnectSub;
+
+  // Фаза 6: реакция на события связности и участников сессии.
+  void _setupSessionSocketListeners(SocketService socket) {
+    _sessionSocket = socket;
+    // Участник окончательно отпал (не переподключился за таймаут) — обновляем
+    // список и уведомляем.
+    socket.on('participant_dropped', (data) {
+      if (!mounted) return;
+      _refreshSession();
+    });
+    // Кто-то (пере)подключился к сессии — тоже обновим список участников.
+    socket.on('user_joined', (data) {
+      if (!mounted) return;
+      _refreshSession();
+    });
+    // Наше соединение восстановилось после разрыва — обновим состояние сессии.
+    _reconnectSub = socket.onReconnect.listen((_) {
+      if (!mounted) return;
+      _refreshSession();
+    });
   }
 
   @override
@@ -147,6 +173,9 @@ class _SessionScreenState extends State<SessionScreen> {
     _playback?.onTracksAdded = null;
     _playback?.onSessionPlaybackStarted = null;
     _playback?.onPrepareError = null;
+    _reconnectSub?.cancel();
+    _sessionSocket?.off('participant_dropped');
+    _sessionSocket?.off('user_joined');
     super.dispose();
   }
 

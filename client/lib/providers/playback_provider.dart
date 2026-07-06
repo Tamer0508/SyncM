@@ -324,6 +324,7 @@ class PlaybackProvider extends ChangeNotifier {
     }
 
     socketService.emit('join_session', {'sessionId': sessionId});
+    socketService.setActiveSession(sessionId); // Фаза 6: для авто-ресинка
     _startSessionUiTicker();
 
     // ─── Фаза 2: Получаем команду подготовить трек ─────────────────────────
@@ -1280,6 +1281,7 @@ class PlaybackProvider extends ChangeNotifier {
     if (_currentSessionId != null && _userId != null) {
       _socketService?.emit('leave_session', {'sessionId': _currentSessionId, 'userId': _userId});
     }
+    _socketService?.setActiveSession(null); // Фаза 6: больше не ресинкаем
     // Не вызываем _socketService?.disconnect() — это общий singleton-сокет,
     // используемый остальным приложением (друзья, presence и т.д.), и его
     // нельзя рвать только потому что пользователь ушёл с экрана сессии.
