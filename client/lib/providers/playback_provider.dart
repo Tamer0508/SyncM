@@ -316,6 +316,13 @@ class PlaybackProvider extends ChangeNotifier {
     });
   }
 
+  // Фаза 7.2: смена роли хоста во время сессии (сервер передал управление).
+  // Новый хост берёт на себя детект конца трека и автопереход очереди.
+  void updateHostStatus(bool isHost) {
+    _isHost = isHost;
+    notifyListeners();
+  }
+
   void initSession(String sessionId, String userId, SocketService socketService, {bool isHost = false}) {
     _isHost = isHost;
     _currentSessionId = sessionId;

@@ -48,6 +48,41 @@ function broadcastSessionPresence(sessionId) {
   });
 }
 
+// ─── Фаза 7.2: передача управления при уходе хоста ──────────────────────────
+// Если хост реально отпал, назначаем новым хостом одного из оставшихся
+// онлайн-участников (первого по списку). Обновляем БД и уведомляем комнату,
+// чтобы клиенты пересчитали, кто теперь управляет очередью.
+async function transferHostIfNeeded(sessionId, leftUserId) {
+  try {
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { hostId: true, isActive: true },
+    });
+    if (!session || !session.isActive) return;
+    // Уходит не хост — передавать нечего.
+    if (session.hostId !== leftUserId) return;
+
+    const onlineIds = getOnlineSessionUsers(sessionId).filter(id => id !== leftUserId);
+    if (onlineIds.length === 0) return; // никого не осталось — сессия опустела
+
+    // Берём первого онлайн-участника со статусом accepted.
+    const candidates = await prisma.sessionMember.findMany({
+      where: { sessionId, userId: { in: onlineIds }, status: 'accepted' },
+    });
+    if (candidates.length === 0) return;
+    const newHostId = candidates[0].userId;
+
+    await prisma.session.update({
+      where: { id: sessionId },
+      data: { hostId: newHostId },
+    });
+
+    ioInstance.to(sessionId).emit('host_changed', { sessionId, hostId: newHostId });
+  } catch (err) {
+    logger.error({ err, sessionId }, 'transferHostIfNeeded error');
+  }
+}
+
 function getCurrentPosition(state) {
   if (!state || state.state !== 'playing') return state?.positionMs || 0;
   return state.positionMs + (Date.now() - state.serverTime);
@@ -529,7 +564,11 @@ const setupSocket = (io) => {
       socket.leave(sessionId);
       io.to(sessionId).emit('user_left', { userId: uid });
       socket.data.sessionId = null;
-      setImmediate(() => broadcastSessionPresence(sessionId));
+      setImmediate(() => {
+        broadcastSessionPresence(sessionId);
+        // Фаза 7.2: если сессию покинул хост — передаём управление.
+        if (uid) transferHostIfNeeded(sessionId, uid);
+      });
     });
 
     socket.on('disconnect', async () => {
@@ -568,6 +607,8 @@ const setupSocket = (io) => {
           // остаётся в списке приглашённых и может вернуться), но для активной
           // синхронизации помечаем как выбывшего.
           io.to(sid).emit('participant_dropped', { userId: uid });
+          // Фаза 7.2: если отпал хост — передаём управление другому участнику.
+          await transferHostIfNeeded(sid, uid);
         }, SESSION_DROP_DELAY_MS);
         sessionDropTimers.set(dropKey, dropTimer);
       }

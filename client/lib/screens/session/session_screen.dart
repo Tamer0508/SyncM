@@ -179,6 +179,26 @@ class _SessionScreenState extends State<SessionScreen> {
       if (!mounted) return;
       _refreshSession();
     });
+    // Фаза 7.2: сервер передал управление новому хосту (старый ушёл).
+    socket.on('host_changed', (data) {
+      if (!mounted) return;
+      final newHostId = (data is Map ? data['hostId'] : null)?.toString();
+      if (newHostId == null) return;
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      setState(() {
+        _session?['hostId'] = newHostId;
+      });
+      // Обновляем роль в провайдере: теперь этот клиент хост или нет.
+      _playback?.updateHostStatus(newHostId == auth.user?.id);
+      final becameHost = newHostId == auth.user?.id;
+      showAppNotification(
+        context,
+        message: becameHost
+            ? 'Вы теперь ведущий сессии'
+            : 'Ведущий сессии сменился',
+        type: NotificationType.info,
+      );
+    });
   }
 
   @override
@@ -190,6 +210,7 @@ class _SessionScreenState extends State<SessionScreen> {
     _sessionSocket?.off('participant_dropped');
     _sessionSocket?.off('user_joined');
     _sessionSocket?.off('session_presence');
+    _sessionSocket?.off('host_changed');
     super.dispose();
   }
 
