@@ -47,10 +47,16 @@ app.set('trust proxy', 1);
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-  cors: { 
+  cors: {
     origin: true,
     credentials: true
-  }
+  },
+  // Быстрее детектим резкий обрыв связи (выключенный интернет на клиенте):
+  // при таком обрыве нет graceful disconnect, и сервер узнаёт об отключении
+  // только по ping-таймауту. Дефолт (25с interval + 20с timeout) даёт задержку
+  // до ~45с, из-за чего presence участника долго висел "онлайн". Снижаем.
+  pingInterval: 5000,
+  pingTimeout: 5000,
 });
 
 global.io = io;

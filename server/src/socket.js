@@ -24,6 +24,30 @@ function getSessionState(sessionId) {
   return sessionStates.get(sessionId) || null;
 }
 
+// ─── Presence участников сессии ─────────────────────────────────────────────
+// Собирает userId всех живых сокетов в комнате сессии — это и есть реально
+// подключённые сейчас участники. Не зависит от friends-presence.
+function getOnlineSessionUsers(sessionId) {
+  const ids = new Set();
+  const room = ioInstance?.sockets.adapter.rooms.get(sessionId);
+  if (room) {
+    for (const sockId of room) {
+      const s = ioInstance.sockets.sockets.get(sockId);
+      if (s?.data?.userId) ids.add(s.data.userId);
+    }
+  }
+  return Array.from(ids);
+}
+
+// Рассылает всем в комнате актуальный список онлайн-участников.
+function broadcastSessionPresence(sessionId) {
+  if (!ioInstance) return;
+  ioInstance.to(sessionId).emit('session_presence', {
+    sessionId,
+    onlineUserIds: getOnlineSessionUsers(sessionId),
+  });
+}
+
 function getCurrentPosition(state) {
   if (!state || state.state !== 'playing') return state?.positionMs || 0;
   return state.positionMs + (Date.now() - state.serverTime);
@@ -206,6 +230,7 @@ const setupSocket = (io) => {
         sessionDropTimers.delete(dropKey);
       }
       io.to(sessionId).emit('user_joined', { userId: uid });
+      broadcastSessionPresence(sessionId); // presence: участник онлайн
 
       // Фаза 6: Отправляем полное состояние новому участнику
       const state = sessionStates.get(sessionId);
@@ -401,6 +426,7 @@ const setupSocket = (io) => {
         clearTimeout(sessionDropTimers.get(dropKey));
         sessionDropTimers.delete(dropKey);
       }
+      broadcastSessionPresence(sessionId); // presence: вернулся онлайн
 
       const state = sessionStates.get(sessionId);
       if (!state) return;
@@ -479,6 +505,7 @@ const setupSocket = (io) => {
       socket.leave(sessionId);
       io.to(sessionId).emit('user_left', { userId: uid });
       socket.data.sessionId = null;
+      setImmediate(() => broadcastSessionPresence(sessionId));
     });
 
     socket.on('disconnect', async () => {
@@ -487,7 +514,12 @@ const setupSocket = (io) => {
       const sid = socket.data.sessionId;
 
       if (uid) socket.leave(`user:${uid}`);
-      if (sid && uid) io.to(sid).emit('user_left', { userId: uid });
+      if (sid && uid) {
+        io.to(sid).emit('user_left', { userId: uid });
+        // presence: сокет ещё в комнате в момент события — пересчитываем
+        // в следующем тике, когда он уже вышел, чтобы список был актуальным.
+        setImmediate(() => broadcastSessionPresence(sid));
+      }
 
       // Фаза 6.3: отпавший участник сессии. Даём время на переподключение;
       // если не вернулся — исключаем из активной сессии и уведомляем комнату.

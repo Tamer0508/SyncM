@@ -28,6 +28,8 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _refreshing = false;
   PlaybackProvider? _playback;
   SocketService? _sessionSocket; // Фаза 6: для отписки в dispose
+  // presence: id участников, реально подключённых сейчас (из session_presence).
+  Set<String> _onlineUserIds = {};
   bool _isPlayerOpen = false;
 
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
@@ -150,6 +152,17 @@ class _SessionScreenState extends State<SessionScreen> {
   // Фаза 6: реакция на события связности и участников сессии.
   void _setupSessionSocketListeners(SocketService socket) {
     _sessionSocket = socket;
+
+    // presence: актуальный список онлайн-участников сессии.
+    socket.on('session_presence', (data) {
+      if (!mounted) return;
+      final ids = (data is Map ? data['onlineUserIds'] : null);
+      if (ids is List) {
+        setState(() {
+          _onlineUserIds = ids.map((e) => e.toString()).toSet();
+        });
+      }
+    });
     // Участник окончательно отпал (не переподключился за таймаут) — обновляем
     // список и уведомляем.
     socket.on('participant_dropped', (data) {
@@ -176,6 +189,7 @@ class _SessionScreenState extends State<SessionScreen> {
     _reconnectSub?.cancel();
     _sessionSocket?.off('participant_dropped');
     _sessionSocket?.off('user_joined');
+    _sessionSocket?.off('session_presence');
     super.dispose();
   }
 
@@ -284,6 +298,8 @@ class _SessionScreenState extends State<SessionScreen> {
                       final name = user?['username'] as String? ?? '?';
                       final isPending = m['status'] == 'pending';
                       final isHostUser = _session!['hostId'] == user?['id'];
+                      final userId = user?['id']?.toString();
+                      final isOnline = userId != null && _onlineUserIds.contains(userId);
                       return Column(children: [
                         Stack(children: [
                           CircleAvatar(
@@ -298,6 +314,24 @@ class _SessionScreenState extends State<SessionScreen> {
                                           ?.copyWith(
                                               color: theme.colorScheme.primary))
                                   : null),
+                          // presence: зелёная точка если участник онлайн, серая
+                          // если офлайн. Слева-снизу, чтобы не пересекаться со
+                          // звездой хоста (справа-снизу).
+                          if (!isPending)
+                            Positioned(
+                                left: -2,
+                                bottom: -2,
+                                child: Container(
+                                    width: 16,
+                                    height: 16,
+                                    decoration: BoxDecoration(
+                                        color: isOnline
+                                            ? const Color(0xFF4CAF50)
+                                            : theme.colorScheme.outline,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                            color: theme.colorScheme.surface,
+                                            width: 2)))),
                           if (isHostUser)
                             Positioned(
                                 right: -2,
