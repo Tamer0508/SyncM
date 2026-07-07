@@ -83,13 +83,14 @@ class _AuthGate extends StatefulWidget {
   State<_AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<_AuthGate> {
+class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = Provider.of<AuthProvider>(context, listen: false);
-      auth.restoreSavedAuth();
+      await auth.restoreSavedAuth();
 
       if (kIsWeb) {
         final uri = Uri.base;
@@ -117,6 +118,24 @@ class _AuthGateState extends State<_AuthGate> {
         Provider.of<SessionProvider>(context, listen: false).fetchInvites();
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Шаг 1 (жизненный цикл): при СВОРАЧИВАНИИ (paused/inactive/hidden) ничего
+    // не рвём — сокет держится сам, сколько позволит ОС, и участник остаётся
+    // в сессии. При ВОЗВРАТЕ (resumed) освежаем часы и ресинкаем состояние
+    // сессии, чтобы мгновенно вернуться в синхру после паузы/блокировки экрана.
+    if (state == AppLifecycleState.resumed) {
+      SocketService().resyncNow();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override

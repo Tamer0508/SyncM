@@ -8,7 +8,7 @@ const OFFLINE_DELAY_MS = 5000;
 // Фаза 6.3: таймеры исключения из АКТИВНОЙ СЕССИИ. Отдельно от offlineTimers
 // (те — про presence-статус для друзей). Ключ: `${sessionId}:${userId}`.
 const sessionDropTimers = new Map();
-const SESSION_DROP_DELAY_MS = 45000; // 45с на переподключение, потом исключаем
+const SESSION_DROP_DELAY_MS = 120000; // 2 мин на переподключение (сон/фон), потом исключаем
 
 // Фаза 1-6: Состояние сессий
 const sessionStates = new Map();  // sessionId -> state

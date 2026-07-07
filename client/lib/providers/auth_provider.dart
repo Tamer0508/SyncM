@@ -89,9 +89,9 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  void restoreSavedAuth() {
+  Future<void> restoreSavedAuth() async {
     if (_cookie != null && _cookie!.isNotEmpty) return;
-    final token = readAuthToken();
+    final token = await readAuthToken();
     if (token == null || token.isEmpty) return;
     _cookie = token;
     api.setCookie(token);
@@ -100,7 +100,7 @@ class AuthProvider with ChangeNotifier {
   void setCookie(String cookie) {
     _cookie = cookie;
     api.setCookie(cookie);
-    saveAuthToken(cookie);
+    saveAuthToken(cookie); // async, но ждать не нужно — пишем в фоне
     notifyListeners();
   }
 

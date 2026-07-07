@@ -3,16 +3,19 @@ import 'dart:html' as html;
 
 const _authTokenKey = 'syncm_auth_token';
 
-String? readAuthToken() {
+// Web-версия через localStorage. Сигнатуры async — чтобы совпадали с
+// нативной реализацией (условный импорт требует идентичных сигнатур).
+
+Future<String?> readAuthToken() async {
   final token = html.window.localStorage[_authTokenKey];
   if (token == null || token.isEmpty) return null;
   return token;
 }
 
-void saveAuthToken(String token) {
+Future<void> saveAuthToken(String token) async {
   html.window.localStorage[_authTokenKey] = token;
 }
 
-void clearAuthToken() {
+Future<void> clearAuthToken() async {
   html.window.localStorage.remove(_authTokenKey);
 }

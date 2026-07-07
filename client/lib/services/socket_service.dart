@@ -25,6 +25,17 @@ class SocketService {
   String? _activeSessionId;
   void setActiveSession(String? sessionId) => _activeSessionId = sessionId;
 
+  // Принудительный ресинк активной сессии сейчас (например при возврате
+  // приложения из фона). Если соединение живо — сразу просим состояние;
+  // заодно освежаем offset часов, т.к. во сне они могли уплыть.
+  Future<void> resyncNow() async {
+    if (_socket == null || !_socket!.connected) return;
+    await measureMasterOffset();
+    if (_activeSessionId != null) {
+      _socket!.emit('resync', {'sessionId': _activeSessionId});
+    }
+  }
+
   // Уведомление о том, что соединение восстановилось после разрыва (не
   // первичное подключение). Провайдер слушает и обновляет UI / состояние.
   final StreamController<void> _reconnectController = StreamController.broadcast();
@@ -66,7 +77,7 @@ class SocketService {
     _isSyncing = true;
 
     List<Map<String, int>> attempts = [];
-    const int targetCycles = 8; 
+    const int targetCycles = 12;
 
     for (int i = 0; i < targetCycles; i++) {
       if (_socket == null || !_socket!.connected) break;
@@ -96,7 +107,12 @@ class SocketService {
       });
 
       try {
-        final result = await completer.future.timeout(Duration(milliseconds: 100));
+        // Таймаут должен быть заведомо больше реального RTT. Раньше было 100мс,
+        // и при RTT>100мс (обычный мобильный интернет или удалённый сервер на
+        // Railway) КАЖДЫЙ замер отваливался, offset не обновлялся вовсе, и
+        // устройство стартовало треки по несинхронизированным часам — это и
+        // давало сильный рассинхрон. 600мс покрывает практически любой RTT.
+        final result = await completer.future.timeout(const Duration(milliseconds: 600));
         attempts.add(result);
       } catch (_) {}
 
@@ -119,16 +135,17 @@ class SocketService {
     if (validAttempts.isEmpty) validAttempts = attempts;
 
     validAttempts.sort((a, b) => a['rtt']!.compareTo(b['rtt']!));
-    List<Map<String, int>> bestAttempts = validAttempts.take(3).toList();
+    // Берём лучшую половину замеров (с наименьшим RTT — они точнее), но не
+    // меньше 3. По ним считаем МЕДИАНУ offset, а не среднее: медиана
+    // устойчива к одиночным выбросам (случайный лаг в одном замере не
+    // утянет весь offset).
+    final int takeN = validAttempts.length >= 6 ? (validAttempts.length ~/ 2) : validAttempts.length.clamp(1, 3);
+    List<Map<String, int>> bestAttempts = validAttempts.take(takeN).toList();
 
-    int offsetSum = 0;
-    for (var attempt in bestAttempts) {
-      offsetSum += attempt['offset']!;
-    }
-
-    _masterOffset = offsetSum ~/ bestAttempts.length;
+    List<int> offsets = bestAttempts.map((e) => e['offset']!).toList()..sort();
+    _masterOffset = offsets[offsets.length ~/ 2]; // медиана
     _isSyncing = false;
-    print('[SyncTime] Калибровка завершена. Офсет: $_masterOffset мс. RTT: $_lastCalculatedRtt мс.');
+    print('[SyncTime] Калибровка завершена. Офсет: $_masterOffset мс. RTT: $_lastCalculatedRtt мс. Замеров: ${attempts.length}/${targetCycles}');
   }
 
   void _startHeartbeat() {
@@ -166,7 +183,11 @@ class SocketService {
       if (data is Map && data['clientTime'] == t1 && data['serverTime'] != null) {
         int rtt = t2 - t1;
         _lastCalculatedRtt = rtt; 
-        if (rtt < 300) {
+        // Порог RTT для принятия замера. Раньше 300мс — при более высоком
+        // пинге (мобильный интернет) heartbeat вообще не корректировал offset
+        // между полными калибровками, и часы медленно уплывали. 600мс покрывает
+        // реальные условия. EMA-сглаживание ниже гасит случайные выбросы.
+        if (rtt < 600) {
           int newOffset = (data['serverTime'] as int) - (t1 + (rtt ~/ 2));
           _masterOffset = ((_masterOffset * 4) + newOffset) ~/ 5;
         }

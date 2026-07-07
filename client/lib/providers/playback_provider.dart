@@ -6,9 +6,11 @@ import 'package:palette_generator/palette_generator.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:spotify_sdk/models/player_state.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../config.dart';
 import '../services/socket_service.dart';
+import '../services/session_foreground_service.dart';
 
 typedef SessionTracksCallback = void Function(Map<String, dynamic> data);
 typedef SessionPlaybackCallback = void Function(Map<String, dynamic> track);
@@ -37,6 +39,17 @@ class PlaybackProvider extends ChangeNotifier {
   // Сохранённая громкость на время "preview-play" при подготовке трека
   // (Windows/Web). См. handleServerPrepare и обработчик session_start.
   int? _preMuteVolume;
+  // ─── Фаза 7.3: калибровка задержки аудиовыхода (Bluetooth) ────────────────
+  // Насколько звук на этом устройстве отстаёт от команды (мс). Пользователь
+  // задаёт вручную в настройках. Вычитается из момента старта, чтобы
+  // скомпенсировать задержку Bluetooth-наушников. 0 = без компенсации.
+  int _audioLatencyMs = 0;
+  // Счётчик последовательных превышений порога дрейфа. Коррекцию позиции
+  // делаем только после 2 подтверждений подряд — чтобы одиночный скачок не
+  // вызывал лишний seek (микро-паузы у гостя).
+  int _driftStrikes = 0;
+  int get audioLatencyMs => _audioLatencyMs;
+  static const String _kAudioLatencyKey = 'audio_latency_ms';
 
   SocketService? _socketService;
   String? _currentSessionId;
@@ -126,6 +139,31 @@ class PlaybackProvider extends ChangeNotifier {
 
   void setApiService(ApiService api) {
     _apiService = api;
+    _loadAudioLatency();
+  }
+
+  // ─── Фаза 7.3: загрузка/сохранение калибровки задержки ───────────────────
+  Future<void> _loadAudioLatency() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _audioLatencyMs = prefs.getInt(_kAudioLatencyKey) ?? 0;
+      notifyListeners();
+    } catch (e) {
+      print('[SyncM] Не удалось загрузить калибровку задержки: $e');
+    }
+  }
+
+  // Устанавливает калибровку задержки (мс) и сохраняет. Ограничиваем разумным
+  // диапазоном 0..1000мс — больше физически не бывает даже у медленного BT.
+  Future<void> setAudioLatency(int ms) async {
+    _audioLatencyMs = ms.clamp(0, 1000);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kAudioLatencyKey, _audioLatencyMs);
+    } catch (e) {
+      print('[SyncM] Не удалось сохранить калибровку задержки: $e');
+    }
   }
 
   static Map<String, dynamic> mapSessionTrack(dynamic raw, int index) {
@@ -273,9 +311,17 @@ class PlaybackProvider extends ChangeNotifier {
     _pollingTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
       if (!_isPlaying) return;
 
-      if (_isPlaying && _durationMs > 0) {
+      if (_sessionMode) {
+        // В сессии позицию для UI ведёт серверный якорь (Фаза 4.3) через
+        // геттер positionMs — локально её НЕ наращиваем, иначе два механизма
+        // конфликтуют и картинка дёргается. Синхронизируем внутренний
+        // _positionMs с якорной позицией (для детекта конца трека) и всё.
+        _positionMs = positionMs; // геттер: якорная позиция
+        if (_isHost) _checkSessionTrackEnd();
+        // notifyListeners не нужен — перерисовку ведёт _sessionUiTicker.
+      } else if (_durationMs > 0) {
+        // Вне сессии — прежнее локальное наращивание.
         _positionMs = (_positionMs + 500).clamp(0, _durationMs);
-        _checkSessionTrackEnd();
         notifyListeners();
       }
 
@@ -352,6 +398,8 @@ class PlaybackProvider extends ChangeNotifier {
     socketService.emit('join_session', {'sessionId': sessionId});
     socketService.setActiveSession(sessionId); // Фаза 6: для авто-ресинка
     _startSessionUiTicker();
+    // Шаг 2: удерживаем приложение живым в фоне на время сессии (Android).
+    SessionForegroundService.start();
 
     // ─── Фаза 2: Получаем команду подготовить трек ─────────────────────────
     socketService.on('session_prepare', handleServerPrepare);
@@ -368,7 +416,11 @@ class PlaybackProvider extends ChangeNotifier {
 
       // Переводим серверное время в локальное с защитой от double
       final dynamic rawLocalStart = socketService.serverToLocal(startAt);
-      final int localStart = rawLocalStart is num ? rawLocalStart.round() : startAt;
+      final int rawStart = rawLocalStart is num ? rawLocalStart.round() : startAt;
+      // Фаза 7.3: компенсируем задержку аудиовыхода — стартуем РАНЬШE на
+      // величину задержки, чтобы звук (который отстаёт от команды на BT) в
+      // итоге зазвучал одновременно с остальными участниками.
+      final int localStart = rawStart - _audioLatencyMs;
       final now = DateTime.now().millisecondsSinceEpoch;
       final int delayMs = localStart - now;
 
@@ -448,21 +500,29 @@ class PlaybackProvider extends ChangeNotifier {
 
       final int drift = (expectedPos - _positionMs).abs();
 
-      // Если расхождение > 500мс — физически подтягиваем реальный звук
-      // (seek). Это отдельно от визуальной синхры: seek на Spotify слышен как
-      // рывок, поэтому делаем его только при заметном дрейфе, а не каждый раз.
-      if (drift > 500 && _isPlaying) {
+      // Порог коррекции РАЗНЫЙ по платформам. На Windows/Web seek — это
+      // сетевая команда Spotify, слышимая как микро-пауза/дёрг, поэтому там
+      // порог выше и дёргать надо реже. На мобильных (SDK) seek дешевле.
+      final int driftThreshold = (_isWindows || _isWeb) ? 1200 : 700;
+
+      // Требуем ПОДТВЕРЖДЕНИЯ дрейфа: коррекцию делаем только если дрейф
+      // превышен ДВА раза подряд. Одиночный скачок (локальный таймер на миг
+      // разошёлся с серверным временем) больше не вызывает лишний seek —
+      // именно частые необоснованные seek давали регулярные микро-паузы.
+      if (drift > driftThreshold && _isPlaying) {
+        _driftStrikes++;
+      } else {
+        _driftStrikes = 0;
+      }
+
+      if (_driftStrikes >= 2 && _isPlaying) {
+        _driftStrikes = 0;
         _positionMs = expectedPos;
         notifyListeners();
         if (!_isWindows && !_isWeb && _isConnected) {
           // Мобильные
           SpotifySdk.seekTo(positionedMilliseconds: expectedPos).catchError((_) {});
         } else if (_isWindows || _isWeb) {
-          // Раньше здесь корректировалась только цифра в UI (_positionMs выше),
-          // а РЕАЛЬНОЕ воспроизведение в Spotify не трогалось вообще — из-за
-          // этого дрейф между устройствами накапливался и никогда не лечился
-          // сам собой в течение сессии. Теперь физически подтягиваем позицию
-          // и на Windows/Web тоже, той же командой, что и ручная перемотка.
           final svc = _apiService;
           if (svc != null) {
             svc.seekToPosition(expectedPos).catchError((e) {
@@ -1308,6 +1368,7 @@ class PlaybackProvider extends ChangeNotifier {
       _socketService?.emit('leave_session', {'sessionId': _currentSessionId, 'userId': _userId});
     }
     _socketService?.setActiveSession(null); // Фаза 6: больше не ресинкаем
+    SessionForegroundService.stop(); // Шаг 2: снимаем удержание в фоне
     // Не вызываем _socketService?.disconnect() — это общий singleton-сокет,
     // используемый остальным приложением (друзья, presence и т.д.), и его
     // нельзя рвать только потому что пользователь ушёл с экрана сессии.

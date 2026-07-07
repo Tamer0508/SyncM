@@ -4,6 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/playback_provider.dart';
+import '../../services/session_foreground_service.dart';
 import '../../utils/notifications.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -277,6 +279,137 @@ class _SettingsBodyState extends State<_SettingsBody> {
           },
         ),
         const SizedBox(height: 32),
+
+        // ─── Фаза 7.3: калибровка задержки звука (Bluetooth) ────────────────
+        Text(
+          'Синхронизация звука',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Если в сессии звук на этом устройстве отстаёт от других '
+          '(например, через Bluetooth-наушники), сдвиньте задержку вперёд, '
+          'пока музыка не совпадёт.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        const _AudioLatencyTile(),
+
+        const SizedBox(height: 32),
+
+        // ─── Шаг 2: фоновая работа сессии ───────────────────────────────────
+        Text(
+          'Фоновое воспроизведение',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Чтобы синхронизация не прерывалась при погашенном экране, разрешите '
+          'приложению работать в фоне без ограничений батареи. На некоторых '
+          'телефонах (Xiaomi, Huawei) дополнительно включите «Автозапуск» в '
+          'настройках приложения.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.tonalIcon(
+          onPressed: () async {
+            await SessionForegroundService.requestPermissions();
+            if (context.mounted) {
+              showAppNotification(context,
+                  message: 'Проверьте разрешения в системном окне',
+                  type: NotificationType.info);
+            }
+          },
+          icon: const Icon(Icons.battery_saver),
+          label: const Text('Разрешить работу в фоне'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final opened =
+                await SessionForegroundService.openAutostartSettings();
+            if (context.mounted && !opened) {
+              showAppNotification(context,
+                  message:
+                      'Откройте настройки приложения и включите автозапуск вручную',
+                  type: NotificationType.info);
+            }
+          },
+          icon: const Icon(Icons.settings_applications_outlined),
+          label: const Text('Настроить автозапуск'),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Xiaomi/Redmi: включите «Автозапуск», а в разделе батареи выберите '
+          '«Нет ограничений». Иначе система может закрыть приложение при '
+          'выключенном экране.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+}
+
+// Плитка калибровки задержки аудиовыхода.
+class _AudioLatencyTile extends StatelessWidget {
+  const _AudioLatencyTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final pb = Provider.of<PlaybackProvider>(context);
+    final latency = pb.audioLatencyMs;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.headphones, color: theme.colorScheme.primary),
+            const SizedBox(width: 12),
+            Text(
+              'Задержка звука',
+              style: theme.textTheme.bodyLarge,
+            ),
+            const Spacer(),
+            Text(
+              '$latency мс',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: latency.toDouble().clamp(0, 1000),
+          min: 0,
+          max: 1000,
+          divisions: 40, // шаг 25мс
+          label: '$latency мс',
+          onChanged: (v) {
+            pb.setAudioLatency(v.round());
+          },
+        ),
+        if (latency > 0)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => pb.setAudioLatency(0),
+              child: const Text('Сбросить'),
+            ),
+          ),
       ],
     );
   }
