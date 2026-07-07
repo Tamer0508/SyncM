@@ -202,7 +202,26 @@ class PlaybackProvider extends ChangeNotifier {
     try {
       final next = _sessionQueueIndex + 1;
       if (next < _sessionQueue.length) {
-        await playSessionTrack(next, syncToSession: true);
+        // ─── Фаза 7.4: быстрый автопереход ──────────────────────────────────
+        // При естественном конце трека НЕ гоняем полный хендшейк
+        // (session_prepare→client_ready→session_start) — он добавлял 1-2с
+        // тишины на стыке. Вместо этого сразу просим сервер синхронно
+        // стартовать следующий трек: session_advance → server → session_start
+        // всем с коротким guard. Обработчик session_start сам запустит
+        // воспроизведение у всех участников, включая хоста.
+        _sessionQueueIndex = next;
+        _queueEnded = false;
+        final track = Map<String, dynamic>.from(_sessionQueue[next]);
+        _positionMs = 0;
+        _durationMs = (track['durationMs'] as num?)?.toInt() ?? 0;
+        notifyListeners();
+
+        final trackId = (track['uri'] as String).split(':').last;
+        _socketService?.emit('session_advance', {
+          'sessionId': _currentSessionId,
+          'trackId': trackId,
+          'durationMs': track['durationMs'],
+        });
       } else {
         await _stopAtQueueEnd();
       }

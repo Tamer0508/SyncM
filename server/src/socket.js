@@ -485,6 +485,30 @@ const setupSocket = (io) => {
       socket.to(sessionId).emit('next_track', { spotifyUri });
     });
 
+    // ─── Фаза 7.4: быстрый автопереход (без хендшейка) ──────────────────────
+    // При естественном завершении трека хост шлёт следующий trackId, и сервер
+    // сразу рассылает session_start с коротким guard — минуя ритуал
+    // prepare→ready→start. Это убирает 1-2с паузы на стыке треков: остаётся
+    // только неизбежная задержка загрузки трека в Spotify (~0.5с).
+    // Инициировать может только хост (у него источник очереди).
+    socket.on('session_advance', async ({ sessionId, trackId, durationMs }) => {
+      const uid = socket.data.userId;
+      if (!uid || !(await isSessionMember(sessionId, uid))) return;
+
+      // Проверяем, что это действительно хост сессии.
+      const session = await prisma.session.findUnique({
+        where: { id: sessionId }, select: { hostId: true }
+      });
+      if (!session || session.hostId !== uid) return;
+
+      if (!trackId) return;
+      // Обновляем длительность в состоянии (для детекта конца у клиентов).
+      const prev = sessionStates.get(sessionId) || {};
+      sessionStates.set(sessionId, { ...prev, durationMs: durationMs || prev.durationMs });
+      // Мгновенный синхронный старт следующего трека с позиции 0.
+      startFromPosition(io, sessionId, trackId, 0);
+    });
+
     socket.on('rate_track', async ({ sessionId, trackId, rating }) => {
       const uid = socket.data.userId;
       if (!uid || !(await isSessionMember(sessionId, uid))) return;
