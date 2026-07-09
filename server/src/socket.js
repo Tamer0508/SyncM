@@ -170,18 +170,14 @@ function startFromPosition(io, sessionId, trackId, positionMs) {
 
   startSyncInterval(io, sessionId);
 
-  // ─── Авто-ресинк импульс ───────────────────────────────────────────────
-  // Главный источник рассинхрона — РАЗНОЕ время загрузки трека в Spotify у
-  // участников (особенно на первом треке и при высоком RTT). guard это не
-  // покрывает. Приём: через несколько секунд после старта, когда трек у ВСЕХ
-  // уже загружен, делаем короткий pause→resume с общей позицией — resume
-  // переигрывает уже загруженный трек синхронно у всех, выравнивая рассинхрон.
-  // Это автоматизация ручного pause/resume, которым пользователь добивался
-  // идеальной синхры.
+  // Авто-ресинк через re-seek: через несколько секунд после старта (когда трек
+  // у всех загрузился) сервер шлёт принудительную синхронную перемотку на
+  // общую позицию — выравнивает рассинхрон, возникший из-за разного времени
+  // загрузки трека в Spotify. В отличие от pause/resume, дёргает только тех,
+  // кто реально разошёлся, и без паузы у всех.
   scheduleAutoResync(io, sessionId, trackId, startAt);
 }
 
-// Хранит таймеры авто-ресинка, чтобы отменять при смене трека/паузе.
 const autoResyncTimers = new Map(); // sessionId -> timeoutId
 
 function cancelAutoResync(sessionId) {
@@ -192,38 +188,22 @@ function cancelAutoResync(sessionId) {
 }
 
 function scheduleAutoResync(io, sessionId, trackId, startAt) {
-  if (autoResyncTimers.has(sessionId)) {
-    clearTimeout(autoResyncTimers.get(sessionId));
-  }
-  // Ждём: guard (пока все реально стартуют) + запас на загрузку у медленного.
+  cancelAutoResync(sessionId);
   const delay = Math.max(0, startAt - Date.now()) + 3000;
   const timer = setTimeout(() => {
     autoResyncTimers.delete(sessionId);
     const state = sessionStates.get(sessionId);
-    // Импульс актуален, только если тот же трек всё ещё играет.
     if (!state || state.state !== 'playing' || state.trackId !== trackId) return;
 
-    const pausePos = getCurrentPosition(state);
-    // 1) Пауза у всех на текущей позиции. Флаг auto — чтобы клиент понял, что
-    //    это ресинк-импульс, а не пользовательская пауза / конец трека.
-    io.to(sessionId).emit('session_pause', { positionMs: pausePos, auto: true });
-
-    // 2) Через короткую паузу — синхронный resume с той же позиции по общему
-    //    серверному времени. Обновляем состояние, чтобы sync шёл корректно.
-    setTimeout(() => {
-      const st = sessionStates.get(sessionId);
-      if (!st || st.trackId !== trackId) return;
-      const resumeAt = Date.now();
-      sessionStates.set(sessionId, {
-        ...st,
-        state: 'playing',
-        positionMs: pausePos,
-        serverTime: resumeAt,
-        startAt: resumeAt,
-      });
-      io.to(sessionId).emit('session_resume', { positionMs: pausePos, auto: true });
-      startSyncInterval(io, sessionId);
-    }, 350);
+    // Синхронная перемотка на общую позицию по общему серверному времени.
+    // Клиент выполнит seek только если реально разошёлся (порог), поэтому
+    // те, кто в синхре, ничего не почувствуют.
+    const pos = getCurrentPosition(state);
+    io.to(sessionId).emit('session_reseek', {
+      positionMs: pos,
+      serverTime: Date.now(),
+      trackId,
+    });
   }, delay);
   autoResyncTimers.set(sessionId, timer);
 }

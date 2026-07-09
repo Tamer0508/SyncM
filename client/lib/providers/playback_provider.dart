@@ -399,6 +399,7 @@ class PlaybackProvider extends ChangeNotifier {
       'session_prepare',
       'session_start',
       'session_sync',
+      'session_reseek',
       'session_pause',
       'session_resume',
       'session_state',
@@ -557,26 +558,52 @@ class PlaybackProvider extends ChangeNotifier {
       }
     });
 
+    // ─── Авто-ресинк: принудительная синхронная перемотка ──────────────────
+    // Приходит через несколько секунд после старта трека (когда трек у всех
+    // загрузился). Выравнивает рассинхрон от разного времени загрузки Spotify.
+    socketService.on('session_reseek', (data) async {
+      final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      final positionMs = (map['positionMs'] as num?)?.toInt();
+      final serverTime = (map['serverTime'] as num?)?.toInt();
+      if (positionMs == null || serverTime == null || !_isPlaying) return;
+      if (_sessionPaused || _isSessionSeeking || _isAdvancingQueue) return;
+
+      // Целевая позиция = серверная позиция + время, прошедшее с момента,
+      // когда сервер её замерил (доставка команды).
+      final int nowServer = _socketService?.serverNow() ?? DateTime.now().millisecondsSinceEpoch;
+      final int target = positionMs + (nowServer - serverTime);
+      final int drift = (target - _positionMs).abs();
+
+      // Порог ниже обычной коррекции (это целевой ресинк), но не трогаем тех,
+      // кто и так в синхре, чтобы не дёргать зря.
+      if (drift < 250) return;
+
+      _positionMs = target;
+      _setSyncAnchor(target, nowServer);
+      notifyListeners();
+      try {
+        if (_isWindows || _isWeb) {
+          await _apiService?.seekToPosition(target);
+        } else {
+          await SpotifySdk.seekTo(positionedMilliseconds: target);
+        }
+      } catch (e) {
+        print('[SyncM] session_reseek не удался: $e');
+      }
+    });
+
     // ─── Фаза 5: Пауза от сервера ───────────────────────────────────────────
     socketService.on('session_pause', (data) async {
       print('[Socket] Получен session_pause: $data');
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final positionMs = (map['positionMs'] as num?)?.toInt();
-      final bool isAuto = map['auto'] == true;
-
-      // Авто-ресинк импульс: это служебная пауза (не пользователь). Подавляем
-      // детект конца трека на время импульса, чтобы он не был принят за
-      // завершение трека и не вызвал автопереход.
-      if (isAuto) {
-        _isSessionSeeking = true;
-      }
 
       _isPlaying = false;
       _sessionPaused = true;
       if (positionMs != null) _positionMs = positionMs;
       _clearSyncAnchor(); // на паузе UI показывает застывший _positionMs
       notifyListeners();
-      if (!isAuto) await _restoreVolumeIfMuted();
+      await _restoreVolumeIfMuted();
 
       if (_isWindows || _isWeb) {
         try {
@@ -593,13 +620,10 @@ class PlaybackProvider extends ChangeNotifier {
       _sessionPaused = false;
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final resumePos = (map['positionMs'] as num?)?.toInt();
-      final bool isAuto = map['auto'] == true;
       if (resumePos != null) _positionMs = resumePos;
       // Якорь заново: с этого момента серверное время соответствует resumePos
       // (или последней известной позиции, если сервер её не прислал).
       _setSyncAnchor(resumePos ?? _positionMs, socketService.serverNow());
-      // После авто-ресинка снимаем подавление детекта конца трека (с запасом).
-      if (isAuto) _clearSessionSeekingSoon();
       if (!_isPlaying) {
         // Получатель: нужно возобновить воспроизведение
         _isPlaying = true;
