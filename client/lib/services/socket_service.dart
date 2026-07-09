@@ -209,7 +209,6 @@ class SocketService {
     // окне (у нас теперь два пути: initState и build) убивал первый сокет
     // через disconnect() до того, как он подключался — onConnect не срабатывал.
     if (_socket != null && _baseUrl == baseUrl && _token == token) return;
-    print('[SocketDebug] init baseUrl=$baseUrl token=$token');
     _baseUrl = baseUrl;
     _token = token;
     _socket?.disconnect();
@@ -227,14 +226,8 @@ class SocketService {
       'randomizationFactor': 0.5,
     });
 
-    _socket!.onConnectError((e) => print('[SocketDebug] CONNECT_ERROR: $e'));
-    _socket!.onError((e) => print('[SocketDebug] ERROR: $e'));
-    _socket!.onDisconnect((r) => print('[SocketDebug] DISCONNECT: $r'));
-
     _socket!.onConnect((_) async {
-      print('[SocketDebug] CONNECTED id=${_socket!.id} token=$token');
       _socket!.emit('authenticate', {'token': token});
-      print('[SocketDebug] authenticate отправлен');
 
       // Фаза 6: после ЛЮБОГО подключения заново измеряем offset часов.
       // Ускоренная процедура сама по себе быстрая (несколько ping/pong).

@@ -122,12 +122,10 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
   void _ensureSocketInitialized(AuthProvider auth) {
     if (_socketInitialized) return;
     final userId = auth.user?.id;
-    print('[SocketDebug] _ensureSocketInitialized userId=$userId alreadyInit=$_socketInitialized');
     if (userId == null) return;
     _socketInitialized = true;
     final socket = SocketService();
     socket.init('https://syncm-production.up.railway.app', userId);
-    print('[SocketDebug] socket.init вызван для userId=$userId');
     Provider.of<FriendsProvider>(context, listen: false).init(socket);
     Provider.of<SessionProvider>(context, listen: false).init(socket);
     Provider.of<SessionProvider>(context, listen: false).fetchInvites();

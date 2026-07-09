@@ -175,11 +175,12 @@ class _SessionScreenState extends State<SessionScreen> {
       if (!mounted) return;
       _refreshSession();
     });
-    // Кто-то (пере)подключился к сессии — тоже обновим список участников.
-    socket.on('user_joined', (data) {
-      if (!mounted) return;
-      _refreshSession();
-    });
+    // Кто-то (пере)подключился. НЕ дёргаем тяжёлый _refreshSession — при
+    // нестабильной сети гостя user_joined прилетает часто (каждый реконнект),
+    // и полный refresh (HTTP + ребилд экрана) вызывал лаги. Актуальный
+    // онлайн-статус приходит отдельно через session_presence (лёгкий).
+    // Полный состав участников обновляем только при реальных изменениях
+    // (participant_dropped ниже).
     // Наше соединение восстановилось после разрыва — обновим состояние сессии.
     _reconnectSub = socket.onReconnect.listen((_) {
       if (!mounted) return;

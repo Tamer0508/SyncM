@@ -40,12 +40,21 @@ function getOnlineSessionUsers(sessionId) {
 }
 
 // Рассылает всем в комнате актуальный список онлайн-участников.
+// Дебаунс: при частых reconnect (нестабильная сеть) не спамим комнату чаще
+// раза в секунду — иначе клиенты захлёбываются событиями и подлагивают.
+const _presenceDebounce = new Map(); // sessionId -> timeoutId
 function broadcastSessionPresence(sessionId) {
   if (!ioInstance) return;
-  ioInstance.to(sessionId).emit('session_presence', {
-    sessionId,
-    onlineUserIds: getOnlineSessionUsers(sessionId),
-  });
+  if (_presenceDebounce.has(sessionId)) return; // уже запланировано
+  const t = setTimeout(() => {
+    _presenceDebounce.delete(sessionId);
+    if (!ioInstance) return;
+    ioInstance.to(sessionId).emit('session_presence', {
+      sessionId,
+      onlineUserIds: getOnlineSessionUsers(sessionId),
+    });
+  }, 800);
+  _presenceDebounce.set(sessionId, t);
 }
 
 // ─── Фаза 7.2: передача управления при уходе хоста ──────────────────────────
