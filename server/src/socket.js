@@ -120,7 +120,7 @@ function startSyncInterval(io, sessionId) {
       serverTime: Date.now(),
       state: state.state,
     });
-  }, 2000);
+  }, 4000);
   syncIntervals.set(sessionId, interval);
 }
 
@@ -135,7 +135,11 @@ function startFromPosition(io, sessionId, trackId, positionMs) {
   }
 
   const maxPing = rtts.length > 0 ? Math.max(...rtts) : 300;
-  const guard = Math.min(maxPing * 1.5 + 150, 800); // не более 800мс
+  // guard должен покрыть не только доставку команды (полпинга), но и время
+  // загрузки/буферизации трека в Spotify у самого медленного участника.
+  // Прежних max(...,800) не хватало при высоком RTT — гость не успевал
+  // догрузить трек и стартовал позже хоста. Даём больше запаса.
+  const guard = Math.min(maxPing * 2 + 600, 2500);
   const startAt = Date.now() + guard;
 
   const state = sessionStates.get(sessionId) || {};
