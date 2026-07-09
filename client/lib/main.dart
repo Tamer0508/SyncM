@@ -108,16 +108,29 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
       }
 
       await auth.fetchMe();
-
-      final userId = auth.user?.id;
-      if (userId != null) {
-        final socket = SocketService();
-        socket.init('https://syncm-production.up.railway.app', userId);
-        Provider.of<FriendsProvider>(context, listen: false).init(socket);
-        Provider.of<SessionProvider>(context, listen: false).init(socket);
-        Provider.of<SessionProvider>(context, listen: false).fetchInvites();
-      }
+      _ensureSocketInitialized(auth);
     });
+  }
+
+  // Инициализирует сокет и realtime-провайдеры, когда пользователь известен.
+  // РАНЬШЕ это было только в initState — если userId появлялся ПОЗЖЕ (свежая
+  // установка: сначала логин, потом userId), сокет не поднимался до перезахода,
+  // из-за чего не работали онлайн-статусы и приглашения в реальном времени.
+  // Теперь вызывается и после логина (из build), защита от повторного запуска
+  // внутри.
+  bool _socketInitialized = false;
+  void _ensureSocketInitialized(AuthProvider auth) {
+    if (_socketInitialized) return;
+    final userId = auth.user?.id;
+    print('[SocketDebug] _ensureSocketInitialized userId=$userId alreadyInit=$_socketInitialized');
+    if (userId == null) return;
+    _socketInitialized = true;
+    final socket = SocketService();
+    socket.init('https://syncm-production.up.railway.app', userId);
+    print('[SocketDebug] socket.init вызван для userId=$userId');
+    Provider.of<FriendsProvider>(context, listen: false).init(socket);
+    Provider.of<SessionProvider>(context, listen: false).init(socket);
+    Provider.of<SessionProvider>(context, listen: false).fetchInvites();
   }
 
   @override
@@ -148,8 +161,19 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
           );
         }
         if (auth.isLoggedIn) {
+          // Пользователь залогинен — поднимаем сокет, если он ещё не поднят
+          // (важно для свежего логина, когда userId появился после initState).
+          // Откладываем на post-frame, чтобы не вызывать провайдеры во время build.
+          if (!_socketInitialized && auth.user?.id != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _ensureSocketInitialized(auth);
+            });
+          }
           return const HomeScreen();
         }
+        // Не залогинен (в т.ч. после логаута) — сбрасываем флаг, чтобы при
+        // следующем входе сокет поднялся заново (возможно, другим аккаунтом).
+        _socketInitialized = false;
         return const LoginScreen();
       },
     );

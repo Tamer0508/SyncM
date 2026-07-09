@@ -37,7 +37,13 @@ class _SessionScreenState extends State<SessionScreen> {
   void _syncSessionQueue() {
     if (_session == null) return;
     final tracks = _session!['tracks'] as List? ?? [];
-    Provider.of<PlaybackProvider>(context, listen: false).setSessionQueue(tracks);
+    // Откладываем на post-frame: этот метод зовётся из didChangeDependencies
+    // (во время build), а setSessionQueue дёргает notifyListeners — вызывать
+    // его во время build нельзя (краш "setState during build").
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Provider.of<PlaybackProvider>(context, listen: false).setSessionQueue(tracks);
+    });
   }
 
   void _openPlayerIfMobile(Map<String, dynamic> track) async {

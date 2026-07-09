@@ -203,25 +203,38 @@ class SocketService {
   }
 
   void init(String baseUrl, String token) {
-    if (_socket?.connected == true && _baseUrl == baseUrl && _token == token) return;
+    // Уже есть сокет с теми же параметрами (подключён ИЛИ подключается) — не
+    // трогаем. Раньше проверялось только _socket?.connected == true, но между
+    // созданием и реальным подключением есть окно, и повторный init в этом
+    // окне (у нас теперь два пути: initState и build) убивал первый сокет
+    // через disconnect() до того, как он подключался — onConnect не срабатывал.
+    if (_socket != null && _baseUrl == baseUrl && _token == token) return;
+    print('[SocketDebug] init baseUrl=$baseUrl token=$token');
     _baseUrl = baseUrl;
     _token = token;
     _socket?.disconnect();
     
     _socket = IO.io(baseUrl, <String, dynamic>{
+      // Только websocket. polling на Railway (за прокси, без sticky sessions)
+      // не завершает хендшейк и даёт timeout — раньше всё работало именно на
+      // чистом websocket, возвращаем его.
       'transports': ['websocket'],
       'autoConnect': true,
-      // Фаза 6: экспоненциальный reconnect. socket.io сам увеличивает задержку
-      // от reconnectionDelay до reconnectionDelayMax с указанным разбросом.
       'reconnection': true,
-      'reconnectionAttempts': 9999,        // не сдаёмся
-      'reconnectionDelay': 1000,           // старт 1с
-      'reconnectionDelayMax': 15000,       // потолок 15с (как в спеке)
+      'reconnectionAttempts': 9999,
+      'reconnectionDelay': 1000,
+      'reconnectionDelayMax': 15000,
       'randomizationFactor': 0.5,
     });
 
+    _socket!.onConnectError((e) => print('[SocketDebug] CONNECT_ERROR: $e'));
+    _socket!.onError((e) => print('[SocketDebug] ERROR: $e'));
+    _socket!.onDisconnect((r) => print('[SocketDebug] DISCONNECT: $r'));
+
     _socket!.onConnect((_) async {
+      print('[SocketDebug] CONNECTED id=${_socket!.id} token=$token');
       _socket!.emit('authenticate', {'token': token});
+      print('[SocketDebug] authenticate отправлен');
 
       // Фаза 6: после ЛЮБОГО подключения заново измеряем offset часов.
       // Ускоренная процедура сама по себе быстрая (несколько ping/pong).
