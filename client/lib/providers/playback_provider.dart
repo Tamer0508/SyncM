@@ -515,10 +515,11 @@ class PlaybackProvider extends ChangeNotifier {
 
       final int drift = (expectedPos - _positionMs).abs();
 
-      // Во время активной перемотки НЕ корректируем: сервер мог ещё не
-      // пересчитать позицию после нашего seek, и его session_sync тянул бы
-      // трек на старую позицию, потом обратно (баг "ползунок скачет").
-      if (_isSessionSeeking) {
+      // Во время активной перемотки ИЛИ автоперехода НЕ корректируем: сервер
+      // мог ещё не пересчитать позицию, и его session_sync тянул бы трек на
+      // старую/нулевую позицию, потом обратно (баги "ползунок скачет",
+      // "прыгает на первую секунду").
+      if (_isSessionSeeking || _isAdvancingQueue) {
         _driftStrikes = 0;
         return;
       }

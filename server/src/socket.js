@@ -94,7 +94,12 @@ async function transferHostIfNeeded(sessionId, leftUserId) {
 
 function getCurrentPosition(state) {
   if (!state || state.state !== 'playing') return state?.positionMs || 0;
-  return state.positionMs + (Date.now() - state.serverTime);
+  // serverTime здесь = startAt (момент реального старта, может быть в будущем
+  // из-за guard). До наступления startAt трек ещё не заиграл — позиция равна
+  // стартовой. После — прибавляем реально прошедшее с момента старта время.
+  const elapsed = Date.now() - state.serverTime;
+  if (elapsed < 0) return state.positionMs; // ещё не стартовали (guard-окно)
+  return state.positionMs + elapsed;
 }
 
 function stopSyncInterval(sessionId) {
@@ -113,6 +118,10 @@ function startSyncInterval(io, sessionId) {
       stopSyncInterval(sessionId);
       return;
     }
+    // Не шлём sync, пока трек ещё в guard-окне (не наступил startAt) или только
+    // что стартовал (<2с) — за это время плееры ещё выравниваются, а ранняя
+    // сверка вызвала бы ложную коррекцию.
+    if (state.startAt && Date.now() < state.startAt + 2000) return;
     const positionMs = getCurrentPosition(state);
     io.to(sessionId).emit('session_sync', {
       trackId: state.trackId,
