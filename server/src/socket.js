@@ -382,7 +382,7 @@ const setupSocket = (io) => {
       // Проверяем все ли в комнате готовы
       const room = io.sockets.adapter.rooms.get(sessionId);
       const roomSize = room ? room.size : 1;
-      const READY_TIMEOUT_MS = 5000;
+      const READY_TIMEOUT_MS = 2500;
 
       if (ready.size >= roomSize) {
         // Все готовы — стартуем

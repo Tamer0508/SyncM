@@ -260,12 +260,27 @@ class PlaybackProvider extends ChangeNotifier {
           'trackId': trackId,
           'durationMs': track['durationMs'],
         });
+        // НЕ сбрасываем _isAdvancingQueue сразу: новый трек начнёт играть
+        // только через guard + загрузку (~1-2с), а до этого SDK мигает паузой
+        // с позицией у конца СТАРОГО трека — что без флага прочиталось бы как
+        // ещё один "конец трека" и вызвало лишний скип. Сбрасываем с задержкой.
+        _scheduleAdvanceFlagReset();
       } else {
         await _stopAtQueueEnd();
+        _isAdvancingQueue = false;
       }
-    } finally {
+    } catch (e) {
+      print('[SyncM] _advanceSessionQueue error: $e');
       _isAdvancingQueue = false;
     }
+  }
+
+  Timer? _advanceResetTimer;
+  void _scheduleAdvanceFlagReset() {
+    _advanceResetTimer?.cancel();
+    _advanceResetTimer = Timer(const Duration(milliseconds: 3500), () {
+      _isAdvancingQueue = false;
+    });
   }
 
   Future<void> _stopAtQueueEnd() async {
@@ -500,6 +515,14 @@ class PlaybackProvider extends ChangeNotifier {
 
       final int drift = (expectedPos - _positionMs).abs();
 
+      // Во время активной перемотки НЕ корректируем: сервер мог ещё не
+      // пересчитать позицию после нашего seek, и его session_sync тянул бы
+      // трек на старую позицию, потом обратно (баг "ползунок скачет").
+      if (_isSessionSeeking) {
+        _driftStrikes = 0;
+        return;
+      }
+
       // Порог коррекции РАЗНЫЙ по платформам. На Windows/Web seek — это
       // сетевая команда Spotify, слышимая как микро-пауза/дёрг, поэтому там
       // порог выше и дёргать надо реже. На мобильных (SDK) seek дешевле.
@@ -698,7 +721,7 @@ class PlaybackProvider extends ChangeNotifier {
   Timer? _sessionSeekingTimer;
   void _clearSessionSeekingSoon() {
     _sessionSeekingTimer?.cancel();
-    _sessionSeekingTimer = Timer(const Duration(milliseconds: 1500), () {
+    _sessionSeekingTimer = Timer(const Duration(milliseconds: 3000), () {
       _isSessionSeeking = false;
     });
   }
@@ -1597,6 +1620,7 @@ class PlaybackProvider extends ChangeNotifier {
     _trackChangeTimer?.cancel();
     _sessionUiTicker?.cancel();
     _sessionSeekingTimer?.cancel();
+    _advanceResetTimer?.cancel();
     // Аналогично stop() — не трогаем общий singleton-сокет здесь.
     super.dispose();
   }
