@@ -169,6 +169,63 @@ function startFromPosition(io, sessionId, trackId, positionMs) {
   });
 
   startSyncInterval(io, sessionId);
+
+  // ─── Авто-ресинк импульс ───────────────────────────────────────────────
+  // Главный источник рассинхрона — РАЗНОЕ время загрузки трека в Spotify у
+  // участников (особенно на первом треке и при высоком RTT). guard это не
+  // покрывает. Приём: через несколько секунд после старта, когда трек у ВСЕХ
+  // уже загружен, делаем короткий pause→resume с общей позицией — resume
+  // переигрывает уже загруженный трек синхронно у всех, выравнивая рассинхрон.
+  // Это автоматизация ручного pause/resume, которым пользователь добивался
+  // идеальной синхры.
+  scheduleAutoResync(io, sessionId, trackId, startAt);
+}
+
+// Хранит таймеры авто-ресинка, чтобы отменять при смене трека/паузе.
+const autoResyncTimers = new Map(); // sessionId -> timeoutId
+
+function cancelAutoResync(sessionId) {
+  if (autoResyncTimers.has(sessionId)) {
+    clearTimeout(autoResyncTimers.get(sessionId));
+    autoResyncTimers.delete(sessionId);
+  }
+}
+
+function scheduleAutoResync(io, sessionId, trackId, startAt) {
+  if (autoResyncTimers.has(sessionId)) {
+    clearTimeout(autoResyncTimers.get(sessionId));
+  }
+  // Ждём: guard (пока все реально стартуют) + запас на загрузку у медленного.
+  const delay = Math.max(0, startAt - Date.now()) + 3000;
+  const timer = setTimeout(() => {
+    autoResyncTimers.delete(sessionId);
+    const state = sessionStates.get(sessionId);
+    // Импульс актуален, только если тот же трек всё ещё играет.
+    if (!state || state.state !== 'playing' || state.trackId !== trackId) return;
+
+    const pausePos = getCurrentPosition(state);
+    // 1) Пауза у всех на текущей позиции. Флаг auto — чтобы клиент понял, что
+    //    это ресинк-импульс, а не пользовательская пауза / конец трека.
+    io.to(sessionId).emit('session_pause', { positionMs: pausePos, auto: true });
+
+    // 2) Через короткую паузу — синхронный resume с той же позиции по общему
+    //    серверному времени. Обновляем состояние, чтобы sync шёл корректно.
+    setTimeout(() => {
+      const st = sessionStates.get(sessionId);
+      if (!st || st.trackId !== trackId) return;
+      const resumeAt = Date.now();
+      sessionStates.set(sessionId, {
+        ...st,
+        state: 'playing',
+        positionMs: pausePos,
+        serverTime: resumeAt,
+        startAt: resumeAt,
+      });
+      io.to(sessionId).emit('session_resume', { positionMs: pausePos, auto: true });
+      startSyncInterval(io, sessionId);
+    }, 350);
+  }, delay);
+  autoResyncTimers.set(sessionId, timer);
 }
 
 async function updateOnlineStatus(userId, isOnline) {
@@ -422,6 +479,10 @@ const setupSocket = (io) => {
 
       const state = sessionStates.get(sessionId);
       if (!state) return;
+
+      // Любая ручная команда отменяет запланированный авто-ресинк — иначе он
+      // сработает поверх действия пользователя.
+      cancelAutoResync(sessionId);
 
       if (action === 'pause') {
         // Если пауза пришла ПОКА идёт хендшейк подготовки следующего трека —
@@ -682,6 +743,8 @@ const closeSocket = async () => {
     offlineTimers.clear();
     sessionDropTimers.forEach(t => clearTimeout(t));
     sessionDropTimers.clear();
+    autoResyncTimers.forEach(t => clearTimeout(t));
+    autoResyncTimers.clear();
     onlineUsers.clear();
     await new Promise(resolve => ioInstance.close(resolve));
   }
