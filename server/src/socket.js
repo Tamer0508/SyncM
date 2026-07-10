@@ -133,7 +133,7 @@ function startSyncInterval(io, sessionId) {
   syncIntervals.set(sessionId, interval);
 }
 
-function startFromPosition(io, sessionId, trackId, positionMs) {
+function startFromPosition(io, sessionId, trackId, positionMs, fastMode = false) {
   const rtts = [];
   const room = ioInstance?.sockets.adapter.rooms.get(sessionId);
   if (room) {
@@ -144,11 +144,13 @@ function startFromPosition(io, sessionId, trackId, positionMs) {
   }
 
   const maxPing = rtts.length > 0 ? Math.max(...rtts) : 300;
-  // guard должен покрыть не только доставку команды (полпинга), но и время
-  // загрузки/буферизации трека в Spotify у самого медленного участника.
-  // Прежних max(...,800) не хватало при высоком RTT — гость не успевал
-  // догрузить трек и стартовал позже хоста. Даём больше запаса.
-  const guard = Math.min(maxPing * 2 + 600, 2500);
+  // guard покрывает доставку команды + буферизацию трека в Spotify.
+  // fastMode (автопереход): меньший guard, чтобы гость не ждал долго перед
+  // сменой трека — рассинхрон от разной загрузки добирает session_reseek.
+  // Обычный режим (ручной старт/seek): больше запаса для надёжной синхры.
+  const guard = fastMode
+    ? Math.min(maxPing + 400, 1200)
+    : Math.min(maxPing * 2 + 600, 2500);
   const startAt = Date.now() + guard;
 
   const state = sessionStates.get(sessionId) || {};
@@ -603,8 +605,9 @@ const setupSocket = (io) => {
       // Обновляем длительность в состоянии (для детекта конца у клиентов).
       const prev = sessionStates.get(sessionId) || {};
       sessionStates.set(sessionId, { ...prev, durationMs: durationMs || prev.durationMs });
-      // Мгновенный синхронный старт следующего трека с позиции 0.
-      startFromPosition(io, sessionId, trackId, 0);
+      // Быстрый синхронный старт следующего трека (fastMode: меньший guard,
+      // чтобы гость не ждал долго; рассинхрон добирает session_reseek).
+      startFromPosition(io, sessionId, trackId, 0, true);
     });
 
     socket.on('rate_track', async ({ sessionId, trackId, rating }) => {
