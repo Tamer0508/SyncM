@@ -577,10 +577,10 @@ class PlaybackProvider extends ChangeNotifier {
       final int target = positionMs + (nowServer - serverTime);
       final int drift = (target - _positionMs).abs();
 
-      // Порог: выравниваем только реально заметный рассинхрон. При RTT 200мс+
-      // дрейф 250-400мс — норма, и seek на него давал бы микрофриз каждый
-      // ресинк без пользы. 600мс — тот рассинхрон, что уже слышен.
-      if (drift < 600) return;
+      // Порог: раз ресинк периодический (каждые 8с), подтягиваем при заметном
+      // расхождении. 400мс — слышимый рассинхрон, но не дёргаем на мелком
+      // дрейфе (сохраняет плавность у гостя).
+      if (drift < 400) return;
 
       _positionMs = target;
       _setSyncAnchor(target, nowServer);

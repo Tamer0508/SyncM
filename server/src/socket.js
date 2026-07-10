@@ -184,30 +184,41 @@ const autoResyncTimers = new Map(); // sessionId -> timeoutId
 
 function cancelAutoResync(sessionId) {
   if (autoResyncTimers.has(sessionId)) {
-    clearTimeout(autoResyncTimers.get(sessionId));
+    const t = autoResyncTimers.get(sessionId);
+    clearTimeout(t);
+    clearInterval(t); // может быть setInterval (периодический reseek)
     autoResyncTimers.delete(sessionId);
   }
 }
 
 function scheduleAutoResync(io, sessionId, trackId, startAt) {
   cancelAutoResync(sessionId);
-  const delay = Math.max(0, startAt - Date.now()) + 3000;
-  const timer = setTimeout(() => {
-    autoResyncTimers.delete(sessionId);
-    const state = sessionStates.get(sessionId);
-    if (!state || state.state !== 'playing' || state.trackId !== trackId) return;
+  const firstDelay = Math.max(0, startAt - Date.now()) + 3000;
 
-    // Синхронная перемотка на общую позицию по общему серверному времени.
-    // Клиент выполнит seek только если реально разошёлся (порог), поэтому
-    // те, кто в синхре, ничего не почувствуют.
+  function emitReseek() {
+    const state = sessionStates.get(sessionId);
+    if (!state || state.state !== 'playing' || state.trackId !== trackId) {
+      cancelAutoResync(sessionId);
+      return;
+    }
     const pos = getCurrentPosition(state);
     io.to(sessionId).emit('session_reseek', {
       positionMs: pos,
       serverTime: Date.now(),
       trackId,
     });
-  }, delay);
-  autoResyncTimers.set(sessionId, timer);
+  }
+
+  // Первый ресинк через 3с после старта (когда трек загрузился), далее
+  // периодически каждые 8с — постоянно подтягиваем синхру. Клиент делает
+  // реальный seek только при дрейфе > порога, поэтому когда всё синхронно,
+  // эти сообщения ничего не дёргают (плавность сохраняется).
+  const first = setTimeout(() => {
+    emitReseek();
+    const interval = setInterval(emitReseek, 8000);
+    autoResyncTimers.set(sessionId, interval);
+  }, firstDelay);
+  autoResyncTimers.set(sessionId, first);
 }
 
 async function updateOnlineStatus(userId, isOnline) {
