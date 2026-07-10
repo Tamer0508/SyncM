@@ -577,10 +577,11 @@ class PlaybackProvider extends ChangeNotifier {
       final int target = positionMs + (nowServer - serverTime);
       final int drift = (target - _positionMs).abs();
 
-      // Порог: раз ресинк периодический (каждые 8с), подтягиваем при заметном
-      // расхождении. 400мс — слышимый рассинхрон, но не дёргаем на мелком
-      // дрейфе (сохраняет плавность у гостя).
-      if (drift < 400) return;
+      // Баланс плавность/синхра: seek только при СЛЫШИМОМ рассинхроне.
+      // Мелкий дрейф (<900мс) гость проглатывает без seek — он почти не
+      // заметен на слух, а seek ради него давал частые фризы. Так нет
+      // постоянных дёрганий, но заметное расхождение всё равно выравнивается.
+      if (drift < 900) return;
 
       _positionMs = target;
       _setSyncAnchor(target, nowServer);

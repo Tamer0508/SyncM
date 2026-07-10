@@ -215,7 +215,7 @@ function scheduleAutoResync(io, sessionId, trackId, startAt) {
   // эти сообщения ничего не дёргают (плавность сохраняется).
   const first = setTimeout(() => {
     emitReseek();
-    const interval = setInterval(emitReseek, 8000);
+    const interval = setInterval(emitReseek, 12000);
     autoResyncTimers.set(sessionId, interval);
   }, firstDelay);
   autoResyncTimers.set(sessionId, first);
