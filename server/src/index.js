@@ -48,6 +48,12 @@ pool.query(`
 
 const app = express();
 app.set('trust proxy', 1);
+
+const helmet = require('helmet');
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // чтобы /uploads работали с другого origin
+}));
+
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
