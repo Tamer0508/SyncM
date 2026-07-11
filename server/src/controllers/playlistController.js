@@ -234,11 +234,9 @@ const getPlaylistTracks = asyncHandler(async (req, res) => {
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } });
   if (!playlist) return res.status(404).json({ error: 'Плейлист не найден' });
 
-  // Проверка доступа: свой плейлист или публичный импортированный?
+  // Проверка доступа: только владелец может получить треки в текущей логике
   if (playlist.userId !== userId) {
-    if (playlist.isCustom) return res.status(403).json({ error: 'Нет доступа' });
-    // для импортированных можно разрешить только публичные, но в старой логике было 403
-    return res.status(403).json({ error: 'Нет доступа' });
+    return res.status(403).json({ error: 'Нет доступа к этому плейлисту' });
   }
 
   const cacheKey = `db:playlist-tracks-db:${playlistId}`;

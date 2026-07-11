@@ -118,6 +118,11 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
       );
     }
 
+    // Adjust bar spacing and sizing for small sizes
+    final isSmall = widget.size <= 16;
+    final barWidth = isSmall ? widget.size * 0.08 : widget.size * 0.12;
+    final barSpacing = isSmall ? widget.size * 0.06 : widget.size * 0.08;
+
     return SizedBox(
       width: widget.size,
       height: widget.size,
@@ -130,7 +135,6 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
             return AnimatedBuilder(
               animation: _barControllers[index],
               builder: (context, child) {
-                // Animate from 0 to 1 and back in a loop
                 final animation = _barControllers[index];
 
                 // Create a wave-like effect
@@ -151,18 +155,16 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
                 }
 
                 return Padding(
-                  padding: EdgeInsets.symmetric(horizontal: widget.size * 0.08),
+                  padding: EdgeInsets.symmetric(horizontal: barSpacing / 2),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        width: widget.size * 0.12,
+                        width: barWidth,
                         height: widget.size * height * 0.7,
                         decoration: BoxDecoration(
                           color: widget.color,
-                          borderRadius: BorderRadius.circular(
-                            widget.size * 0.06,
-                          ),
+                          borderRadius: BorderRadius.circular(barWidth / 2),
                         ),
                       ),
                     ],

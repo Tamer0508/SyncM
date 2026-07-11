@@ -104,67 +104,78 @@ class _TrackCardState extends State<TrackCard>
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Row(
             children: [
-              // Compact thumbnail or animated equalizer
+              // Compact thumbnail or icon (always visible)
               SizedBox(
                 width: 48,
                 height: 48,
-                child: widget.isActive && pb.isPlaying
-                    ? AnimatedEqualizer(
-                        isPlaying: true,
-                        color: theme.colorScheme.primary,
-                        size: 40,
-                      )
-                    : ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: widget.artworkUrl != null &&
-                                widget.artworkUrl!.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: widget.artworkUrl!,
-                                width: 48,
-                                height: 48,
-                                fit: BoxFit.cover,
-                                placeholder: (_, __) => Container(
-                                  color: theme.colorScheme.surfaceVariant,
-                                ),
-                                errorWidget: (_, __, ___) => Container(
-                                  color: theme.colorScheme.surfaceVariant,
-                                  child: Icon(
-                                    Icons.music_note,
-                                    color: theme.colorScheme.primary,
-                                    size: 20,
-                                  ),
-                                ),
-                              )
-                            : Container(
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surfaceVariant,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Icon(
-                                  Icons.music_note,
-                                  color: theme.colorScheme.primary,
-                                  size: 20,
-                                ),
-                              ),
-                      ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: widget.artworkUrl != null &&
+                          widget.artworkUrl!.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: widget.artworkUrl!,
+                          width: 48,
+                          height: 48,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(
+                            color: theme.colorScheme.surfaceVariant,
+                          ),
+                          errorWidget: (_, __, ___) => Container(
+                            color: theme.colorScheme.surfaceVariant,
+                            child: Icon(
+                              Icons.music_note,
+                              color: theme.colorScheme.primary,
+                              size: 20,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceVariant,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(
+                            Icons.music_note,
+                            color: theme.colorScheme.primary,
+                            size: 20,
+                          ),
+                        ),
+                ),
               ),
               const SizedBox(width: 12),
-              // Title and artist
+              // Title and artist with equalizer indicator
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: widget.isActive
-                            ? theme.colorScheme.primary
-                            : theme.textTheme.bodyMedium?.color,
-                      ),
+                    Row(
+                      children: [
+                        // Animated equalizer (if track is active and playing)
+                        if (widget.isActive && pb.isPlaying)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: AnimatedEqualizer(
+                              isPlaying: true,
+                              color: theme.colorScheme.primary,
+                              size: 14,
+                            ),
+                          ),
+                        // Track title
+                        Expanded(
+                          child: Text(
+                            widget.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: widget.isActive
+                                  ? theme.colorScheme.primary
+                                  : theme.textTheme.bodyMedium?.color,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     Text(
                       widget.artist,

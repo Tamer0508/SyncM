@@ -445,9 +445,12 @@ class ApiService {
     });
   }
 
-  Future<List<dynamic>> getPlaylistTracksById(String playlistId) async {
+  // Returns `null` when access is forbidden (HTTP 403) so the UI can
+  // display a soft placeholder instead of treating it as an error.
+  Future<List<dynamic>?> getPlaylistTracksById(String playlistId) async {
     final res = await http.get(_uri('/playlists/$playlistId/tracks'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+    if (res.statusCode == 403) return null;
     throw ApiException('Ошибка загрузки треков', res.statusCode, _extractError(res));
   }
 

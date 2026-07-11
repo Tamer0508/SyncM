@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatf
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
+import '../../services/api_service.dart';
 import '../../widgets/track_card.dart';
 import '../../widgets/app_icon_button.dart';
 import '../player/now_playing.dart';
@@ -32,6 +33,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   List<dynamic> _tracks = [];
   bool _loading = true;
   String? _error;
+  bool _unavailable = false;
   Map<String, bool> _likedMap = {};
 
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
@@ -45,12 +47,34 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   Future<void> _loadTracks() async {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
-      List<dynamic> tracks;
+      List<dynamic>? rawTracks; // nullable
+
       if (widget.isCustom) {
-        tracks = await api.getPlaylistTracksById(widget.playlistId);
+        rawTracks = await api.getPlaylistTracksById(widget.playlistId);
+        if (rawTracks == null) {
+          // Доступ запрещён — показываем заглушку
+          if (mounted) setState(() => _unavailable = true);
+          return;
+        }
       } else {
-        tracks = await api.getPlaylistTracks(widget.playlistId);
+        try {
+          rawTracks = await api.getPlaylistTracks(widget.playlistId);
+        } catch (e) {
+          if (e is ApiException) {
+            if (e.statusCode == 403) {
+              if (mounted) setState(() => _unavailable = true);
+              return;
+            }
+            if (e.statusCode == 500) {
+              if (mounted) setState(() => _unavailable = true);
+              return;
+            }
+          }
+          rethrow;
+        }
       }
+
+      final tracks = rawTracks!; // теперь точно не null
 
       final likedTracks = await api.getLikedTracks();
       final Map<String, bool> likedMap = {};
@@ -208,11 +232,45 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
           SliverFillRemaining(
             child: Center(child: CircularProgressIndicator(color: theme.colorScheme.primary)),
           )
+        else if (_unavailable)
+          SliverFillRemaining(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.settings, size: 64, color: theme.iconTheme.color?.withOpacity(0.8)),
+                  const SizedBox(height: 12),
+                  Text('Этот плейлист пока недоступен для просмотра. Мы работаем над этим',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.75))),
+                ],
+              ),
+            ),
+          )
         else if (_error != null)
           SliverFillRemaining(
             child: Center(
               child: Text(_error!,
                   style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.error)),
+            ),
+          )
+        else if (_unavailable)
+          SliverFillRemaining(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.settings, size: 64, color: theme.iconTheme.color?.withOpacity(0.8)),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Этот плейлист пока недоступен для просмотра. Мы работаем над этим.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.75),
+                    ),
+                  ),
+                ],
+              ),
             ),
           )
         else if (_tracks.isEmpty)
