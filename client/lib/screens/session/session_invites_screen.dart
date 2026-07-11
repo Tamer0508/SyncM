@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/session_provider.dart';
@@ -59,6 +60,53 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final enablePullToRefresh = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS);
+
+    Widget buildContent(SessionProvider prov) {
+      final isLoading = prov.invitesLoading && prov.invites.isEmpty;
+      final isEmpty = prov.invites.isEmpty && !prov.invitesLoading;
+
+      if (isLoading) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height - kToolbarHeight,
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+        );
+      }
+
+      if (isEmpty) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height - kToolbarHeight,
+            child: _EmptyInvitesView(theme: theme),
+          ),
+        );
+      }
+
+      return _InvitesList(
+        theme: theme,
+        invites: prov.invites as List<Map<String, dynamic>>,
+        hostNameForInvite: prov.hostNameForInvite,
+        responding: _responding,
+        onAccept: (id) => _respond(id, true),
+        onDecline: (id) => _respond(id, false),
+      );
+    }
+
+    final child = Consumer<SessionProvider>(
+      builder: (context, prov, _) {
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: buildContent(prov),
+        );
+      },
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Приглашения в сессии'),
@@ -71,28 +119,13 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
           ),
         ],
       ),
-      body: Consumer<SessionProvider>(
-        builder: (context, prov, _) {
-          final isLoading = prov.invitesLoading && prov.invites.isEmpty;
-          final isEmpty = prov.invites.isEmpty && !prov.invitesLoading;
-
-          return AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : isEmpty
-                    ? _EmptyInvitesView(theme: theme)
-                    : _InvitesList(
-                        theme: theme,
-                        invites: prov.invites as List<Map<String, dynamic>>,
-                        hostNameForInvite: prov.hostNameForInvite,
-                        responding: _responding,
-                        onAccept: (id) => _respond(id, true),
-                        onDecline: (id) => _respond(id, false),
-                      ),
-          );
-        },
-      ),
+      body: enablePullToRefresh
+          ? RefreshIndicator(
+              onRefresh: () => Provider.of<SessionProvider>(context, listen: false)
+                  .fetchInvites(refresh: true),
+              child: child,
+            )
+          : child,
     );
   }
 }

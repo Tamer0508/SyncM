@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:syncm/services/api_service.dart';
@@ -71,6 +72,62 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final theme = Theme.of(context);
     final isMobile = MediaQuery.of(context).size.width < 900;
 
+    final enablePullToRefresh = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+
+    Widget buildFriendsList() {
+      return _FriendsListView(
+        friends: prov.friends,
+        hasMore: prov.hasMoreFriends,
+        onLoadMore: () => prov.fetchFriends(),
+        isLoadingMore: prov.friendsLoading,
+        onViewProfile: (f) => Navigator.of(context).pushNamed(
+          '/profile',
+          arguments: {'name': f.name, 'friendId': f.id},
+        ),
+        onRemoveFriend: (f) async {
+          final shouldDelete = await _confirmRemove(context, f.name);
+          if (!shouldDelete) return;
+
+          final prov = Provider.of<FriendsProvider>(context, listen: false);
+          String? friendshipId = f.friendshipId;
+          if (friendshipId == null) {
+            try {
+              await prov.fetchFriends(refresh: true);
+              final matches = prov.friends.where((x) => x.id == f.id).toList();
+              if (matches.isNotEmpty) {
+                friendshipId = matches.first.friendshipId;
+              }
+            } catch (e) {
+              showAppNotification(context,
+                  message: 'Ошибка обновления списка: $e',
+                  type: NotificationType.error);
+              return;
+            }
+          }
+          if (friendshipId == null) {
+            showAppNotification(context,
+                message: 'Ошибка: идентификатор связи отсутствует. Обновите список и повторите попытку.',
+                type: NotificationType.error);
+            return;
+          }
+          try {
+            final success = await prov.removeFriend(friendshipId);
+            if (success) {
+              showAppNotification(context,
+                  message: 'Друг удалён', type: NotificationType.success);
+            } else {
+              showAppNotification(context,
+                  message: 'Не удалось удалить друга', type: NotificationType.error);
+            }
+          } catch (e) {
+            final msg = (e is ApiException) ? e.userMessage : 'Ошибка удаления: $e';
+            showAppNotification(context, message: msg, type: NotificationType.error);
+          }
+        },
+      );
+    }
+
     // Анимированное переключение состояний (загрузка / пусто / список)
     Widget bodyContent = AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
@@ -78,56 +135,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : prov.friends.isEmpty
               ? _EmptyFriendsView()
-              : _FriendsListView(
-                  friends: prov.friends,
-                  hasMore: prov.hasMoreFriends,
-                  onLoadMore: () => prov.fetchFriends(),
-                  isLoadingMore: prov.friendsLoading,
-                  onViewProfile: (f) => Navigator.of(context).pushNamed(
-                    '/profile',
-                    arguments: {'name': f.name, 'friendId': f.id},
-                  ),
-                  onRemoveFriend: (f) async {
-                    final shouldDelete = await _confirmRemove(context, f.name);
-                    if (!shouldDelete) return;
-
-                    final prov = Provider.of<FriendsProvider>(context, listen: false);
-                    String? friendshipId = f.friendshipId;
-                    if (friendshipId == null) {
-                      try {
-                        await prov.fetchFriends(refresh: true);
-                        final matches = prov.friends.where((x) => x.id == f.id).toList();
-                        if (matches.isNotEmpty) {
-                          friendshipId = matches.first.friendshipId;
-                        }
-                      } catch (e) {
-                        showAppNotification(context,
-                            message: 'Ошибка обновления списка: $e',
-                            type: NotificationType.error);
-                        return;
-                      }
-                    }
-                    if (friendshipId == null) {
-                      showAppNotification(context,
-                          message: 'Ошибка: идентификатор связи отсутствует. Обновите список и повторите попытку.',
-                          type: NotificationType.error);
-                      return;
-                    }
-                    try {
-                      final success = await prov.removeFriend(friendshipId);
-                      if (success) {
-                        showAppNotification(context,
-                            message: 'Друг удалён', type: NotificationType.success);
-                      } else {
-                        showAppNotification(context,
-                            message: 'Не удалось удалить друга', type: NotificationType.error);
-                      }
-                    } catch (e) {
-                      final msg = (e is ApiException) ? e.userMessage : 'Ошибка удаления: $e';
-                      showAppNotification(context, message: msg, type: NotificationType.error);
-                    }
-                  },
-                ),
+              : enablePullToRefresh
+                  ? RefreshIndicator(
+                      onRefresh: prov.refreshFriends,
+                      child: buildFriendsList(),
+                    )
+                  : buildFriendsList(),
     );
 
     final appBarActions = [
@@ -161,10 +174,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Друзья'), actions: appBarActions),
-      body: RefreshIndicator(
-        onRefresh: () => prov.fetchFriends(refresh: true),
-        child: bodyContent,
-      ),
+      body: bodyContent,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
         icon: const Icon(Icons.person_add),
@@ -235,6 +245,7 @@ class _FriendsListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 12),
       itemCount: friends.length + (hasMore || isLoadingMore ? 1 : 0),
       separatorBuilder: (_, __) => const SizedBox(height: 8),

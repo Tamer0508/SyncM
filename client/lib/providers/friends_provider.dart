@@ -50,6 +50,10 @@ class FriendsProvider with ChangeNotifier {
     }
   }
 
+  Future<void> refreshFriends({int limit = 20}) async {
+    await fetchFriends(refresh: true, limit: limit);
+  }
+
   Future<List<Friend>> search(String q) => api.searchUsers(q);
 
   Future<bool> sendRequest(String receiverId) async {

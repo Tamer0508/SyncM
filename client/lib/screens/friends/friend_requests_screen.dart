@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
@@ -109,30 +110,51 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final enablePullToRefresh = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS);
+
+    Widget buildContent(FriendsProvider prov) {
+      final isLoading = prov.incomingLoading && prov.incomingRequests.isEmpty;
+      final isEmpty = prov.incomingRequests.isEmpty && !prov.incomingLoading;
+
+      if (isLoading) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height - kToolbarHeight,
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+        );
+      }
+
+      if (isEmpty) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height - kToolbarHeight,
+            child: _EmptyRequestsView(theme: theme),
+          ),
+        );
+      }
+
+      return _RequestsList(
+        theme: theme,
+        requests: prov.incomingRequests,
+        hasMore: prov.hasMoreIncoming,
+        isLoadingMore: prov.incomingLoading,
+        loadingIds: _loadingIds,
+        onLoadMore: () => prov.fetchIncomingRequests(),
+        onAccept: _acceptRequest,
+        onDecline: _declineRequest,
+      );
+    }
 
     final body = Consumer<FriendsProvider>(
       builder: (context, prov, _) {
-        final isLoading =
-            prov.incomingLoading && prov.incomingRequests.isEmpty;
-        final isEmpty =
-            prov.incomingRequests.isEmpty && !prov.incomingLoading;
-
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
-          child: isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : isEmpty
-                  ? _EmptyRequestsView(theme: theme)
-                  : _RequestsList(
-                      theme: theme,
-                      requests: prov.incomingRequests,
-                      hasMore: prov.hasMoreIncoming,
-                      isLoadingMore: prov.incomingLoading,
-                      loadingIds: _loadingIds,
-                      onLoadMore: () => prov.fetchIncomingRequests(),
-                      onAccept: _acceptRequest,
-                      onDecline: _declineRequest,
-                    ),
+          child: buildContent(prov),
         );
       },
     );
@@ -158,7 +180,13 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
           ),
         ],
       ),
-      body: body,
+      body: enablePullToRefresh
+          ? RefreshIndicator(
+              onRefresh: () => Provider.of<FriendsProvider>(context, listen: false)
+                  .fetchIncomingRequests(refresh: true),
+              child: body,
+            )
+          : body,
     );
   }
 }

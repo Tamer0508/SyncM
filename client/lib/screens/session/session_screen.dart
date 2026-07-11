@@ -1,6 +1,6 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/session_provider.dart';
@@ -27,8 +27,7 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _initialized = false;
   bool _refreshing = false;
   PlaybackProvider? _playback;
-  SocketService? _sessionSocket; // Фаза 6: для отписки в dispose
-  // presence: id участников, реально подключённых сейчас (из session_presence).
+  SocketService? _sessionSocket;
   Set<String> _onlineUserIds = {};
   bool _isPlayerOpen = false;
 
@@ -37,24 +36,17 @@ class _SessionScreenState extends State<SessionScreen> {
   void _syncSessionQueue() {
     if (_session == null) return;
     final tracks = _session!['tracks'] as List? ?? [];
-    // Откладываем на post-frame: этот метод зовётся из didChangeDependencies
-    // (во время build), а setSessionQueue дёргает notifyListeners — вызывать
-    // его во время build нельзя (краш "setState during build").
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      Provider.of<PlaybackProvider>(context, listen: false).setSessionQueue(tracks);
+      Provider.of<PlaybackProvider>(context, listen: false)
+          .setSessionQueue(tracks);
     });
   }
 
   void _openPlayerIfMobile(Map<String, dynamic> track) async {
     final isDesktop = MediaQuery.of(context).size.width >= 900;
-    
-    // Если мы на десктопе или плеер УЖЕ открыт — ничего не делаем
     if (isDesktop || !mounted || _isPlayerOpen) return;
-
     _isPlayerOpen = true;
-
-    // Ждем, пока пользователь не закроет экран плеера
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => NowPlayingScreen(
         title: track['title'] as String?,
@@ -62,8 +54,6 @@ class _SessionScreenState extends State<SessionScreen> {
         artworkUrl: track['imageUrl'] as String?,
       ),
     ));
-
-    // Как только экран закрылся (пользователь нажал "назад"), сбрасываем флаг
     _isPlayerOpen = false;
   }
 
@@ -141,25 +131,23 @@ class _SessionScreenState extends State<SessionScreen> {
         if (args is Map<String, dynamic>) _session = args;
       }
       if (_session != null) {
-  final auth = Provider.of<AuthProvider>(context, listen: false);
-  final pb = Provider.of<PlaybackProvider>(context, listen: false);
-  final socket = Provider.of<SocketService>(context, listen: false);
-  final isHost = _session!['hostId'] == auth.user?.id;
-  pb.initSession(_session!['id'], auth.user?.id ?? '', socket, isHost: isHost);
-  _setupPlaybackCallbacks();
-  _setupSessionSocketListeners(socket);
-  _syncSessionQueue();
-}
+        final auth = Provider.of<AuthProvider>(context, listen: false);
+        final pb = Provider.of<PlaybackProvider>(context, listen: false);
+        final socket = Provider.of<SocketService>(context, listen: false);
+        final isHost = _session!['hostId'] == auth.user?.id;
+        pb.initSession(_session!['id'], auth.user?.id ?? '', socket,
+            isHost: isHost);
+        _setupPlaybackCallbacks();
+        _setupSessionSocketListeners(socket);
+        _syncSessionQueue();
+      }
     }
   }
 
   StreamSubscription<void>? _reconnectSub;
 
-  // Фаза 6: реакция на события связности и участников сессии.
   void _setupSessionSocketListeners(SocketService socket) {
     _sessionSocket = socket;
-
-    // presence: актуальный список онлайн-участников сессии.
     socket.on('session_presence', (data) {
       if (!mounted) return;
       final ids = (data is Map ? data['onlineUserIds'] : null);
@@ -169,24 +157,14 @@ class _SessionScreenState extends State<SessionScreen> {
         });
       }
     });
-    // Участник окончательно отпал (не переподключился за таймаут) — обновляем
-    // список и уведомляем.
     socket.on('participant_dropped', (data) {
       if (!mounted) return;
       _refreshSession();
     });
-    // Кто-то (пере)подключился. НЕ дёргаем тяжёлый _refreshSession — при
-    // нестабильной сети гостя user_joined прилетает часто (каждый реконнект),
-    // и полный refresh (HTTP + ребилд экрана) вызывал лаги. Актуальный
-    // онлайн-статус приходит отдельно через session_presence (лёгкий).
-    // Полный состав участников обновляем только при реальных изменениях
-    // (participant_dropped ниже).
-    // Наше соединение восстановилось после разрыва — обновим состояние сессии.
     _reconnectSub = socket.onReconnect.listen((_) {
       if (!mounted) return;
       _refreshSession();
     });
-    // Фаза 7.2: сервер передал управление новому хосту (старый ушёл).
     socket.on('host_changed', (data) {
       if (!mounted) return;
       final newHostId = (data is Map ? data['hostId'] : null)?.toString();
@@ -195,7 +173,6 @@ class _SessionScreenState extends State<SessionScreen> {
       setState(() {
         _session?['hostId'] = newHostId;
       });
-      // Обновляем роль в провайдере: теперь этот клиент хост или нет.
       _playback?.updateHostStatus(newHostId == auth.user?.id);
       final becameHost = newHostId == auth.user?.id;
       showAppNotification(
@@ -299,212 +276,229 @@ class _SessionScreenState extends State<SessionScreen> {
     final tracks = (_session!['tracks'] as List? ?? []);
     final isHost = _session!['hostId'] == auth.user?.id;
 
-    final body = RefreshIndicator(
-      onRefresh: _refreshSession,
-      child: ListView(padding: const EdgeInsets.all(16), children: [
-        Text('Участники (${members.length})',
-            style: theme.textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 12),
-        SizedBox(
-            height: 90,
-            child: members.isEmpty
-                ? Center(
-                    child: Text('Пока нет участников',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.textTheme.bodySmall?.color
-                                ?.withOpacity(0.6))))
-                : ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: members.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 16),
-                    itemBuilder: (_, i) {
-                      final m = members[i];
-                      final user = m['user'] as Map<String, dynamic>?;
-                      final avatarUrl =
-                          user?['spotifyUser']?['avatarUrl'] as String?;
-                      final name = user?['username'] as String? ?? '?';
-                      final isPending = m['status'] == 'pending';
-                      final isHostUser = _session!['hostId'] == user?['id'];
-                      final userId = user?['id']?.toString();
-                      final isOnline = userId != null && _onlineUserIds.contains(userId);
-                      return Column(children: [
-                        Stack(children: [
-                          CircleAvatar(
-                              radius: 26,
-                              backgroundImage: avatarUrl != null
-                                  ? NetworkImage(avatarUrl)
-                                  : null,
-                              backgroundColor: theme.colorScheme.surfaceVariant,
-                              child: avatarUrl == null
-                                  ? Text(name[0].toUpperCase(),
-                                      style: theme.textTheme.titleSmall
-                                          ?.copyWith(
-                                              color: theme.colorScheme.primary))
-                                  : null),
-                          // presence: зелёная точка если участник онлайн, серая
-                          // если офлайн. Слева-снизу, чтобы не пересекаться со
-                          // звездой хоста (справа-снизу).
-                          if (!isPending)
-                            Positioned(
-                                left: -2,
-                                bottom: -2,
-                                child: Container(
-                                    width: 16,
-                                    height: 16,
-                                    decoration: BoxDecoration(
-                                        color: isOnline
-                                            ? const Color(0xFF4CAF50)
-                                            : theme.colorScheme.outline,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                            color: theme.colorScheme.surface,
-                                            width: 2)))),
-                          if (isHostUser)
-                            Positioned(
-                                right: -2,
-                                bottom: -2,
-                                child: Container(
-                                    decoration: BoxDecoration(
-                                        color: theme.colorScheme.primary,
-                                        shape: BoxShape.circle),
-                                    padding: const EdgeInsets.all(2),
-                                    child: const Icon(Icons.star,
-                                        size: 14, color: Colors.white))),
-                          if (isPending)
-                            Positioned(
-                                right: -2,
-                                bottom: -2,
-                                child: Container(
-                                    decoration: BoxDecoration(
-                                        color: theme.colorScheme.surface,
-                                        shape: BoxShape.circle),
-                                    padding: const EdgeInsets.all(2),
-                                    child: Icon(Icons.hourglass_empty,
-                                        size: 14,
-                                        color: theme.colorScheme.primary))),
-                        ]),
-                        const SizedBox(height: 6),
-                        SizedBox(
-                            width: 72,
-                            child: Text(name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                    fontWeight: isHostUser
-                                        ? FontWeight.w600
-                                        : FontWeight.normal))),
-                      ]);
-                    })),
-        const SizedBox(height: 24),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('Треки (${tracks.length})',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          TextButton.icon(
-              onPressed: () async {
-                final result = await Navigator.of(context)
-                    .pushNamed('/playlist/pick', arguments: _session!['id']);
-                if (result == true && mounted) await _refreshSession();
-              },
-              icon: const Icon(Icons.add, size: 20),
-              label: const Text('Добавить')),
-        ]),
-        const SizedBox(height: 12),
-        if (tracks.isEmpty)
-          Padding(
-              padding: const EdgeInsets.symmetric(vertical: 32),
-              child: Center(
-                  child: Text('Треки ещё не добавлены',
+    final enablePullToRefresh = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS);
+
+    // Собираем содержимое списка
+    final listChildren = <Widget>[
+      Text('Участники (${members.length})',
+          style: theme.textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700)),
+      const SizedBox(height: 12),
+      SizedBox(
+          height: 90,
+          child: members.isEmpty
+              ? Center(
+                  child: Text('Пока нет участников',
                       style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.textTheme.bodySmall?.color
-                              ?.withOpacity(0.6)))))
-        else
-          Consumer<PlaybackProvider>(builder: (_, pb, __) {
-            return Column(
-              children: List.generate(tracks.length, (i) {
-            final t = tracks[i];
-            final uri = t['spotifyUri'] ?? t['uri'];
-            final isPlaying = pb.sessionMode &&
-                pb.isPlaying &&
-                pb.currentTrack?['uri'] == uri;
-            return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Card(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                    elevation: isPlaying ? 2 : 0,
-                    color: isPlaying
-                        ? theme.colorScheme.primary.withOpacity(0.12)
-                        : theme.cardColor,
-                    child: ListTile(
-                      onTap: () => _onTrackTap(
-                          Map<String, dynamic>.from(t as Map), i),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: t['imageUrl'] != null &&
-                                  (t['imageUrl'] as String).isNotEmpty
-                              ? Image.network(t['imageUrl'],
-                                  width: 48, height: 48, fit: BoxFit.cover)
-                              : Container(
-                                  width: 48,
-                                  height: 48,
+                              ?.withOpacity(0.6))))
+              : ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: members.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 16),
+                  itemBuilder: (_, i) {
+                    final m = members[i];
+                    final user = m['user'] as Map<String, dynamic>?;
+                    final avatarUrl =
+                        user?['spotifyUser']?['avatarUrl'] as String?;
+                    final name = user?['username'] as String? ?? '?';
+                    final isPending = m['status'] == 'pending';
+                    final isHostUser = _session!['hostId'] == user?['id'];
+                    final userId = user?['id']?.toString();
+                    final isOnline =
+                        userId != null && _onlineUserIds.contains(userId);
+                    return Column(children: [
+                      Stack(children: [
+                        CircleAvatar(
+                            radius: 26,
+                            backgroundImage: avatarUrl != null
+                                ? NetworkImage(avatarUrl)
+                                : null,
+                            backgroundColor: theme.colorScheme.surfaceVariant,
+                            child: avatarUrl == null
+                                ? Text(name[0].toUpperCase(),
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                        color: theme.colorScheme.primary))
+                                : null),
+                        if (!isPending)
+                          Positioned(
+                              left: -2,
+                              bottom: -2,
+                              child: Container(
+                                  width: 16,
+                                  height: 16,
                                   decoration: BoxDecoration(
-                                      color: theme.colorScheme.surfaceVariant,
-                                      borderRadius: BorderRadius.circular(10)),
-                                  child: Icon(Icons.music_note,
+                                      color: isOnline
+                                          ? const Color(0xFF4CAF50)
+                                          : theme.colorScheme.outline,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                          color: theme.colorScheme.surface,
+                                          width: 2)))),
+                        if (isHostUser)
+                          Positioned(
+                              right: -2,
+                              bottom: -2,
+                              child: Container(
+                                  decoration: BoxDecoration(
+                                      color: theme.colorScheme.primary,
+                                      shape: BoxShape.circle),
+                                  padding: const EdgeInsets.all(2),
+                                  child: const Icon(Icons.star,
+                                      size: 14, color: Colors.white))),
+                        if (isPending)
+                          Positioned(
+                              right: -2,
+                              bottom: -2,
+                              child: Container(
+                                  decoration: BoxDecoration(
+                                      color: theme.colorScheme.surface,
+                                      shape: BoxShape.circle),
+                                  padding: const EdgeInsets.all(2),
+                                  child: Icon(Icons.hourglass_empty,
+                                      size: 14,
                                       color: theme.colorScheme.primary))),
-                      title: Text(t['trackName'] ?? '',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: isPlaying ? theme.colorScheme.primary : null)),
-                      subtitle: Text(t['artistName'] ?? '',
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        if (isPlaying)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 4),
-                            child: Icon(Icons.equalizer,
-                                color: theme.colorScheme.primary, size: 20),
-                          ),
-                        IconButton(
-                            icon: const Icon(Icons.thumb_up_outlined),
-                            tooltip: 'Нравится',
-                            onPressed: () async {
-                              await Provider.of<SessionProvider>(context,
-                                      listen: false)
-                                  .rateTrack(t['id'], 1);
-                              showAppNotification(context,
-                                  message: '👍 Понравилось!',
-                                  type: NotificationType.success);
-                            }),
-                        IconButton(
-                            icon: const Icon(Icons.thumb_down_outlined),
-                            tooltip: 'Не нравится',
-                            onPressed: () async {
-                              await Provider.of<SessionProvider>(context,
-                                      listen: false)
-                                  .rateTrack(t['id'], 0);
-                              showAppNotification(context,
-                                  message: '👎 Не понравилось',
-                                  type: NotificationType.success);
-                            }),
                       ]),
-                    )));
-              }),
-            );
-          }),
+                      const SizedBox(height: 6),
+                      SizedBox(
+                          width: 72,
+                          child: Text(name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: isHostUser
+                                      ? FontWeight.w600
+                                      : FontWeight.normal))),
+                    ]);
+                  })),
+      const SizedBox(height: 24),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text('Треки (${tracks.length})',
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
+        TextButton.icon(
+            onPressed: () async {
+              final result = await Navigator.of(context)
+                  .pushNamed('/playlist/pick', arguments: _session!['id']);
+              if (result == true && mounted) await _refreshSession();
+            },
+            icon: const Icon(Icons.add, size: 20),
+            label: const Text('Добавить')),
       ]),
+      const SizedBox(height: 12),
+      if (tracks.isEmpty)
+        Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            child: Center(
+                child: Text('Треки ещё не добавлены',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.textTheme.bodySmall?.color
+                            ?.withOpacity(0.6)))))
+      else
+        Consumer<PlaybackProvider>(builder: (_, pb, __) {
+          return Column(
+            children: List.generate(tracks.length, (i) {
+              final t = tracks[i];
+              final uri = t['spotifyUri'] ?? t['uri'];
+              final isPlaying = pb.sessionMode &&
+                  pb.isPlaying &&
+                  pb.currentTrack?['uri'] == uri;
+              return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Card(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      elevation: isPlaying ? 2 : 0,
+                      color: isPlaying
+                          ? theme.colorScheme.primary.withOpacity(0.12)
+                          : theme.cardColor,
+                      child: ListTile(
+                        onTap: () => _onTrackTap(
+                            Map<String, dynamic>.from(t as Map), i),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: t['imageUrl'] != null &&
+                                    (t['imageUrl'] as String).isNotEmpty
+                                ? Image.network(t['imageUrl'],
+                                    width: 48, height: 48, fit: BoxFit.cover)
+                                : Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                        color: theme.colorScheme.surfaceVariant,
+                                        borderRadius:
+                                            BorderRadius.circular(10)),
+                                    child: Icon(Icons.music_note,
+                                        color: theme.colorScheme.primary))),
+                        title: Text(t['trackName'] ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: isPlaying
+                                    ? theme.colorScheme.primary
+                                    : null)),
+                        subtitle: Text(t['artistName'] ?? '',
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isPlaying)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 4),
+                                  child: Icon(Icons.equalizer,
+                                      color: theme.colorScheme.primary,
+                                      size: 20),
+                                ),
+                              IconButton(
+                                  icon: const Icon(Icons.thumb_up_outlined),
+                                  tooltip: 'Нравится',
+                                  onPressed: () async {
+                                    await Provider.of<SessionProvider>(context,
+                                            listen: false)
+                                        .rateTrack(t['id'], 1);
+                                    showAppNotification(context,
+                                        message: '👍 Понравилось!',
+                                        type: NotificationType.success);
+                                  }),
+                              IconButton(
+                                  icon: const Icon(Icons.thumb_down_outlined),
+                                  tooltip: 'Не нравится',
+                                  onPressed: () async {
+                                    await Provider.of<SessionProvider>(context,
+                                            listen: false)
+                                        .rateTrack(t['id'], 0);
+                                    showAppNotification(context,
+                                        message: '👎 Не понравилось',
+                                        type: NotificationType.success);
+                                  }),
+                            ]),
+                      )));
+            }),
+          );
+        }),
+    ];
+
+    final listView = ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: listChildren,
     );
+
+    // Исправленная конструкция: теперь тернарный оператор полный
+    final body = enablePullToRefresh
+        ? RefreshIndicator(onRefresh: _refreshSession, child: listView)
+        : listView;
 
     if (widget.embedded) return body;
 
     return Scaffold(
+      body: body,
       appBar: AppBar(title: Text(_session!['name'] ?? 'Сессия'), actions: [
         if (isHost)
           TextButton.icon(
@@ -513,7 +507,6 @@ class _SessionScreenState extends State<SessionScreen> {
               label: Text('Завершить',
                   style: TextStyle(color: theme.colorScheme.error)))
       ]),
-      body: body,
     );
   }
 }

@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
@@ -539,8 +540,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHomeTab() {
     final theme = Theme.of(context);
     final isDesktop = MediaQuery.of(context).size.width >= 900;
+    final enablePullToRefresh = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS);
 
-    return ListView(
+    final child = ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
         InteractiveCard(
@@ -750,6 +755,15 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 16),
       ],
     );
+
+    return enablePullToRefresh
+        ? RefreshIndicator(
+            onRefresh: () async =>
+                await Provider.of<SessionProvider>(context, listen: false)
+                    .fetchMySessions(),
+            child: child,
+          )
+        : child;
   }
 
   Widget _buildRailItem(
