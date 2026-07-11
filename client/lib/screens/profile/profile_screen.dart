@@ -260,7 +260,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Row(
           children: [
             Icon(Icons.link_off, color: theme.colorScheme.error),
@@ -289,7 +289,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.colorScheme.error,
               foregroundColor: theme.colorScheme.onError,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text('Отключить'),
           ),
@@ -303,7 +303,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Row(
           children: [
             Icon(Icons.logout, color: theme.colorScheme.error),
@@ -325,7 +325,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.colorScheme.error,
               foregroundColor: theme.colorScheme.onError,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text('Выйти'),
           ),
@@ -372,7 +372,7 @@ class _ProfileContent extends StatelessWidget {
     final emailValue = email ?? 'Не указан'; // гарантированный String
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -410,12 +410,13 @@ class _ProfileContent extends StatelessWidget {
             children: [
               _InfoRow(theme: theme, label: 'Имя', value: isOwnProfile ? auth.user?.displayName ?? 'Не указано' : displayName),
               if (isOwnProfile) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 _InfoRow(theme: theme, label: 'Email', value: emailValue),
               ],
             ],
           ),
           const SizedBox(height: 20),
+
 
           // Друзья
           _SectionCard(
@@ -424,7 +425,7 @@ class _ProfileContent extends StatelessWidget {
             children: [
               _InfoRow(theme: theme, label: 'Количество друзей', value: '$friendsCount'),
               if (!isOwnProfile && mutualCount > 0) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 _InfoRow(theme: theme, label: 'Общие друзья', value: '$mutualCount'),
               ],
             ],
@@ -432,6 +433,7 @@ class _ProfileContent extends StatelessWidget {
           const SizedBox(height: 20),
 
           // Spotify
+
           if (isOwnProfile)
             _SectionCard(
               theme: theme,
@@ -460,7 +462,7 @@ class _ProfileContent extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: theme.colorScheme.error,
                       side: BorderSide(color: theme.colorScheme.error),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   )
                 else
@@ -471,7 +473,7 @@ class _ProfileContent extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.spotifyGreen,
                       foregroundColor: theme.colorScheme.onPrimary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
               ],
@@ -488,7 +490,7 @@ class _ProfileContent extends StatelessWidget {
                 backgroundColor: theme.colorScheme.error,
                 foregroundColor: theme.colorScheme.onError,
                 minimumSize: const Size.fromHeight(52),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
         ],
@@ -507,20 +509,20 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      elevation: 0,
-      color: theme.cardColor,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        border: Border.all(color: theme.dividerColor.withOpacity(0.18)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 14),
+          ...children,
+        ],
       ),
     );
   }
