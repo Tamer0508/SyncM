@@ -54,59 +54,88 @@ class FriendTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      tileColor: theme.cardColor,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      onTap: onViewProfile,
-      leading: CircleAvatar(
-        radius: 24,
-        backgroundImage: friend.avatarUrl != null && friend.avatarUrl!.isNotEmpty
-            ? NetworkImage(friend.avatarUrl!)
-            : null,
-        backgroundColor: theme.colorScheme.surfaceVariant,
-        child: friend.avatarUrl == null || friend.avatarUrl!.isEmpty
-            ? Icon(Icons.person, color: theme.colorScheme.primary)
-            : null,
-      ),
-      title: Text(
-        friend.name,
-        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-      ),
-      subtitle: _buildSubtitle(context),
-      trailing: PopupMenuButton<String>(
-        tooltip: '',
-        elevation: 4,
-        icon: Icon(Icons.more_vert, color: theme.iconTheme.color),
-        onSelected: (value) {
-          if (value == 'profile') {
-            onViewProfile();
-          } else if (value == 'remove') {
-            onRemoveFriend();
-          }
-        },
-        itemBuilder: (context) => [
-          PopupMenuItem<String>(
-            value: 'profile',
-            child: Row(
-              children: [
-                Icon(Icons.person, color: theme.iconTheme.color),
-                const SizedBox(width: 8),
-                const Text('Посмотреть профиль'),
-              ],
-            ),
+    final isOnline = !friend.isOnlineHidden && friend.isOnline;
+
+    return Material(
+      color: theme.cardColor,
+      child: InkWell(
+        onTap: onViewProfile,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundImage: friend.avatarUrl != null && friend.avatarUrl!.isNotEmpty
+                    ? NetworkImage(friend.avatarUrl!)
+                    : null,
+                backgroundColor: theme.colorScheme.surfaceVariant,
+                child: friend.avatarUrl == null || friend.avatarUrl!.isEmpty
+                    ? Text(
+                        friend.name.isNotEmpty ? friend.name[0].toUpperCase() : '?',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      friend.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    _buildSubtitle(context),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: '',
+                elevation: 4,
+                icon: Icon(Icons.more_vert, color: theme.iconTheme.color),
+                onSelected: (value) {
+                  if (value == 'profile') {
+                    onViewProfile();
+                  } else if (value == 'remove') {
+                    onRemoveFriend();
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem<String>(
+                    value: 'profile',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person, color: theme.iconTheme.color),
+                        const SizedBox(width: 8),
+                        const Text('Посмотреть профиль'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'remove',
+                    child: Row(
+                      children: [
+                        Icon(Icons.remove_circle, color: theme.iconTheme.color),
+                        const SizedBox(width: 8),
+                        const Text('Удалить из друзей'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          PopupMenuItem<String>(
-            value: 'remove',
-            child: Row(
-              children: [
-                Icon(Icons.remove_circle, color: theme.iconTheme.color),
-                const SizedBox(width: 8),
-                const Text('Удалить из друзей'),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

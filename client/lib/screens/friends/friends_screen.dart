@@ -246,9 +246,9 @@ class _FriendsListView extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.only(top: 8, bottom: 8),
       itemCount: friends.length + (hasMore || isLoadingMore ? 1 : 0),
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, __) => const SizedBox(height: 6),
       itemBuilder: (_, i) {
         if (i >= friends.length) {
           if (isLoadingMore) {
@@ -258,7 +258,7 @@ class _FriendsListView extends StatelessWidget {
             );
           }
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: OutlinedButton(
               onPressed: onLoadMore,
               style: OutlinedButton.styleFrom(

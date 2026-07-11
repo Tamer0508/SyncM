@@ -8,6 +8,7 @@ import '../../providers/playback_provider.dart';
 import '../../utils/notifications.dart';
 import '../player/now_playing.dart';
 import '../../services/socket_service.dart';
+import '../../widgets/track_card.dart';
 
 class SessionScreen extends StatefulWidget {
   final bool embedded;
@@ -428,78 +429,64 @@ class _SessionScreenState extends State<SessionScreen> {
                   pb.isPlaying &&
                   pb.currentTrack?['uri'] == uri;
               return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Card(
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      elevation: isPlaying ? 2 : 0,
-                      color: isPlaying
-                          ? theme.colorScheme.primary.withOpacity(0.12)
-                          : theme.cardColor,
-                      child: ListTile(
-                        onTap: () => _onTrackTap(
-                            Map<String, dynamic>.from(t as Map), i),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        leading: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: t['imageUrl'] != null &&
-                                    (t['imageUrl'] as String).isNotEmpty
-                                ? Image.network(t['imageUrl'],
-                                    width: 48, height: 48, fit: BoxFit.cover)
-                                : Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                        color: theme.colorScheme.surfaceVariant,
-                                        borderRadius:
-                                            BorderRadius.circular(10)),
-                                    child: Icon(Icons.music_note,
-                                        color: theme.colorScheme.primary))),
-                        title: Text(t['trackName'] ?? '',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: isPlaying
-                                    ? theme.colorScheme.primary
-                                    : null)),
-                        subtitle: Text(t['artistName'] ?? '',
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                        trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (isPlaying)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: Icon(Icons.equalizer,
-                                      color: theme.colorScheme.primary,
-                                      size: 20),
-                                ),
-                              IconButton(
-                                  icon: const Icon(Icons.thumb_up_outlined),
-                                  tooltip: 'Нравится',
-                                  onPressed: () async {
-                                    await Provider.of<SessionProvider>(context,
-                                            listen: false)
-                                        .rateTrack(t['id'], 1);
-                                    showAppNotification(context,
-                                        message: '👍 Понравилось!',
-                                        type: NotificationType.success);
-                                  }),
-                              IconButton(
-                                  icon: const Icon(Icons.thumb_down_outlined),
-                                  tooltip: 'Не нравится',
-                                  onPressed: () async {
-                                    await Provider.of<SessionProvider>(context,
-                                            listen: false)
-                                        .rateTrack(t['id'], 0);
-                                    showAppNotification(context,
-                                        message: '👎 Не понравилось',
-                                        type: NotificationType.success);
-                                  }),
-                            ]),
-                      )));
+                padding: const EdgeInsets.only(bottom: 8),
+                child: TrackCard(
+                  id: t['id']?.toString() ?? '$i',
+                  title: t['trackName'] ?? '',
+                  artist: t['artistName'] ?? '',
+                  artworkUrl: t['imageUrl'] as String?,
+                  durationMs: t['durationMs'] as int?,
+                  isActive: isPlaying,
+                  showMore: false,
+                  onPlay: () => _onTrackTap(Map<String, dynamic>.from(t as Map), i),
+                  footer: Text(
+                    t['addedBy'] != null && t['addedBy']['username'] != null
+                        ? 'Добавил(а): ${t['addedBy']['username']}'
+                        : 'Добавлен трек',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isPlaying)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Icon(Icons.equalizer,
+                              color: theme.colorScheme.primary, size: 20),
+                        ),
+                      IconButton(
+                        icon: const Icon(Icons.thumb_up_outlined),
+                        tooltip: 'Нравится',
+                        splashRadius: 20,
+                        constraints: const BoxConstraints(),
+                        onPressed: () async {
+                          await Provider.of<SessionProvider>(context,
+                                  listen: false)
+                              .rateTrack(t['id'], 1);
+                          showAppNotification(context,
+                              message: '👍 Понравилось!',
+                              type: NotificationType.success);
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.thumb_down_outlined),
+                        tooltip: 'Не нравится',
+                        splashRadius: 20,
+                        constraints: const BoxConstraints(),
+                        onPressed: () async {
+                          await Provider.of<SessionProvider>(context,
+                                  listen: false)
+                              .rateTrack(t['id'], 0);
+                          showAppNotification(context,
+                              message: '👎 Не понравилось',
+                              type: NotificationType.success);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
             }),
           );
         }),

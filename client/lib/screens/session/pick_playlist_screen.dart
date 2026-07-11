@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../utils/notifications.dart';
+import '../../widgets/track_card.dart';
 
 class PickPlaylistScreen extends StatefulWidget {
   const PickPlaylistScreen({Key? key}) : super(key: key);
@@ -182,36 +183,36 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             itemCount: _tracks.length,
             itemBuilder: (_, i) {
               final t = _tracks[i];
               final uri = t['uri'] as String? ?? '';
               final selected = _selectedTrackUris.contains(uri);
 
-              return Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                margin: const EdgeInsets.only(bottom: 6),
-                color: selected ? theme.colorScheme.primary.withOpacity(0.1) : null,
-                child: ListTile(
-                  onTap: () => setState(() {
-                    if (selected) _selectedTrackUris.remove(uri);
-                    else _selectedTrackUris.add(uri);
-                  }),
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: t['imageUrl'] != null
-                        ? Image.network(t['imageUrl'], width: 44, height: 44, fit: BoxFit.cover)
-                        : Container(width: 44, height: 44, color: theme.colorScheme.surfaceVariant,
-                            child: const Icon(Icons.music_note, size: 20)),
-                  ),
-                  title: Text(t['name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                  subtitle: Text(t['artist'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: TrackCard(
+                  id: uri,
+                  title: t['name'] ?? '',
+                  artist: t['artist'] ?? '',
+                  artworkUrl: t['imageUrl'] as String?,
+                  durationMs: t['durationMs'] as int?,
+                  selected: selected,
+                  showLike: false,
+                  showMore: false,
                   trailing: Icon(
                     selected ? Icons.check_circle : Icons.radio_button_unchecked,
                     color: selected ? theme.colorScheme.primary : null,
+                    size: 20,
                   ),
+                  onPlay: () => setState(() {
+                    if (selected) {
+                      _selectedTrackUris.remove(uri);
+                    } else {
+                      _selectedTrackUris.add(uri);
+                    }
+                  }),
                 ),
               );
             },

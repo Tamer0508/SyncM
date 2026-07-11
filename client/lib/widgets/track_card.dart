@@ -15,6 +15,11 @@ class TrackCard extends StatefulWidget {
   final void Function()? onPlay;
   final void Function()? onLike;
   final void Function()? onMore;
+  final bool showLike;
+  final bool showMore;
+  final Widget? trailing;
+  final Widget? footer;
+  final bool selected;
 
   const TrackCard({
     Key? key,
@@ -28,6 +33,11 @@ class TrackCard extends StatefulWidget {
     this.onPlay,
     this.onLike,
     this.onMore,
+    this.showLike = true,
+    this.showMore = true,
+    this.trailing,
+    this.footer,
+    this.selected = false,
   }) : super(key: key);
 
   @override
@@ -95,13 +105,16 @@ class _TrackCardState extends State<TrackCard>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final pb = Provider.of<PlaybackProvider>(context, listen: false);
+    final backgroundColor = widget.selected
+        ? theme.colorScheme.primary.withOpacity(0.08)
+        : Colors.transparent;
 
     return Material(
-      color: Colors.transparent,
+      color: backgroundColor,
       child: InkWell(
         onTap: widget.onPlay,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(
             children: [
               // Compact thumbnail or icon (always visible)
@@ -109,9 +122,8 @@ class _TrackCardState extends State<TrackCard>
                 width: 48,
                 height: 48,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: widget.artworkUrl != null &&
-                          widget.artworkUrl!.isNotEmpty
+                  borderRadius: BorderRadius.circular(6),
+                  child: widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty
                       ? CachedNetworkImage(
                           imageUrl: widget.artworkUrl!,
                           width: 48,
@@ -132,7 +144,7 @@ class _TrackCardState extends State<TrackCard>
                       : Container(
                           decoration: BoxDecoration(
                             color: theme.colorScheme.surfaceVariant,
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: Icon(
                             Icons.music_note,
@@ -161,7 +173,6 @@ class _TrackCardState extends State<TrackCard>
                               size: 14,
                             ),
                           ),
-                        // Track title
                         Expanded(
                           child: Text(
                             widget.title,
@@ -177,74 +188,90 @@ class _TrackCardState extends State<TrackCard>
                         ),
                       ],
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       widget.artist,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.textTheme.bodySmall?.color
-                            ?.withOpacity(0.7),
+                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
                       ),
                     ),
+                    if (widget.footer != null) ...[
+                      const SizedBox(height: 4),
+                      DefaultTextStyle(
+                        style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.textTheme.bodySmall?.color?.withOpacity(0.65),
+                            ) ?? const TextStyle(fontSize: 12),
+                        child: widget.footer!,
+                      ),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              // Duration
-              if (widget.durationMs != null)
+              if (widget.durationMs != null) ...[
+                const SizedBox(width: 10),
                 Text(
                   _formatDuration(widget.durationMs!),
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.5),
+                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.55),
                   ),
                 ),
-              const SizedBox(width: 8),
-              // Like button
-              GestureDetector(
-                onTap: _handleLike,
-                child: AnimatedBuilder(
-                  animation: _scaleAnimation,
-                  builder: (context, child) => Transform.scale(
-                    scale: _scaleAnimation.value,
-                    child: child,
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(opacity: animation, child: child);
-                    },
-                    child: Icon(
-                      _isLiked ? Icons.favorite : Icons.favorite_border,
-                      key: ValueKey(_isLiked),
-                      color: _isLiked
-                          ? theme.colorScheme.primary
-                          : theme.iconTheme.color,
-                      size: 20,
+              ],
+              if (widget.trailing != null) ...[
+                const SizedBox(width: 10),
+                widget.trailing!,
+              ],
+              if (widget.showLike && widget.onLike != null) ...[
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: _handleLike,
+                  child: AnimatedBuilder(
+                    animation: _scaleAnimation,
+                    builder: (context, child) => Transform.scale(
+                      scale: _scaleAnimation.value,
+                      child: child,
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                      child: Icon(
+                        _isLiked ? Icons.favorite : Icons.favorite_border,
+                        key: ValueKey(_isLiked),
+                        color: _isLiked
+                            ? theme.colorScheme.primary
+                            : theme.iconTheme.color,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              // More menu button
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  widget.onMore?.call();
-                },
-                itemBuilder: (BuildContext context) => [
-                  const PopupMenuItem(
-                    value: 'share',
-                    child: Text('Share'),
+              ],
+              if (widget.showMore && widget.onMore != null) ...[
+                const SizedBox(width: 10),
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    widget.onMore?.call();
+                  },
+                  itemBuilder: (BuildContext context) => [
+                    const PopupMenuItem(
+                      value: 'share',
+                      child: Text('Share'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'add_to_playlist',
+                      child: Text('Add to Playlist'),
+                    ),
+                  ],
+                  child: Icon(
+                    Icons.more_vert,
+                    size: 20,
+                    color: theme.iconTheme.color,
                   ),
-                  const PopupMenuItem(
-                    value: 'add_to_playlist',
-                    child: Text('Add to Playlist'),
-                  ),
-                ],
-                child: Icon(
-                  Icons.more_vert,
-                  size: 20,
-                  color: theme.iconTheme.color,
                 ),
-              ),
+              ],
             ],
           ),
         ),
