@@ -541,7 +541,12 @@ class ApiService {
   }
 
   Future<void> skipToPrevious() async {
-    await http.post(_uri('/spotify/previous'), headers: _headers).timeout(timeout);
+    await _retryMutable('skipToPrevious', () async {
+      return await http.post(
+        _uri('/spotify/previous'),
+        headers: _headersWithIdempotency('skipToPrevious'),
+      ).timeout(timeout);
+    });
   }
 
   Future<void> seekToPosition(int ms) async {

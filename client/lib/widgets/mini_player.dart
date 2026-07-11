@@ -2,10 +2,39 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../screens/player/now_playing.dart';
-import '../../utils/app_globals.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({Key? key}) : super(key: key);
+
+  void _openPlayerWithSlideAnimation(BuildContext context, Map<String, dynamic> track, String? imageUrl) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return NowPlayingScreen(
+            title: track['title'] as String?,
+            artist: track['artist'] as String?,
+            artworkUrl: imageUrl,
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          // Slide transition from bottom
+          const begin = Offset(0.0, 1.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          var offsetAnimation = animation.drive(tween);
+
+          return SlideTransition(
+            position: offsetAnimation,
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 500),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +48,6 @@ class MiniPlayer extends StatelessWidget {
 
     return Container(
       height: 72,
-      // Важно: фиксируем ширину, чтобы избежать бесконечных ограничений
       width: double.infinity,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -38,15 +66,7 @@ class MiniPlayer extends StatelessWidget {
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () {
-                navigatorKey.currentState?.push(MaterialPageRoute(
-                  builder: (_) => NowPlayingScreen(
-                    title: track['title'] as String?,
-                    artist: track['artist'] as String?,
-                    artworkUrl: imageUrl,
-                  ),
-                ));
-              },
+              onTap: () => _openPlayerWithSlideAnimation(context, track, imageUrl),
               child: Row(
                 children: [
                   const SizedBox(width: 12),
@@ -64,7 +84,6 @@ class MiniPlayer extends StatelessWidget {
                               ),
                   ),
                   const SizedBox(width: 12),
-                  // Текстовая часть – используем Flexible, а не Expanded, чтобы избежать ошибок
                   Flexible(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -91,7 +110,12 @@ class MiniPlayer extends StatelessWidget {
               ),
             ),
           ),
-          // Кнопки управления
+          // Control buttons - previous, play/pause, next
+          IconButton(
+            icon: Icon(Icons.skip_previous_rounded, size: 28, color: theme.colorScheme.onSurface),
+            onPressed: () => pb.skipPrevious(),
+            tooltip: 'Previous',
+          ),
           IconButton(
             icon: Icon(
               pb.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
@@ -99,10 +123,12 @@ class MiniPlayer extends StatelessWidget {
               color: theme.colorScheme.primary,
             ),
             onPressed: () => pb.togglePlay(),
+            tooltip: pb.isPlaying ? 'Pause' : 'Play',
           ),
           IconButton(
             icon: Icon(Icons.skip_next_rounded, size: 28, color: theme.colorScheme.onSurface),
             onPressed: () => pb.skipNext(),
+            tooltip: 'Next',
           ),
           const SizedBox(width: 4),
         ],

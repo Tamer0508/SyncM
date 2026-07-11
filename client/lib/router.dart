@@ -53,12 +53,31 @@ Route<dynamic> generateRoute(RouteSettings settings) {
       );
     case '/player':
       final args = settings.arguments as Map<String, dynamic>?;
-      return MaterialPageRoute(
-        builder: (_) => NowPlayingScreen(
-          title: args?['title'] as String?,
-          artist: args?['artist'] as String?,
-          artworkUrl: args?['artworkUrl'] as String?,
-        ),
+      return PageRouteBuilder(
+        settings: settings,
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return NowPlayingScreen(
+            title: args?['title'] as String?,
+            artist: args?['artist'] as String?,
+            artworkUrl: args?['artworkUrl'] as String?,
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          // Slide transition from bottom
+          const begin = Offset(0.0, 1.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          var offsetAnimation = animation.drive(tween);
+
+          return SlideTransition(
+            position: offsetAnimation,
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 500),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
       );
     default:
       return MaterialPageRoute(

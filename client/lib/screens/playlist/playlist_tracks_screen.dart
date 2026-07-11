@@ -127,13 +127,33 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
 
     final isDesktop = MediaQuery.of(context).size.width >= 900;
     if (!isDesktop && mounted) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => NowPlayingScreen(
-          title: track['name'] as String?,
-          artist: track['artist'] as String?,
-          artworkUrl: track['imageUrl'] as String?,
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) {
+            return NowPlayingScreen(
+              title: track['name'] as String?,
+              artist: track['artist'] as String?,
+              artworkUrl: track['imageUrl'] as String?,
+            );
+          },
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            // Slide transition from bottom
+            const begin = Offset(0.0, 1.0);
+            const end = Offset.zero;
+            const curve = Curves.easeInOut;
+
+            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            var offsetAnimation = animation.drive(tween);
+
+            return SlideTransition(
+              position: offsetAnimation,
+              child: child,
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 500),
+          reverseTransitionDuration: const Duration(milliseconds: 300),
         ),
-      ));
+      );
     }
   }
 
@@ -212,6 +232,8 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                 (context, i) {
                   final t = _tracks[i];
                   final trackUri = t['uri'] as String? ?? '';
+                  final isActive = pb.currentTrack?['uri'] == trackUri;
+                  
                   return StatefulBuilder(
                     builder: (context, setLocalState) {
                       bool liked = _likedMap[trackUri] ?? false;
@@ -222,6 +244,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                         artworkUrl: t['imageUrl'] as String?,
                         durationMs: t['durationMs'] as int?,
                         isLiked: liked,
+                        isActive: isActive,
                         onPlay: () => _onTrackTap(Map<String, dynamic>.from(t), i),
                         onLike: () async {
                           try {

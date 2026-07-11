@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
+import '../providers/playback_provider.dart';
+import 'animated_equalizer.dart';
 
 class TrackCard extends StatefulWidget {
   final String id;
@@ -8,8 +11,10 @@ class TrackCard extends StatefulWidget {
   final String? artworkUrl;
   final int? durationMs;
   final bool isLiked;
+  final bool isActive;
   final void Function()? onPlay;
   final void Function()? onLike;
+  final void Function()? onMore;
 
   const TrackCard({
     Key? key,
@@ -19,8 +24,10 @@ class TrackCard extends StatefulWidget {
     this.artworkUrl,
     this.durationMs,
     this.isLiked = false,
+    this.isActive = false,
     this.onPlay,
     this.onLike,
+    this.onMore,
   }) : super(key: key);
 
   @override
@@ -87,99 +94,149 @@ class _TrackCardState extends State<TrackCard>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListTile(
-      onTap: widget.onPlay,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: widget.artworkUrl!,
-                width: 56,
-                height: 56,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => Container(
-                  color: theme.colorScheme.surfaceVariant,
-                  width: 56,
-                  height: 56,
-                ),
-                errorWidget: (_, __, ___) => Container(
-                  color: theme.colorScheme.surfaceVariant,
-                  width: 56,
-                  height: 56,
-                  child: Icon(Icons.music_note,
-                      color: theme.colorScheme.primary),
-                ),
-              )
-            : Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceVariant,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Icon(Icons.music_note,
-                    color: theme.colorScheme.primary),
+    final pb = Provider.of<PlaybackProvider>(context, listen: false);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: widget.onPlay,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            children: [
+              // Compact thumbnail or animated equalizer
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: widget.isActive && pb.isPlaying
+                    ? AnimatedEqualizer(
+                        isPlaying: true,
+                        color: theme.colorScheme.primary,
+                        size: 40,
+                      )
+                    : ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: widget.artworkUrl != null &&
+                                widget.artworkUrl!.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: widget.artworkUrl!,
+                                width: 48,
+                                height: 48,
+                                fit: BoxFit.cover,
+                                placeholder: (_, __) => Container(
+                                  color: theme.colorScheme.surfaceVariant,
+                                ),
+                                errorWidget: (_, __, ___) => Container(
+                                  color: theme.colorScheme.surfaceVariant,
+                                  child: Icon(
+                                    Icons.music_note,
+                                    color: theme.colorScheme.primary,
+                                    size: 20,
+                                  ),
+                                ),
+                              )
+                            : Container(
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceVariant,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Icon(
+                                  Icons.music_note,
+                                  color: theme.colorScheme.primary,
+                                  size: 20,
+                                ),
+                              ),
+                      ),
               ),
-      ),
-      title: Text(
-        widget.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style:
-            theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        widget.artist,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-        ),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.durationMs != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Text(
-                _formatDuration(widget.durationMs!),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.textTheme.bodySmall?.color?.withOpacity(0.5),
+              const SizedBox(width: 12),
+              // Title and artist
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: widget.isActive
+                            ? theme.colorScheme.primary
+                            : theme.textTheme.bodyMedium?.color,
+                      ),
+                    ),
+                    Text(
+                      widget.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.textTheme.bodySmall?.color
+                            ?.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          GestureDetector(
-            onTap: _handleLike,
-            child: AnimatedBuilder(
-              animation: _scaleAnimation,
-              builder: (context, child) => Transform.scale(
-                scale: _scaleAnimation.value,
-                child: child,
+              const SizedBox(width: 8),
+              // Duration
+              if (widget.durationMs != null)
+                Text(
+                  _formatDuration(widget.durationMs!),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.5),
+                  ),
+                ),
+              const SizedBox(width: 8),
+              // Like button
+              GestureDetector(
+                onTap: _handleLike,
+                child: AnimatedBuilder(
+                  animation: _scaleAnimation,
+                  builder: (context, child) => Transform.scale(
+                    scale: _scaleAnimation.value,
+                    child: child,
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                    child: Icon(
+                      _isLiked ? Icons.favorite : Icons.favorite_border,
+                      key: ValueKey(_isLiked),
+                      color: _isLiked
+                          ? theme.colorScheme.primary
+                          : theme.iconTheme.color,
+                      size: 20,
+                    ),
+                  ),
+                ),
               ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                transitionBuilder: (child, animation) {
-                  // Только затухание, без дополнительного масштаба
-                  return FadeTransition(opacity: animation, child: child);
+              // More menu button
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  widget.onMore?.call();
                 },
+                itemBuilder: (BuildContext context) => [
+                  const PopupMenuItem(
+                    value: 'share',
+                    child: Text('Share'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'add_to_playlist',
+                    child: Text('Add to Playlist'),
+                  ),
+                ],
                 child: Icon(
-                  _isLiked ? Icons.favorite : Icons.favorite_border,
-                  key: ValueKey(_isLiked),
-                  color: _isLiked
-                      ? theme.colorScheme.primary
-                      : theme.iconTheme.color,
-                  size: 24,
+                  Icons.more_vert,
+                  size: 20,
+                  color: theme.iconTheme.color,
                 ),
               ),
-            ),
+            ],
           ),
-          IconButton(
-            icon: Icon(Icons.more_vert, color: theme.iconTheme.color),
-            onPressed: () {},
-          ),
-        ],
+        ),
       ),
     );
   }

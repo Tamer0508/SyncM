@@ -47,13 +47,34 @@ class _SessionScreenState extends State<SessionScreen> {
     final isDesktop = MediaQuery.of(context).size.width >= 900;
     if (isDesktop || !mounted || _isPlayerOpen) return;
     _isPlayerOpen = true;
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => NowPlayingScreen(
-        title: track['title'] as String?,
-        artist: track['artist'] as String?,
-        artworkUrl: track['imageUrl'] as String?,
+    
+    await Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return NowPlayingScreen(
+            title: track['title'] as String?,
+            artist: track['artist'] as String?,
+            artworkUrl: track['imageUrl'] as String?,
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          // Slide transition from bottom
+          const begin = Offset(0.0, 1.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          var offsetAnimation = animation.drive(tween);
+
+          return SlideTransition(
+            position: offsetAnimation,
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 500),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
       ),
-    ));
+    );
     _isPlayerOpen = false;
   }
 
