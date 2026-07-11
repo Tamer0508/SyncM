@@ -32,32 +32,31 @@ async function rateLimit(key, limit, windowSeconds) {
     return { allowed, remaining, reset };
   } catch (err) {
     logger.error({ err }, 'Rate limiter error');
-    // В случае ошибки разрешаем запрос
     return { allowed: true, remaining: limit, reset: windowSeconds };
   }
 }
 
 function rateLimitMiddleware(limit, windowSeconds, keyGenerator = null) {
   return async (req, res, next) => {
-    const userId = req.session?.userId || req.headers.authorization?.replace('Bearer ', '');
-    if (!userId) {
-      return next();
-    }
-    
     let key;
     if (keyGenerator) {
-      key = keyGenerator(req, userId);
+      key = keyGenerator(req);
     } else {
-      // Пример: rate:12345:/spotify/playlists
-      key = `rate:${userId}:${req.path}`;
+      const userId = req.session?.userId;
+      if (userId) {
+        key = `rate:user:${userId}:${req.path}`;
+      } else {
+        const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+        key = `rate:ip:${ip}:${req.path}`;
+      }
     }
-    
+
     const result = await rateLimit(key, limit, windowSeconds);
-    
+
     res.setHeader('X-RateLimit-Limit', limit);
     res.setHeader('X-RateLimit-Remaining', result.remaining);
     res.setHeader('X-RateLimit-Reset', result.reset);
-    
+
     if (!result.allowed) {
       return res.status(429).json({
         error: 'Too many requests',
@@ -68,11 +67,4 @@ function rateLimitMiddleware(limit, windowSeconds, keyGenerator = null) {
   };
 }
 
-function ipRateLimitMiddleware(limit, windowSeconds) {
-  return rateLimitMiddleware(limit, windowSeconds, (req) => {
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    return `rate:ip:${ip}:${req.path}`;
-  });
-}
-
-module.exports = { rateLimit, rateLimitMiddleware, ipRateLimitMiddleware };
+module.exports = { rateLimit, rateLimitMiddleware };

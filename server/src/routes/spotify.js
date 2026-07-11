@@ -3,13 +3,11 @@ const router = express.Router();
 const axios = require('axios');
 const prisma = require('../db/prisma');
 const { encrypt, decrypt } = require('../utils/crypto');
-const { getOrSet } = require('../infrastructure/spotify/cache');
+const { getOrSet, incrementVersion } = require('../infrastructure/redis');
 const { acquireLock, releaseLock } = require('../infrastructure/redis');
 const redis = require('../infrastructure/redis');
 const logger = require('../infrastructure/logger');
 const { rateLimitMiddleware } = require('../infrastructure/rateLimiter');
-const { invalidateUserDB } = require('../infrastructure/spotify/cache');
-
 
 const refreshAccessToken = async (spotifyUser) => {
   const lockKey = `spotify:refresh_lock:${spotifyUser.id}`;
@@ -88,6 +86,15 @@ const getSpotifyUser = async (userId) => {
 
 const extractTrack = (item) => item.item || item.track || null;
 
+// Вспомогательные TTL для кэша (секунды)
+const CACHE_TTL = {
+  userPlaylists: 600,
+  playlistTracks: 1800,
+  status: 300,
+  devices: 120,
+  tokenInfo: 600,
+};
+
 router.get('/playlists', rateLimitMiddleware(30, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
@@ -95,7 +102,7 @@ router.get('/playlists', rateLimitMiddleware(30, 60), async (req, res) => {
   const cacheKey = `spotify:user-playlists:${userId}`;
 
   try {
-    const playlists = await getOrSet(cacheKey, null, async () => {
+    const playlists = await getOrSet(cacheKey, CACHE_TTL.userPlaylists, async () => {
       const spotifyUser = await getSpotifyUser(userId);
       if (!spotifyUser || !spotifyUser.accessToken) {
         throw new Error('Spotify не подключен');
@@ -143,7 +150,7 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), async (
   const cacheKey = `spotify:playlist:${playlistId}:items`;
 
   try {
-    const tracks = await getOrSet(cacheKey, null, async () => {
+    const tracks = await getOrSet(cacheKey, CACHE_TTL.playlistTracks, async () => {
       const spotifyUser = await getSpotifyUser(userId);
       if (!spotifyUser) throw new Error('Spotify не подключен');
 
@@ -193,7 +200,7 @@ router.get('/status', rateLimitMiddleware(30, 60), async (req, res) => {
   const cacheKey = `spotify:status:${userId}`;
 
   try {
-    const status = await getOrSet(cacheKey, 300, async () => {
+    const status = await getOrSet(cacheKey, CACHE_TTL.status, async () => {
       const spotifyUser = await getSpotifyUser(userId);
       return {
         connected: !!spotifyUser,
@@ -215,7 +222,7 @@ router.get('/devices', rateLimitMiddleware(20, 60), async (req, res) => {
   const cacheKey = `spotify:devices:${userId}`;
 
   try {
-    const devices = await getOrSet(cacheKey, null, async () => {
+    const devices = await getOrSet(cacheKey, CACHE_TTL.devices, async () => {
       const spotifyUser = await getSpotifyUser(userId);
       if (!spotifyUser?.accessToken) throw new Error('Нет токена');
 
@@ -260,10 +267,6 @@ router.post('/play', rateLimitMiddleware(15, 60), async (req, res) => {
   const { uri, deviceId, contextUri, offset } = req.body;
   if (!uri && !contextUri) return res.status(400).json({ error: 'Missing uri or contextUri' });
 
-  // ВАЖНО: раньше здесь сразу отвечали success:true (fire-and-forget), из-за
-  // чего клиент не знал об ошибке "нет активного устройства" (404 от Spotify)
-  // и отправлял client_ready вслепую — сессия стартовала, но у хоста ничего
-  // не играло. Теперь ждём реальный ответ Spotify.
   try {
     const spotifyUser = await getSpotifyUser(userId);
     if (!spotifyUser?.accessToken) {
@@ -326,7 +329,8 @@ router.post('/disconnect', rateLimitMiddleware(10, 60), async (req, res) => {
       data: { userId: null },
     });
 
-    await invalidateUserDB(userId);
+    // Инвалидация кэша через глобальное версионирование
+    await incrementVersion();
 
     await Promise.all([
       redis.del(`spotify:status:${userId}`),
@@ -348,7 +352,7 @@ router.get('/token-info', rateLimitMiddleware(20, 60), async (req, res) => {
   const cacheKey = `spotify:token-info:${userId}`;
 
   try {
-    const info = await getOrSet(cacheKey, 600, async () => {
+    const info = await getOrSet(cacheKey, CACHE_TTL.tokenInfo, async () => {
       const spotifyUser = await getSpotifyUser(userId);
       if (!spotifyUser) throw new Error('Spotify не подключен');
 
@@ -382,7 +386,7 @@ router.post('/next', rateLimitMiddleware(20, 60), async (req, res) => {
       redis.del(`spotify:devices:${userId}`),
     ]);
   } catch (e) {
-    logger.error({ err: error }, 'Skip next error');
+    logger.error({ err: e }, 'Skip next error');
   }
 });
 
@@ -403,7 +407,7 @@ router.post('/previous', rateLimitMiddleware(20, 60), async (req, res) => {
       redis.del(`spotify:devices:${userId}`),
     ]);
   } catch (e) {
-    logger.error({ err: error }, 'Previous error');
+    logger.error({ err: e }, 'Previous error');
   }
 });
 
@@ -411,10 +415,6 @@ router.put('/volume', rateLimitMiddleware(30, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  // Дожидаемся ответа Spotify: это используется для приглушения звука перед
-  // служебным "preview-play" при подготовке трека в сессии (см. клиент,
-  // handleServerPrepare) — если запрос молча потеряется, звук может остаться
-  // приглушённым, поэтому клиенту важно знать, прошла ли команда.
   try {
     const spotifyUser = await getSpotifyUser(userId);
     if (!spotifyUser?.accessToken) {
@@ -439,12 +439,6 @@ router.put('/seek', rateLimitMiddleware(20, 60), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  // ВАЖНО: раньше здесь отвечали клиенту success:true ДО реального запроса
-  // к Spotify (fire-and-forget). Из-за этого при ошибке (чаще всего — нет
-  // активного устройства, потому что Spotify только что был на паузе во
-  // время хендшейка сессии) клиент считал, что перемотка прошла, оптимистично
-  // сдвигал позицию в UI, а реального звука это не меняло. Теперь дожидаемся
-  // ответа Spotify и пробрасываем результат клиенту.
   try {
     const spotifyUser = await getSpotifyUser(userId);
     if (!spotifyUser?.accessToken) {
@@ -511,10 +505,7 @@ router.put('/resume', rateLimitMiddleware(20, 60), async (req, res) => {
   }
 });
 
-// ============================
-// Shuffle и Repeat (с отладкой)
-// ============================
-
+// Shuffle и Repeat (без изменений, только импорты уже обновлены)
 router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
   const userId = getUserId(req);
   logger.info({ userId, state: req.query.state }, 'Shuffle request received');
@@ -525,7 +516,6 @@ router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
     return res.status(400).json({ error: 'Параметр state должен быть true или false' });
   }
 
-  // Отвечаем мгновенно
   res.json({ success: true });
 
   try {
@@ -542,10 +532,9 @@ router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
     let accessToken;
     try {
       accessToken = getAccessToken(spotifyUser);
-      logger.debug({ userId }, `Shuffle access token obtained (first 10 chars): ${accessToken.substring(0, 10)}...`);
     } catch (decryptError) {
       logger.error({ userId, err: decryptError }, 'Shuffle decrypt error');
-      return; // ← ВАЖНО: выходим, если не смогли расшифровать
+      return;
     }
 
     const url = `https://api.spotify.com/v1/me/player/shuffle?state=${state}`;
@@ -569,7 +558,6 @@ router.put('/shuffle', rateLimitMiddleware(10, 60), async (req, res) => {
       }
     }
 
-    // Очистка кэша
     await Promise.all([
       redis.del(`spotify:player:${userId}`),
       redis.del(`spotify:devices:${userId}`),
@@ -606,7 +594,6 @@ router.put('/repeat', rateLimitMiddleware(10, 60), async (req, res) => {
     let accessToken;
     try {
       accessToken = getAccessToken(spotifyUser);
-      logger.debug({ userId }, `Repeat access token obtained (first 10 chars): ${accessToken.substring(0, 10)}...`);
     } catch (decryptError) {
       logger.error({ err: decryptError, userId }, 'Repeat decrypt error');
       return;

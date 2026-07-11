@@ -1,8 +1,18 @@
+const { z } = require('zod');
 const prisma = require('../db/prisma');
 const { addNotificationJob } = require('../infrastructure/queue');
-const { getOrSet, invalidateUserDB } = require('../infrastructure/spotify/cache');
+const { getOrSet, incrementVersion } = require('../infrastructure/redis');
 const logger = require('../infrastructure/logger');
 const { getIo } = require('../socket');
+const { withLock } = require('../infrastructure/lock');
+const asyncHandler = require('../utils/asyncHandler');
+
+const getUserId = (req) => {
+  if (req.session?.userId) return req.session.userId;
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
+  return null;
+};
 
 async function notifySessionInvite({ toUserId, sessionId, sessionName, hostId }) {
   const timestamp = Date.now();
@@ -32,158 +42,165 @@ async function notifyInviteResponse({ toUserId, userId, accept, sessionId }) {
   }
 }
 
-const createSession = async (req, res) => {
-  const { name, friendId } = req.body;
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
+const createSessionSchema = z.object({
+  name: z.string().optional(),
+  friendId: z.string().min(1, 'friendId обязателен'),
+});
+
+const sessionIdParamsSchema = z.object({
+  sessionId: z.string().min(1),
+});
+
+const trackIdParamsSchema = z.object({
+  trackId: z.string().min(1),
+});
+
+const addTracksBodySchema = z.object({
+  tracks: z.array(
+    z.object({
+      spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
+      trackName: z.string().min(1, 'trackName обязателен'),
+      artistName: z.string().optional().default(''),
+      imageUrl: z.string().optional().nullable(),
+      durationMs: z.number().int().positive().optional().nullable(),
+    })
+  ).min(1, 'Необходимо передать хотя бы один трек'),
+});
+
+const rateTrackBodySchema = z.object({
+  rating: z.number().int(),
+});
+
+const respondToInviteBodySchema = z.object({
+  accept: z.boolean(),
+});
+
+
+const createSession = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-  if (!friendId) return res.status(400).json({ error: 'friendId обязателен' });
-  if (userId === friendId) return res.status(400).json({ error: 'Нельзя создать сессию с самим собой' });
 
-  try {
-    const { withLock } = require('../infrastructure/lock');
+  const { name, friendId } = createSessionSchema.parse(req.body);
 
-    await withLock(`session:create:${userId}`, 5000, async () => {
-      const friendship = await prisma.friendship.findFirst({
-        where: {
-          status: 'accepted',
-          OR: [
-            { senderId: userId, receiverId: friendId },
-            { senderId: friendId, receiverId: userId },
-          ],
-        },
-      });
-      if (!friendship) {
-        res.status(403).json({ error: 'Вы не друзья с этим пользователем' });
-        return;
-      }
+  if (userId === friendId) {
+    return res.status(400).json({ error: 'Нельзя создать сессию с самим собой' });
+  }
 
-      const session = await prisma.$transaction(async (tx) => {
-        const newSession = await tx.session.create({
-          data: {
-            name,
-            hostId: userId,
-            members: {
-              create: [
-                { userId, status: 'accepted' },
-                { userId: friendId, status: 'pending' },
-              ],
-            },
-          },
-          include: {
-            members: {
-              include: {
-                user: {
-                  select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } },
-                },
-              },
-            },
-            tracks: true,
-          },
-        });
-
-        await tx.user.updateMany({
-          where: { id: { in: [userId, friendId] } },
-          data: { sessionsCount: { increment: 1 } },
-        });
-
-        return newSession;
-      });
-
-      try {
-        await notifySessionInvite({
-          toUserId: friendId,
-          sessionId: session.id,
-          sessionName: session.name,
-          hostId: userId,
-        });
-      } catch (e) {
-        logger.error({ err: e }, 'Failed to send session invite notification');
-      }
-
-      await invalidateUserDB(userId);
-      await invalidateUserDB(friendId);
-
-      res.status(201).json(session);
+  await withLock(`session:create:${userId}`, 5000, async () => {
+    const friendship = await prisma.friendship.findFirst({
+      where: {
+        status: 'accepted',
+        OR: [
+          { senderId: userId, receiverId: friendId },
+          { senderId: friendId, receiverId: userId },
+        ],
+      },
     });
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Create session error:', error);
+
+    if (!friendship) {
+      return res.status(403).json({ error: 'Вы не друзья с этим пользователем' });
     }
-    res.status(500).json({ error: 'Ошибка создания сессии', details: error.message });
-  }
-};
 
-const getMySessions = async (req, res) => {
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-
-  const cacheKey = `db:sessions-list:${userId}`;
-
-  try {
-    const sessions = await getOrSet(cacheKey, null, async () => {
-      return await prisma.session.findMany({
-        where: {
-          isActive: true,
-          members: { some: { userId, status: 'accepted' } },
+    const session = await prisma.$transaction(async (tx) => {
+      const newSession = await tx.session.create({
+        data: {
+          name,
+          hostId: userId,
+          members: {
+            create: [
+              { userId, status: 'accepted' },
+              { userId: friendId, status: 'pending' },
+            ],
+          },
         },
         include: {
           members: {
             include: {
-              user: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } },
+              user: {
+                select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } },
+              },
             },
           },
-          tracks: { include: { addedBy: { select: { username: true } } } },
+          tracks: true,
         },
       });
-    });
-    res.json(sessions);
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Get sessions error:', error);
-    }
-    res.status(500).json({ error: 'Ошибка получения сессий' });
-  }
-};
 
-const addTracks = async (req, res) => {
-  const { sessionId } = req.params;
-  const { tracks } = req.body;
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-  if (!Array.isArray(tracks) || tracks.length === 0) {
-    return res.status(400).json({ error: 'Необходимо передать массив треков' });
-  }
-
-  try {
-    const { withLock } = require('../infrastructure/lock');
-
-    // Lock per session to avoid race conditions when adding tracks
-    await withLock(`session:${sessionId}`, 5000, async () => {
-      const session = await prisma.session.findUnique({
-        where: { id: sessionId },
-        include: { members: true },
+      await tx.user.updateMany({
+        where: { id: { in: [userId, friendId] } },
+        data: { sessionsCount: { increment: 1 } },
       });
+
+      return newSession;
+    });
+
+    // Уведомление
+    try {
+      await notifySessionInvite({
+        toUserId: friendId,
+        sessionId: session.id,
+        sessionName: session.name,
+        hostId: userId,
+      });
+    } catch (e) {
+      logger.error({ err: e }, 'Failed to send session invite notification');
+    }
+
+    // Инвалидация кэша
+    await incrementVersion();
+
+    res.status(201).json(session);
+  });
+});
+
+const getMySessions = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const cacheKey = `db:sessions-list:${userId}`;
+  const sessions = await getOrSet(cacheKey, 30, async () => {
+    return prisma.session.findMany({
+      where: {
+        isActive: true,
+        members: { some: { userId, status: 'accepted' } },
+      },
+      include: {
+        members: {
+          include: {
+            user: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } },
+          },
+        },
+        tracks: { include: { addedBy: { select: { username: true } } } },
+      },
+    });
+  });
+
+  res.json(sessions);
+});
+
+const addTracks = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const { sessionId } = sessionIdParamsSchema.parse(req.params);
+  const { tracks } = addTracksBodySchema.parse(req.body);
+
+  await withLock(`session:${sessionId}`, 5000, async () => {
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { members: true },
+    });
+
     if (!session) return res.status(404).json({ error: 'Сессия не найдена' });
     if (!session.isActive) return res.status(400).json({ error: 'Сессия не активна' });
 
     const isMember = session.members.some(
-      m => m.userId === userId && m.status === 'accepted'
+      (m) => m.userId === userId && m.status === 'accepted'
     );
     if (!isMember) return res.status(403).json({ error: 'Вы не участник этой сессии' });
 
-      const createdTracks = await Promise.all(tracks.map((t) =>
+    // Создаём треки
+    const createdTracks = await Promise.all(
+      tracks.map((t) =>
         prisma.sessionTrack.create({
           data: {
             sessionId,
@@ -196,267 +213,212 @@ const addTracks = async (req, res) => {
           },
           include: { addedBy: { select: { username: true } } },
         })
-      ));
+      )
+    );
 
-      const allTracks = await prisma.sessionTrack.findMany({
-        where: { sessionId },
-        orderBy: { addedAt: 'asc' },
-        include: { addedBy: { select: { username: true } } },
-      });
+    // Все треки сессии
+    const allTracks = await prisma.sessionTrack.findMany({
+      where: { sessionId },
+      orderBy: { addedAt: 'asc' },
+      include: { addedBy: { select: { username: true } } },
+    });
 
-      const autoplayIndex = allTracks.findIndex((t) => t.id === createdTracks[0].id);
-      const autoplayUri = createdTracks[0].spotifyUri;
+    const autoplayIndex = allTracks.findIndex((t) => t.id === createdTracks[0].id);
+    const autoplayUri = createdTracks[0].spotifyUri;
 
-      const userIds = session.members.map(m => m.userId);
-      await Promise.all(userIds.map(uid => invalidateUserDB(uid)));
+    // Инвалидация кэша
+    await incrementVersion();
 
-      const tracksPayload = {
-        type: 'tracks_added',
-        sessionId,
-        tracks: createdTracks,
-        allTracks,
-        autoplayUri,
-        autoplayIndex,
-        addedById: userId,
-        timestamp: Date.now(),
-      };
+    // Уведомление
+    const tracksPayload = {
+      type: 'tracks_added',
+      sessionId,
+      tracks: createdTracks,
+      allTracks,
+      autoplayUri,
+      autoplayIndex,
+      addedById: userId,
+      timestamp: Date.now(),
+    };
 
-      try {
-        await addNotificationJob(tracksPayload);
-      } catch (e) {
-        logger.warn({ err: e, sessionId }, 'Queue unavailable, emitting tracks-added directly');
-        const io = getIo();
-        if (io) {
-          io.to(sessionId).emit('tracks-added', {
-            tracks: createdTracks,
-            allTracks,
-            autoplayUri,
-            autoplayIndex,
+    try {
+      await addNotificationJob(tracksPayload);
+    } catch (e) {
+      logger.warn({ err: e, sessionId }, 'Queue unavailable, emitting tracks-added directly');
+      const io = getIo();
+      if (io) {
+        io.to(sessionId).emit('tracks-added', {
+          tracks: createdTracks,
+          allTracks,
+          autoplayUri,
+          autoplayIndex,
+          addedById: userId,
+        });
+        if (autoplayUri != null && autoplayIndex >= 0) {
+          io.to(sessionId).emit('session_play', {
+            spotifyUri: autoplayUri,
+            trackIndex: autoplayIndex,
             addedById: userId,
+            tracks: allTracks,
           });
-          if (autoplayUri != null && autoplayIndex >= 0) {
-            io.to(sessionId).emit('session_play', {
-              spotifyUri: autoplayUri,
-              trackIndex: autoplayIndex,
-              addedById: userId,
-              tracks: allTracks,
-            });
-          }
         }
       }
-
-      res.json({ message: `Добавлено ${createdTracks.length} треков`, tracks: createdTracks });
-    });
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Add tracks error:', error);
     }
-    res.status(500).json({ error: 'Ошибка добавления треков' });
-  }
-};
 
-const rateTrack = async (req, res) => {
-  const { trackId } = req.params;
-  const { rating } = req.body;
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
+    res.json({ message: `Добавлено ${createdTracks.length} треков`, tracks: createdTracks });
+  });
+});
+
+const rateTrack = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  try {
-    const { withLock } = require('../infrastructure/lock');
+  const { trackId } = trackIdParamsSchema.parse(req.params);
+  const { rating } = rateTrackBodySchema.parse(req.body);
 
-    // Lock per track to avoid concurrent upserts from race conditions
-    await withLock(`track:rating:${trackId}`, 3000, async () => {
-      const result = await prisma.trackRating.upsert({
-        where: { trackId_userId: { trackId, userId } },
-        update: { rating },
-        create: { trackId, userId, rating },
-      });
-
-      const track = await prisma.sessionTrack.findUnique({
-        where: { id: trackId },
-        include: { session: { include: { members: true } } },
-      });
-      if (track?.session) {
-        const userIds = track.session.members.map(m => m.userId);
-        await Promise.all(userIds.map(uid => invalidateUserDB(uid)));
-      }
-
-      try {
-        await addNotificationJob({
-          type: 'track_rated',
-          sessionId: track?.session?.id,
-          trackId,
-          userId,
-          rating,
-          timestamp: Date.now(),
-        });
-      } catch (e) {
-        logger.error({ err: e }, 'Failed to enqueue track_rated notification');
-      }
-
-      res.json(result);
+  await withLock(`track:rating:${trackId}`, 3000, async () => {
+    const result = await prisma.trackRating.upsert({
+      where: { trackId_userId: { trackId, userId } },
+      update: { rating },
+      create: { trackId, userId, rating },
     });
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Rate track error:', error);
-    }
-    res.status(500).json({ error: 'Ошибка оценки' });
-  }
-};
 
-const endSession = async (req, res) => {
-  const { sessionId } = req.params;
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
+    const track = await prisma.sessionTrack.findUnique({
+      where: { id: trackId },
+      include: { session: { include: { members: true } } },
+    });
+
+    await incrementVersion();
+
+    try {
+      await addNotificationJob({
+        type: 'track_rated',
+        sessionId: track?.session?.id,
+        trackId,
+        userId,
+        rating,
+        timestamp: Date.now(),
+      });
+    } catch (e) {
+      logger.error({ err: e }, 'Failed to enqueue track_rated notification');
+    }
+
+    res.json(result);
+  });
+});
+
+const endSession = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  try {
-    const { withLock } = require('../infrastructure/lock');
+  const { sessionId } = sessionIdParamsSchema.parse(req.params);
 
-    // Lock session while ending it to avoid concurrent end operations
-    await withLock(`session:${sessionId}`, 5000, async () => {
-      const session = await prisma.session.findUnique({
-        where: { id: sessionId },
-        include: { members: true },
-      });
+  await withLock(`session:${sessionId}`, 5000, async () => {
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { members: true },
+    });
 
-      if (!session) return res.status(404).json({ error: 'Сессия не найдена' });
-      if (!session.isActive) return res.status(400).json({ error: 'Сессия уже завершена' });
-      if (session.hostId !== userId) {
-        const isMember = session.members.some(m => m.userId === userId && m.status === 'accepted');
-        if (!isMember) return res.status(403).json({ error: 'Вы не участник этой сессии' });
-        return res.status(403).json({ error: 'Только создатель сессии может её завершить' });
-      }
+    if (!session) return res.status(404).json({ error: 'Сессия не найдена' });
+    if (!session.isActive) return res.status(400).json({ error: 'Сессия уже завершена' });
 
-      await prisma.session.update({
-        where: { id: sessionId },
-        data: { isActive: false },
-      });
-
-      const tracks = await prisma.sessionTrack.findMany({
-        where: { sessionId },
-        include: { ratings: true },
-      });
-
-      const mutualLikes = tracks.filter(
-        (track) =>
-          track.ratings.length >= 2 &&
-          track.ratings.every((r) => r.rating === 1)
+    if (session.hostId !== userId) {
+      const isMember = session.members.some(
+        (m) => m.userId === userId && m.status === 'accepted'
       );
-
-      const userIds = session.members.map(m => m.userId);
-      await Promise.all(userIds.map(uid => invalidateUserDB(uid)));
-
-      res.json({ message: 'Сессия завершена', mutualLikes });
-    });
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('End session error:', error);
+      if (!isMember) return res.status(403).json({ error: 'Вы не участник этой сессии' });
+      return res.status(403).json({ error: 'Только создатель сессии может её завершить' });
     }
-    res.status(500).json({ error: 'Ошибка завершения сессии' });
-  }
-};
 
-const respondToInvite = async (req, res) => {
-  const { sessionId } = req.params;
-  const { accept } = req.body;
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
+    await prisma.session.update({
+      where: { id: sessionId },
+      data: { isActive: false },
+    });
+
+    const tracks = await prisma.sessionTrack.findMany({
+      where: { sessionId },
+      include: { ratings: true },
+    });
+
+    const mutualLikes = tracks.filter(
+      (track) =>
+        track.ratings.length >= 2 &&
+        track.ratings.every((r) => r.rating === 1)
+    );
+
+    await incrementVersion();
+
+    res.json({ message: 'Сессия завершена', mutualLikes });
+  });
+});
+
+const respondToInvite = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  try {
-    const { withLock } = require('../infrastructure/lock');
+  const { sessionId } = sessionIdParamsSchema.parse(req.params);
+  const { accept } = respondToInviteBodySchema.parse(req.body);
 
-    // Lock session member row to avoid concurrent accept/decline races
-    await withLock(`session:${sessionId}:member:${userId}`, 5000, async () => {
-      const status = accept ? 'accepted' : 'declined';
-      await prisma.sessionMember.updateMany({
-        where: { sessionId, userId },
-        data: { status },
-      });
-
-      const session = await prisma.session.findUnique({
-        where: { id: sessionId },
-        include: {
-          members: {
-            include: {
-              user: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } },
-            },
-          },
-          tracks: true,
-        },
-      });
-
-      try {
-        await notifyInviteResponse({
-          toUserId: session.hostId,
-          userId,
-          accept,
-          sessionId,
-        });
-      } catch (e) {
-        logger.error({ err: e }, 'Failed to send invite_response notification');
-      }
-
-      await invalidateUserDB(userId);
-      if (accept) {
-        await invalidateUserDB(session.hostId);
-      }
-      res.json({ status, session });
+  await withLock(`session:${sessionId}:member:${userId}`, 5000, async () => {
+    const status = accept ? 'accepted' : 'declined';
+    await prisma.sessionMember.updateMany({
+      where: { sessionId, userId },
+      data: { status },
     });
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Respond to invite error:', error);
-    }
-    res.status(500).json({ error: 'Ошибка ответа на приглашение' });
-  }
-};
 
-const getMyInvites = async (req, res) => {
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        members: {
+          include: {
+            user: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } },
+          },
+        },
+        tracks: true,
+      },
+    });
+
+    try {
+      await notifyInviteResponse({
+        toUserId: session.hostId,
+        userId,
+        accept,
+        sessionId,
+      });
+    } catch (e) {
+      logger.error({ err: e }, 'Failed to send invite_response notification');
+    }
+
+    await incrementVersion();
+
+    res.json({ status, session });
+  });
+});
+
+const getMyInvites = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const cacheKey = `db:invites-list:${userId}`;
-
-  try {
-    const invites = await getOrSet(cacheKey, null, async () => {
-      const invitesData = await prisma.sessionMember.findMany({
-        where: { userId, status: 'pending' },
-        include: {
-          session: {
-            include: {
-              members: {
-                include: {
-                  user: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } },
-                },
+  const invites = await getOrSet(cacheKey, 30, async () => {
+    const invitesData = await prisma.sessionMember.findMany({
+      where: { userId, status: 'pending' },
+      include: {
+        session: {
+          include: {
+            members: {
+              include: {
+                user: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } },
               },
             },
           },
         },
-      });
-      return invitesData.map(i => i.session);
+      },
     });
-    res.json(invites);
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Get invites error:', error);
-    }
-    res.status(500).json({ error: 'Ошибка получения приглашений' });
-  }
-};
+    return invitesData.map((i) => i.session);
+  });
+
+  res.json(invites);
+});
 
 module.exports = { createSession, getMySessions, addTracks, rateTrack, endSession, respondToInvite, getMyInvites };

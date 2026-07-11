@@ -1,12 +1,18 @@
-const Redlock = require('redlock');
+const { default: Redlock } = require('redlock');
 const logger = require('./logger');
 const { redisClient, isRedisAvailable } = require('./redis');
 
 let redlock = null;
-if (isRedisAvailable()) {
+let initAttempted = false;
+
+function getRedlock() {
+  if (redlock) return redlock;
+  if (!isRedisAvailable()) {
+    logger.warn('Redis not available, cannot create Redlock instance');
+    return null;
+  }
   try {
     redlock = new Redlock([redisClient], {
-      // Recommended sensible defaults
       driftFactor: 0.01,
       retryCount: 3,
       retryDelay: 200,
@@ -16,27 +22,29 @@ if (isRedisAvailable()) {
     redlock.on('clientError', (err) => {
       logger.error({ err }, 'Redlock client error');
     });
+
+    logger.info('Redlock initialized successfully');
+    return redlock;
   } catch (err) {
     logger.error({ err }, 'Failed to initialize Redlock');
-    redlock = null;
+    return null;
   }
-} else {
-  logger.warn('Redis is not available — distributed locks disabled');
 }
 
 async function withLock(resource, ttlMs, fn) {
-  // resource is a logical name like 'friendship:123'
   const key = `locks:${resource}`;
-  if (!redlock) {
-    // fallback: execute without lock
+  const lockManager = getRedlock();
+
+  if (!lockManager) {
+    logger.warn({ key }, 'Redlock unavailable, executing without distributed lock');
     return await fn();
   }
 
   let lock = null;
   try {
-    lock = await redlock.acquire([key], ttlMs);
+    lock = await lockManager.acquire([key], ttlMs);
   } catch (err) {
-    // Could not acquire lock
+    logger.error({ err, key }, 'Failed to acquire lock');
     const e = new Error('Could not acquire lock');
     e.cause = err;
     throw e;
@@ -49,10 +57,9 @@ async function withLock(resource, ttlMs, fn) {
     try {
       if (lock) await lock.release();
     } catch (releaseErr) {
-      // best-effort release
-      logger.warn({ err: releaseErr }, 'Failed to release lock');
+      logger.warn({ err: releaseErr, key }, 'Failed to release lock');
     }
   }
 }
 
-module.exports = { withLock };
+module.exports = { withLock, getRedlock };

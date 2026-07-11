@@ -1,5 +1,5 @@
 require('dotenv').config();
-require('./infrastructure/redis'); 
+require('./infrastructure/redis');
 
 const { rateLimitMiddleware } = require('./infrastructure/rateLimiter');
 const express = require('express');
@@ -7,6 +7,7 @@ const cors = require('cors');
 const logger = require('./infrastructure/logger');
 const pinoHttp = require('pino-http');
 const requestId = require('./middleware/requestId');
+const idempotencyMiddleware = require('./middleware/idempotency');
 const session = require('express-session');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
@@ -15,21 +16,24 @@ const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
 
 const authRoutes = require('./routes/auth');
-const friendsRoutes = require('./routes/friends'); 
-const sessionRoutes = require('./routes/sessions'); 
+const friendsRoutes = require('./routes/friends');
+const sessionRoutes = require('./routes/sessions');
 const spotifyRoutes = require('./routes/spotify');
 const playlistRoutes = require('./routes/playlists');
 const healthRoutes = require('./routes/health');
 const setupSocketModule = require('./socket');
-const { closeQueues } = require('./infrastructure/queue');
+const { closeQueues, initQueues } = require('./infrastructure/queue');
 
 // Правильный импорт setupSocket и closeSocket
 const setupSocket = setupSocketModule.setupSocket || setupSocketModule;
 const { closeSocket } = setupSocketModule;
 
+// Инициализируем очереди (отложенная инициализация BullMQ)
+initQueues();
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
 pool.query(`
@@ -49,13 +53,8 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
     origin: true,
-    credentials: true
+    credentials: true,
   },
-  // pingInterval 10с + pingTimeout 20с. Раньше стояло 5с/5с для быстрого
-  // детекта обрыва, но 5с pingTimeout слишком мало: при высоком RTT
-  // (мобильный интернет) сервер рвал свежее соединение, не дождавшись
-  // ping-ответа. Presence детектится чуть медленнее, зато соединение
-  // стабильное.
   pingInterval: 10000,
   pingTimeout: 20000,
 });
@@ -79,13 +78,13 @@ app.use(pinoHttp({
     if (res.statusCode >= 500 || err) return 'error';
     if (res.statusCode >= 400) return 'warn';
     return 'info';
-  }
+  },
 }));
 
 app.use(session({
   store: new pgSession({
-    pool: pool, 
-    tableName: 'session', 
+    pool: pool,
+    tableName: 'session',
   }),
   secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
@@ -94,23 +93,33 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000
-  }
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  },
 }));
 
+// Добавляем userId в логгер, наследуя traceId из requestId
 app.use((req, res, next) => {
   try {
     const auth = req.headers.authorization;
     const userId = req.user?.id || req.session?.userId || (auth && auth.startsWith('Bearer ') ? auth.replace('Bearer ', '') : null);
-    req.log = (req.log || logger).child({ requestId: req.id || null, userId: userId || null });
+    if (req.log) {
+      req.log = req.log.child({ userId: userId || undefined });
+    } else {
+      req.log = logger.child({ requestId: req.id || null, userId: userId || null });
+    }
   } catch (e) {
     req.log = req.log || logger;
   }
   next();
 });
 
+// Rate limiter (Lua script, IP fallback для анонимов)
 app.use(rateLimitMiddleware(100, 60));
 
+// Идемпотентность для мутирующих методов
+app.use(idempotencyMiddleware);
+
+// Маршруты
 app.use('/auth', authRoutes);
 app.use('/friends', friendsRoutes);
 app.use('/sessions', sessionRoutes);
@@ -160,7 +169,7 @@ async function shutdown(signal) {
   }
 
   try {
-    await closeSocket();  // ← используем функцию из socket.js
+    await closeSocket();
     logger.info('Socket.io closed');
   } catch (err) {
     logger.error({ err }, 'Error closing socket.io');
@@ -176,7 +185,11 @@ async function shutdown(signal) {
 
   try {
     const redisModule = require('./infrastructure/redis');
-    if (redisModule && redisModule.redisClient) {
+    // Очищаем pending fetches
+    if (redisModule.clearPendingFetches) {
+      redisModule.clearPendingFetches();
+    }
+    if (redisModule.redisClient) {
       await redisModule.redisClient.quit();
       logger.info('Redis disconnected');
     }

@@ -8,26 +8,26 @@ datasource db {
 }
 
 model User {
-  id               String          @id @default(uuid())
+  id               String    @id @default(uuid())
   username         String
-  email            String          @unique
+  email            String    @unique
   passwordHash     String
-  usernameChangedByUser Boolean    @default(false)
+  usernameChangedByUser Boolean @default(false)
   customAvatarUrl  String?
-  createdAt        DateTime        @default(now())
-  isEmailVerified  Boolean         @default(false)
-  
+  createdAt        DateTime  @default(now())
+  isEmailVerified  Boolean   @default(false)
+
   // Статус и приватность
-  isOnline         Boolean         @default(false)
+  isOnline         Boolean   @default(false)
   lastSeenAt       DateTime?
-  isOnlineHidden   Boolean         @default(false)
-  isFriendsHidden  Boolean         @default(false)
-  isActivityHidden Boolean         @default(false)
+  isOnlineHidden   Boolean   @default(false)
+  isFriendsHidden  Boolean   @default(false)
+  isActivityHidden Boolean   @default(false)
 
   friendsCount    Int @default(0)
   sessionsCount   Int @default(0)
 
-  // Связи
+  // Связи с каскадным удалением
   receivedRequests Friendship[]    @relation("receiver")
   sentRequests     Friendship[]    @relation("sender")
   hostedSessions   Session[]       @relation("host")
@@ -37,7 +37,7 @@ model User {
   likedTracks      LikedTrack[]
   addedTracks      SessionTrack[]  @relation("trackAdder")
   playHistory      PlayHistory[]
-  
+
   spotifyUser      SpotifyUser?
 
   @@index([username])
@@ -53,8 +53,8 @@ model SpotifyUser {
   accessToken  String?
   refreshToken String?
   createdAt    DateTime @default(now())
-  
-  user         User?    @relation(fields: [userId], references: [id])
+
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
 
   @@index([displayName])
 }
@@ -73,8 +73,8 @@ model Friendship {
   status     FriendshipStatus @default(pending)
   createdAt  DateTime         @default(now())
 
-  receiver   User             @relation("receiver", fields: [receiverId], references: [id])
-  sender     User             @relation("sender", fields: [senderId], references: [id])
+  receiver   User             @relation("receiver", fields: [receiverId], references: [id], onDelete: Cascade) // cascade
+  sender     User             @relation("sender", fields: [senderId], references: [id], onDelete: Cascade) // cascade
 
   @@index([receiverId, status])
   @@index([senderId, status])
@@ -84,17 +84,17 @@ model Friendship {
 model Playlist {
   id          String   @id @default(uuid())
   userId      String
-  spotifyId   String? 
+  spotifyId   String?
   name        String
   description String?
   imageUrl    String?
   isCustom    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  playlistTracks      PlaylistTrack[]
+  playlistTracks PlaylistTrack[]
 
-  user        User     @relation(fields: [userId], references: [id])
-  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
+
   @@index([userId])
 }
 
@@ -107,7 +107,7 @@ model PlaylistTrack {
   durationMs  Int?
   addedAt     DateTime @default(now())
 
-  playlist    Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  playlist    Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade) // already cascade
 
   @@unique([playlistId, spotifyUri])
 }
@@ -115,12 +115,12 @@ model PlaylistTrack {
 model LikedTrack {
   id          String   @id @default(uuid())
   userId      String
-  spotifyUri  String 
+  spotifyUri  String
   trackName   String
   artistName  String
   likedAt     DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
 
   @@unique([userId, spotifyUri])
 }
@@ -131,8 +131,8 @@ model Session {
   name      String
   isActive  Boolean         @default(true)
   createdAt DateTime        @default(now())
-  
-  host      User            @relation("host", fields: [hostId], references: [id])
+
+  host      User            @relation("host", fields: [hostId], references: [id], onDelete: Cascade) // cascade
   members   SessionMember[]
   tracks    SessionTrack[]
 
@@ -147,8 +147,8 @@ model SessionMember {
   status    String   @default("pending") // pending | accepted | declined
   joinedAt  DateTime @default(now())
 
-  session   Session  @relation(fields: [sessionId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade) // cascade
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
 
   @@index([sessionId])
   @@index([userId])
@@ -166,8 +166,8 @@ model SessionTrack {
   durationMs Int?
   addedAt    DateTime      @default(now())
 
-  session    Session       @relation(fields: [sessionId], references: [id])
-  addedBy    User?         @relation("trackAdder", fields: [addedById], references: [id])
+  session    Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade) // cascade
+  addedBy    User?         @relation("trackAdder", fields: [addedById], references: [id], onDelete: SetNull) // если пользователь удалён, оставляем трек, но обнуляем автора
   ratings    TrackRating[]
 
   @@index([sessionId, addedAt])
@@ -181,7 +181,7 @@ model PlayHistory {
   artistName String
   playedAt   DateTime @default(now())
 
-  user       User     @relation(fields: [userId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
 
   @@index([userId, playedAt])
 }
@@ -193,8 +193,8 @@ model TrackRating {
   rating    Int          @default(1) // 1 = лайк, -1 = дизлайк
   createdAt DateTime     @default(now())
 
-  track     SessionTrack @relation(fields: [trackId], references: [id])
-  user      User         @relation(fields: [userId], references: [id])
+  track     SessionTrack @relation(fields: [trackId], references: [id], onDelete: Cascade) // cascade
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
 
   @@unique([trackId, userId])
 }

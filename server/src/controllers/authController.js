@@ -2,7 +2,14 @@ const axios = require('axios');
 const prisma = require('../db/prisma');
 const { OAuth2Client } = require('google-auth-library');
 const crypto = require('crypto');
-const { getOrSet, invalidateUserDB } = require('../infrastructure/spotify/cache');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { z } = require('zod');
+
+const { getOrSet, incrementVersion } = require('../infrastructure/redis');
+const logger = require('../infrastructure/logger');
+const asyncHandler = require('../utils/asyncHandler');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -10,18 +17,42 @@ const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
 
-const login = async (req, res) => {
+const googleAuthSchema = z.object({
+  idToken: z.string().min(1, 'Missing idToken'),
+});
+
+const updateSettingsSchema = z.object({
+  isOnlineHidden: z.boolean().optional(),
+  isFriendsHidden: z.boolean().optional(),
+  isActivityHidden: z.boolean().optional(),
+}).refine(data => Object.keys(data).length > 0, {
+  message: 'Нет данных для обновления',
+});
+
+const updateProfileSchema = z.object({
+  username: z.string().trim().min(2, 'Имя должно содержать минимум 2 символа')
+    .max(50, 'Имя должно содержать не более 50 символов')
+    .regex(/^[\p{L}\p{N} _\-\.]+$/u, 'Имя содержит недопустимые символы')
+    .optional(),
+  customAvatarUrl: z.string().url('Некорректный URL аватарки').optional().nullable(),
+}).refine(data => data.username !== undefined || data.customAvatarUrl !== undefined, {
+  message: 'Нет данных для обновления',
+});
+
+const getUserId = (req) => {
+  if (req.session?.userId) return req.session.userId;
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
+  return null;
+};
+
+
+const login = (req, res) => {
   const scopes = [
-    'user-read-private',
-    'user-read-email',
-    'playlist-read-private',
-    'playlist-read-collaborative',
-    'playlist-modify-public',
-    'playlist-modify-private',
-    'user-library-read',
-    'streaming',
-    'user-modify-playback-state',
-    'user-read-playback-state',
+    'user-read-private', 'user-read-email', 'playlist-read-private',
+    'playlist-read-collaborative', 'playlist-modify-public',
+    'playlist-modify-private', 'user-library-read', 'streaming',
+    'user-modify-playback-state', 'user-read-playback-state',
   ].join('%20');
 
   let stateObj = {};
@@ -29,19 +60,21 @@ const login = async (req, res) => {
     try {
       const decoded = Buffer.from(req.query.state, 'base64').toString('utf8');
       stateObj = JSON.parse(decoded);
-    } catch (e) {}
+    } catch (_) {}
   }
 
   if (stateObj.userId) {
     req.session.pendingLinkUserId = stateObj.userId;
-    await req.session.save();
+    req.session.save().catch(() => {});
   }
 
   let returnTo = stateObj.returnTo || req.query.returnTo || '';
-  if (returnTo.length > 500) {
-    returnTo = returnTo.substring(0, 500); 
-  }
-  const stateForSpotify = Buffer.from(JSON.stringify({ returnTo, userId: stateObj.userId })).toString('base64');
+  if (returnTo.length > 500) returnTo = returnTo.substring(0, 500);
+
+  const stateForSpotify = Buffer.from(JSON.stringify({
+    returnTo,
+    userId: stateObj.userId,
+  })).toString('base64');
 
   const url = `https://accounts.spotify.com/authorize` +
     `?response_type=code` +
@@ -54,387 +87,278 @@ const login = async (req, res) => {
   res.redirect(url);
 };
 
-const callback = async (req, res) => {
+const callback = asyncHandler(async (req, res) => {
   const { code, state } = req.query;
 
+  // Обмен кода на токены
+  const tokenResponse = await axios.post(
+    'https://accounts.spotify.com/api/token',
+    new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT_URI,
+    }),
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')}`,
+      },
+    }
+  );
+
+  const { access_token, refresh_token } = tokenResponse.data;
+
+  // Получение профиля
+  const profileResponse = await axios.get('https://api.spotify.com/v1/me', {
+    headers: { Authorization: `Bearer ${access_token}` },
+  });
+  const profile = profileResponse.data;
+
+  // Извлечение returnTo из state
+  let returnTo = null;
+  let pendingLinkUserId = null;
   try {
-    const tokenResponse = await axios.post(
-      'https://accounts.spotify.com/api/token',
-      new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: REDIRECT_URI,
-      }),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Authorization: `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')}`,
-        },
-      }
-    );
+    const decoded = Buffer.from(state || '', 'base64').toString('utf8');
+    const parsed = JSON.parse(decoded);
+    returnTo = parsed?.returnTo;
+    pendingLinkUserId = parsed?.userId;
+  } catch (_) {}
 
-    const { access_token, refresh_token } = tokenResponse.data;
+  const userId = pendingLinkUserId || req.session?.userId;
 
-    const profileResponse = await axios.get('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
+  // Upsert spotifyUser и связь с user
+  const spotifyUser = await prisma.spotifyUser.upsert({
+    where: { spotifyId: profile.id },
+    update: {
+      displayName: profile.display_name,
+      email: profile.email,
+      avatarUrl: profile.images?.[0]?.url || null,
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      ...(userId ? { userId } : {}),
+    },
+    create: {
+      spotifyId: profile.id,
+      displayName: profile.display_name,
+      email: profile.email,
+      avatarUrl: profile.images?.[0]?.url || null,
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      ...(userId ? { userId } : {}),
+    },
+  });
 
-    const profile = profileResponse.data;
-
-    let returnTo = null;
-    let pendingLinkUserId = null;
-    try {
-      const decoded = Buffer.from(state || '', 'base64').toString('utf8');
-      const parsed = JSON.parse(decoded);
-      returnTo = parsed?.returnTo;
-      pendingLinkUserId = parsed?.userId;
-    } catch (_) {}
-
-    const userId = pendingLinkUserId || req.session?.userId;
-
-    const spotifyUser = await prisma.spotifyUser.upsert({
-      where: { spotifyId: profile.id },
-      update: {
-        displayName: profile.display_name,
-        email: profile.email,
-        avatarUrl: profile.images?.[0]?.url || null,
-        accessToken: access_token,
-        refreshToken: refresh_token,
-        ...(userId ? { userId } : {}),
-      },
-      create: {
-        spotifyId: profile.id,
-        displayName: profile.display_name,
-        email: profile.email,
-        avatarUrl: profile.images?.[0]?.url || null,
-        accessToken: access_token,
-        refreshToken: refresh_token,
-        ...(userId ? { userId } : {}),
+  let finalUserId = userId;
+  if (!finalUserId) {
+    const newUser = await prisma.user.create({
+      data: {
+        username: spotifyUser.displayName || spotifyUser.spotifyId,
+        email: spotifyUser.email || `${spotifyUser.spotifyId}@spotify.user`,
+        passwordHash: '',
+        usernameChangedByUser: false,
+        isEmailVerified: true,
       },
     });
-
-    let finalUserId = userId;
-    if (!finalUserId) {
-      const newUser = await prisma.user.create({
-        data: {
-          username: spotifyUser.displayName || spotifyUser.spotifyId,
-          email: spotifyUser.email || `${spotifyUser.spotifyId}@spotify.user`,
-          passwordHash: '',
-          usernameChangedByUser: false,
-          isEmailVerified: true,
-        },
-      });
-      finalUserId = newUser.id;
-      await prisma.spotifyUser.update({
-        where: { id: spotifyUser.id },
-        data: { userId: finalUserId },
-      });
-    }
-
-    req.session.userId = finalUserId;
-    await req.session.save();
-
-    await invalidateUserDB(req.session.userId);
-
-    const cookie = `connect.sid=${req.sessionID}`;
-
-    if (returnTo) {
-      const joiner = returnTo.includes('?') ? '&' : '?';
-      const redirectUrl = returnTo.startsWith('myapp://')
-        ? `${returnTo}?token=${req.session.userId}&cookie=${encodeURIComponent(cookie)}`
-        : `${returnTo}${joiner}auth_done=1&token=${req.session.userId}&cookie=${encodeURIComponent(cookie)}`;
-      return res.redirect(redirectUrl);
-    }
-
-    res.json({
-      message: 'Spotify подключен успешно',
-      user: { id: req.session.userId, displayName: spotifyUser.displayName, spotifyConnected: true },
-      cookie,
+    finalUserId = newUser.id;
+    await prisma.spotifyUser.update({
+      where: { id: spotifyUser.id },
+      data: { userId: finalUserId },
     });
-  } catch (error) {
-    // Достаём максимум деталей из ответа Spotify — именно тут скрыта
-    // настоящая причина (invalid_grant, invalid_client, redirect_uri_mismatch
-    // и т.п.), а раньше в лог уходило только общее сообщение.
-    const spotifyErr = error.response?.data;
-    const detail = spotifyErr?.error_description || spotifyErr?.error || error.message;
-    const status = error.response?.status;
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error({
-        spotifyStatus: status,
-        spotifyError: spotifyErr,
-        step: error.config?.url,
-      }, `OAuth error: ${detail}`);
-    } else {
-      console.error('OAuth error:', status, spotifyErr || error.message);
-    }
-    res.status(500).json({ error: 'Ошибка авторизации Spotify', detail });
   }
-};
 
-const getMe = async (req, res) => {
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
+  req.session.userId = finalUserId;
+  await req.session.save();
+
+  // Инвалидация кэша
+  await incrementVersion();
+
+  const cookie = `connect.sid=${req.sessionID}`;
+
+  if (returnTo) {
+    const joiner = returnTo.includes('?') ? '&' : '?';
+    const redirectUrl = returnTo.startsWith('myapp://')
+      ? `${returnTo}?token=${req.session.userId}&cookie=${encodeURIComponent(cookie)}`
+      : `${returnTo}${joiner}auth_done=1&token=${req.session.userId}&cookie=${encodeURIComponent(cookie)}`;
+    return res.redirect(redirectUrl);
   }
+
+  res.json({
+    message: 'Spotify подключен успешно',
+    user: { id: req.session.userId, displayName: spotifyUser.displayName, spotifyConnected: true },
+    cookie,
+  });
+});
+
+const getMe = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const cacheKey = `db:user-profile:${userId}`;
-
-  try {
-    const userData = await getOrSet(cacheKey, null, async () => {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: { spotifyUser: true },
-      });
-
-      if (user) {
-        return {
-          id: user.id,
-          displayName: user.username,
-          email: user.email,
-          avatarUrl: user.customAvatarUrl || user.spotifyUser?.avatarUrl || null,
-          spotifyConnected: !!user.spotifyUser,
-          spotifyId: user.spotifyUser?.spotifyId || null,
-          isFriendsHidden: user.isFriendsHidden,
-          isActivityHidden: user.isActivityHidden,
-          isOnlineHidden: user.isOnlineHidden,
-          customAvatarUrl: user.customAvatarUrl,
-        };
-      }
-
-      // Если user не найден, проверяем spotifyUser (для старых данных, где userId мог ссылаться на spotifyUser.id)
-      const spotifyUser = await prisma.spotifyUser.findUnique({
-        where: { id: userId },
-        include: { user: true },
-      });
-
-      if (spotifyUser) {
-        return {
-          id: spotifyUser.userId || spotifyUser.id,
-          displayName: spotifyUser.user?.username || spotifyUser.displayName,
-          email: spotifyUser.user?.email || spotifyUser.email,
-          avatarUrl: spotifyUser.avatarUrl,
-          spotifyConnected: true,
-          spotifyId: spotifyUser.spotifyId,
-          isFriendsHidden: spotifyUser.user?.isFriendsHidden ?? false,
-          isActivityHidden: spotifyUser.user?.isActivityHidden ?? false,
-          isOnlineHidden: spotifyUser.user?.isOnlineHidden ?? false,
-        };
-      }
-
-      // Если ничего не найдено – возвращаем null, чтобы обработать как 404
-      return null;
+  const userData = await getOrSet(cacheKey, 300, async () => {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { spotifyUser: true },
     });
-
-    if (!userData) {
-      return res.status(404).json({ error: 'Пользователь не найден' });
-    }
-
-    res.json(userData);
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('GetMe error:', error);
-    }
-    res.status(500).json({ error: 'Ошибка получения пользователя' });
-  }
-};
-
-const googleAuth = async (req, res) => {
-  const { idToken } = req.body;
-  if (!idToken) return res.status(400).json({ error: 'Missing idToken' });
-
-  try {
-    const ticket = await googleClient.verifyIdToken({
-      idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-
-    let user = await prisma.user.findUnique({ where: { email: payload.email } });
 
     if (user) {
-      if (!user.usernameChangedByUser) {
-        user = await prisma.user.update({
-          where: { email: payload.email },
-          data: { username: payload.name },
-        });
-      }
-    } else {
-      user = await prisma.user.create({
-        data: {
-          username: payload.name,
-          email: payload.email,
-          passwordHash: '',
-        },
+      return {
+        id: user.id,
+        displayName: user.username,
+        email: user.email,
+        avatarUrl: user.customAvatarUrl || user.spotifyUser?.avatarUrl || null,
+        spotifyConnected: !!user.spotifyUser,
+        spotifyId: user.spotifyUser?.spotifyId || null,
+        isFriendsHidden: user.isFriendsHidden,
+        isActivityHidden: user.isActivityHidden,
+        isOnlineHidden: user.isOnlineHidden,
+        customAvatarUrl: user.customAvatarUrl,
+      };
+    }
+
+    const spotifyUser = await prisma.spotifyUser.findUnique({
+      where: { id: userId },
+      include: { user: true },
+    });
+    if (spotifyUser) {
+      return {
+        id: spotifyUser.userId || spotifyUser.id,
+        displayName: spotifyUser.user?.username || spotifyUser.displayName,
+        email: spotifyUser.user?.email || spotifyUser.email,
+        avatarUrl: spotifyUser.avatarUrl,
+        spotifyConnected: true,
+        spotifyId: spotifyUser.spotifyId,
+        isFriendsHidden: spotifyUser.user?.isFriendsHidden ?? false,
+        isActivityHidden: spotifyUser.user?.isActivityHidden ?? false,
+        isOnlineHidden: spotifyUser.user?.isOnlineHidden ?? false,
+      };
+    }
+
+    return null;
+  });
+
+  if (!userData) {
+    return res.status(404).json({ error: 'Пользователь не найден' });
+  }
+
+  res.json(userData);
+});
+
+const googleAuth = asyncHandler(async (req, res) => {
+  const { idToken } = googleAuthSchema.parse(req.body);
+
+  const ticket = await googleClient.verifyIdToken({
+    idToken,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
+
+  let user = await prisma.user.findUnique({ where: { email: payload.email } });
+  if (user) {
+    if (!user.usernameChangedByUser) {
+      user = await prisma.user.update({
+        where: { email: payload.email },
+        data: { username: payload.name },
       });
     }
-
-    req.session.userId = user.id;
-    await req.session.save();
-
-    await invalidateUserDB(user.id);
-
-    res.json({
-      message: 'Logged in with Google',
-      user: { id: user.id, displayName: user.username, email: user.email, spotifyConnected: false },
-      cookie: `connect.sid=${req.sessionID}`,
+  } else {
+    user = await prisma.user.create({
+      data: { username: payload.name, email: payload.email, passwordHash: '' },
     });
-    } catch (error) {
-      if (req && req.log && typeof req.log.error === 'function') {
-        req.log.error('Google auth error:', error);
-      }
-      res.status(401).json({ error: 'Invalid token' });
-    }
-};
+  }
 
-const logout = async (req, res) => { 
+  req.session.userId = user.id;
+  await req.session.save();
+
+  await incrementVersion();
+
+  res.json({
+    message: 'Logged in with Google',
+    user: { id: user.id, displayName: user.username, email: user.email, spotifyConnected: false },
+    cookie: `connect.sid=${req.sessionID}`,
+  });
+});
+
+const logout = asyncHandler(async (req, res) => {
   const userId = req.session?.userId;
   req.session.destroy();
-  if (userId) await invalidateUserDB(userId);
+  if (userId) await incrementVersion();
   res.json({ message: 'Вышли из системы' });
-};
+});
 
-const getSettings = async (req, res) => {
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
+const getSettings = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const cacheKey = `db:user-settings:${userId}`;
-
-  try {
-    const settings = await getOrSet(cacheKey, null, async () => {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true },
-      });
-      if (!user) throw new Error('Пользователь не найден');
-      return user;
-    });
-    res.json(settings);
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Get settings error:', error);
-    }
-    res.status(500).json({ error: 'Ошибка получения настроек' });
-  }
-};
-
-const updateSettings = async (req, res) => {
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-  const { isOnlineHidden, isFriendsHidden, isActivityHidden } = req.body;
-
-  try {
-    const dataToUpdate = {};
-    if (typeof isOnlineHidden === 'boolean') dataToUpdate.isOnlineHidden = isOnlineHidden;
-    if (typeof isFriendsHidden === 'boolean') dataToUpdate.isFriendsHidden = isFriendsHidden;
-    if (typeof isActivityHidden === 'boolean') dataToUpdate.isActivityHidden = isActivityHidden;
-
-    if (Object.keys(dataToUpdate).length === 0) {
-      return res.status(400).json({ error: 'Нет данных для обновления' });
-    }
-
-    const updated = await prisma.user.update({
+  const settings = await getOrSet(cacheKey, 300, async () => {
+    const user = await prisma.user.findUnique({
       where: { id: userId },
-      data: dataToUpdate,
       select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true },
     });
+    if (!user) throw new Error('Пользователь не найден');
+    return user;
+  });
 
-    // success
+  res.json(settings);
+});
 
-    res.json(updated);
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Update settings error:', error);
-    }
-    res.status(500).json({ error: 'Ошибка обновления настроек' });
-  }
-};
-
-const updateProfile = async (req, res) => {
-  let userId = req.session?.userId;
-  if (!userId) {
-    const auth = req.headers.authorization;
-    if (auth?.startsWith('Bearer ')) userId = auth.replace('Bearer ', '');
-  }
+const updateSettings = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-  const { username, customAvatarUrl } = req.body;
+
+  const dataToUpdate = updateSettingsSchema.parse(req.body);
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: dataToUpdate,
+    select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true },
+  });
+
+  await incrementVersion();
+  res.json(updated);
+});
+
+const updateProfile = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const { username, customAvatarUrl } = updateProfileSchema.parse(req.body);
+
   const dataToUpdate = {};
-
-  if (typeof username === 'string') {
-    const trimmed = username.trim();
-    if (trimmed.length > 0) {
-      if (trimmed.length < 2) return res.status(400).json({ error: 'Имя должно содержать минимум 2 символа' });
-      if (trimmed.length > 50) return res.status(400).json({ error: 'Имя должно содержать не более 50 символов' });
-      if (/^\s+$/.test(trimmed)) return res.status(400).json({ error: 'Имя не может состоять только из пробелов' });
-      if (!/^[\p{L}\p{N} _\-\.]+$/u.test(trimmed)) return res.status(400).json({ error: 'Имя содержит недопустимые символы' });
-      dataToUpdate.username = trimmed;
-      dataToUpdate.usernameChangedByUser = true;
-    }
+  if (username !== undefined) {
+    dataToUpdate.username = username;
+    dataToUpdate.usernameChangedByUser = true;
+  }
+  if (customAvatarUrl !== undefined) {
+    dataToUpdate.customAvatarUrl = customAvatarUrl || null;
   }
 
-  if (typeof customAvatarUrl === 'string') {
-    const trimmed = customAvatarUrl.trim();
-    if (trimmed === '') {
-      dataToUpdate.customAvatarUrl = null;
-    } else {
-      try {
-        new URL(trimmed); 
-        dataToUpdate.customAvatarUrl = trimmed;
-      } catch (_) {
-        return res.status(400).json({ error: 'Некорректный URL аватарки' });
-      }
-    }
-  }
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: dataToUpdate,
+    select: {
+      id: true,
+      username: true,
+      customAvatarUrl: true,
+      spotifyUser: { select: { avatarUrl: true } },
+    },
+  });
 
-  if (Object.keys(dataToUpdate).length === 0) {
-    return res.status(400).json({ error: 'Нет данных для обновления' });
-  }
+  await incrementVersion();
 
-  try {
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: dataToUpdate,
-      select: {
-        id: true,
-        username: true,
-        customAvatarUrl: true,
-        spotifyUser: { select: { avatarUrl: true } }
-      }
-    });
+  res.json({
+    id: updated.id,
+    displayName: updated.username,
+    avatarUrl: updated.customAvatarUrl || updated.spotifyUser?.avatarUrl || null,
+    customAvatarUrl: updated.customAvatarUrl,
+  });
+});
 
-    await invalidateUserDB(userId);
-
-    res.json({
-      id: updated.id,
-      displayName: updated.username,
-      avatarUrl: updated.customAvatarUrl || updated.spotifyUser?.avatarUrl || null,
-      customAvatarUrl: updated.customAvatarUrl
-    });
-  } catch (error) {
-      if (req && req.log && typeof req.log.error === 'function') {
-        req.log.error('Update profile error:', error);
-      }
-    res.status(500).json({ error: 'Ошибка обновления профиля' });
-  }
-};
-
-// GET /auth/google-web — редирект на Google OAuth для Windows
 const googleWebLogin = (req, res) => {
   let returnTo = req.query.returnTo || '';
-  if (returnTo.length > 500) {
-    returnTo = returnTo.substring(0, 500);
-  }
-  const state = Buffer.from(JSON.stringify({ returnTo })).toString('base64');
+  if (returnTo.length > 500) returnTo = returnTo.substring(0, 500);
 
+  const state = Buffer.from(JSON.stringify({ returnTo })).toString('base64');
   const url = 'https://accounts.google.com/o/oauth2/v2/auth' +
     `?client_id=${process.env.GOOGLE_CLIENT_ID}` +
     `&redirect_uri=${encodeURIComponent(process.env.GOOGLE_REDIRECT_URI)}` +
@@ -445,8 +369,7 @@ const googleWebLogin = (req, res) => {
   res.redirect(url);
 };
 
-// GET /auth/google-callback — обработка ответа от Google
-const googleWebCallback = async (req, res) => {
+const googleWebCallback = asyncHandler(async (req, res) => {
   const { code, state } = req.query;
   if (!code) return res.status(400).json({ error: 'Missing code' });
 
@@ -456,97 +379,80 @@ const googleWebCallback = async (req, res) => {
     returnTo = JSON.parse(decoded)?.returnTo;
   } catch (_) {}
 
-  try {
-    const tokenRes = await axios.post(
-      'https://oauth2.googleapis.com/token',
-      new URLSearchParams({
-        code,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: process.env.GOOGLE_REDIRECT_URI,
-        grant_type: 'authorization_code',
-      }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-    );
+  const tokenRes = await axios.post(
+    'https://oauth2.googleapis.com/token',
+    new URLSearchParams({
+      code,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+      grant_type: 'authorization_code',
+    }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
 
-    const { id_token } = tokenRes.data;
+  const { id_token } = tokenRes.data;
+  const ticket = await googleClient.verifyIdToken({
+    idToken: id_token,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
 
-    const ticket = await googleClient.verifyIdToken({
-      idToken: id_token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-
-    let user = await prisma.user.findUnique({ where: { email: payload.email } });
-
-    if (user) {
-      if (!user.usernameChangedByUser) {
-        user = await prisma.user.update({
-          where: { email: payload.email },
-          data: { username: payload.name },
-        });
-      }
-    } else {
-      user = await prisma.user.create({
-        data: {
-          username: payload.name,
-          email: payload.email,
-          passwordHash: '',
-        },
+  let user = await prisma.user.findUnique({ where: { email: payload.email } });
+  if (user) {
+    if (!user.usernameChangedByUser) {
+      user = await prisma.user.update({
+        where: { email: payload.email },
+        data: { username: payload.name },
       });
     }
-
-    req.session.userId = user.id;
-    await req.session.save();
-
-    await invalidateUserDB(user.id);
-
-    const cookie = `connect.sid=${req.sessionID}`;
-    const token = user.id;
-
-    // Сохраняем для polling из Flutter на Windows
-    const pendingTokens = global.pendingTokens || (global.pendingTokens = new Map());
-    const tempToken = crypto.randomBytes(16).toString('hex');
-    pendingTokens.set(tempToken, { userId: user.id, cookie });
-    setTimeout(() => pendingTokens.delete(tempToken), 5 * 60 * 1000);
-
-    if (returnTo && !returnTo.startsWith('syncm://')) {
-      const joiner = returnTo.includes('?') ? '&' : '?';
-      return res.redirect(
-        `${returnTo}${joiner}auth_done=1&token=${token}&cookie=${encodeURIComponent(cookie)}`
-      );
-    }
-
-    // Для Windows — страница успеха с кодом для ввода в приложение
-    return res.send(`
-      <html>
-        <head>
-          <title>SyncM — Вход выполнен</title>
-          <style>
-            body { font-family: sans-serif; text-align: center; padding: 60px; background: #111; color: #fff; }
-            code { background: #222; padding: 8px 16px; border-radius: 8px; font-size: 20px; letter-spacing: 2px; }
-            p { color: #aaa; }
-          </style>
-        </head>
-        <body>
-          <h2>✅ Вход выполнен!</h2>
-          <p>Введите этот код в приложении SyncM:</p>
-          <code>${tempToken}</code>
-          <p>Код действителен 5 минут.</p>
-        </body>
-      </html>
-    `);
-  } catch (error) {
-    if (req && req.log && typeof req.log.error === 'function') {
-      req.log.error('Google web callback error:', error.response?.data || error.message);
-    }
-    return res.status(500).json({ error: 'Ошибка авторизации Google' });
+  } else {
+    user = await prisma.user.create({
+      data: { username: payload.name, email: payload.email, passwordHash: '' },
+    });
   }
-};
 
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+  req.session.userId = user.id;
+  await req.session.save();
+
+  await incrementVersion();
+
+  const cookie = `connect.sid=${req.sessionID}`;
+  const token = user.id;
+
+  // Сохраняем для polling из Flutter на Windows
+  if (!global.pendingTokens) global.pendingTokens = new Map();
+  const tempToken = crypto.randomBytes(16).toString('hex');
+  global.pendingTokens.set(tempToken, { userId: user.id, cookie });
+  setTimeout(() => global.pendingTokens.delete(tempToken), 5 * 60 * 1000);
+
+  if (returnTo && !returnTo.startsWith('syncm://')) {
+    const joiner = returnTo.includes('?') ? '&' : '?';
+    return res.redirect(
+      `${returnTo}${joiner}auth_done=1&token=${token}&cookie=${encodeURIComponent(cookie)}`
+    );
+  }
+
+  // Страница успеха с кодом
+  res.send(`
+    <html>
+      <head>
+        <title>SyncM — Вход выполнен</title>
+        <style>
+          body { font-family: sans-serif; text-align: center; padding: 60px; background: #111; color: #fff; }
+          code { background: #222; padding: 8px 16px; border-radius: 8px; font-size: 20px; letter-spacing: 2px; }
+          p { color: #aaa; }
+        </style>
+      </head>
+      <body>
+        <h2> Вход выполнен!</h2>
+        <p>Введите этот код в приложении SyncM:</p>
+        <code>${tempToken}</code>
+        <p>Код действителен 5 минут.</p>
+      </body>
+    </html>
+  `);
+});
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -558,7 +464,7 @@ const storage = multer.diskStorage({
     const ext = path.extname(file.originalname).toLowerCase();
     const name = `${req.session.userId || 'unknown'}_${Date.now()}${ext}`;
     cb(null, name);
-  }
+  },
 });
 
 const upload = multer({
@@ -567,35 +473,36 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP'), false);
-    }
-  }
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error('Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP'), false);
+  },
 }).single('avatar');
 
-const uploadAvatar = async (req, res) => {
+const uploadAvatar = (req, res) => {
   upload(req, res, async (err) => {
     if (err) {
-      if (err.message && err.message.includes('Неподдерживаемый формат')) {
-        return res.status(400).json({ error: err.message });
-      }
-      return res.status(400).json({ error: 'Ошибка загрузки файла: ' + err.message });
+      const message = err.message?.includes('Неподдерживаемый формат')
+        ? err.message
+        : 'Ошибка загрузки файла: ' + err.message;
+      return res.status(400).json({ error: message });
     }
     if (!req.file) {
-      return res.status(400).json({ error: 'Файл не выбран или имеет неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP' });
+      return res.status(400).json({
+        error: 'Файл не выбран или имеет неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
+      });
     }
 
-    const userId = req.session?.userId || req.headers.authorization?.replace('Bearer ', '');
+    const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-    // Формируем URL
     const baseUrl = process.env.BASE_URL || `https://${req.get('host')}`;
     const avatarUrl = `${baseUrl}/uploads/avatars/${req.file.filename}`;
 
     try {
-      const oldUser = await prisma.user.findUnique({ where: { id: userId }, select: { customAvatarUrl: true } });
+      const oldUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { customAvatarUrl: true },
+      });
       if (oldUser?.customAvatarUrl) {
         const oldPath = path.join(__dirname, '../../', oldUser.customAvatarUrl.replace(baseUrl, ''));
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
@@ -608,34 +515,31 @@ const uploadAvatar = async (req, res) => {
           id: true,
           username: true,
           customAvatarUrl: true,
-          spotifyUser: { select: { avatarUrl: true } }
-        }
+          spotifyUser: { select: { avatarUrl: true } },
+        },
       });
 
-      await invalidateUserDB(userId);
+      await incrementVersion();
 
       res.json({
         id: updated.id,
         displayName: updated.username,
         avatarUrl: updated.customAvatarUrl || updated.spotifyUser?.avatarUrl || null,
-        customAvatarUrl: updated.customAvatarUrl
+        customAvatarUrl: updated.customAvatarUrl,
       });
     } catch (error) {
-        if (req && req.log && typeof req.log.error === 'function') {
-          req.log.error('Upload avatar error:', error);
-        }
+      if (req.log) req.log.error('Upload avatar error:', error);
       res.status(500).json({ error: 'Ошибка сохранения аватарки' });
     }
   });
 };
 
-// GET /auth/check-pending?token=xxx — polling для Windows
 const checkPendingAuth = (req, res) => {
   const { token } = req.query;
-  const pendingTokens = global.pendingTokens || new Map();
-  const data = pendingTokens.get(token);
+  if (!global.pendingTokens) global.pendingTokens = new Map();
+  const data = global.pendingTokens.get(token);
   if (data) {
-    pendingTokens.delete(token);
+    global.pendingTokens.delete(token);
     return res.json({ success: true, userId: data.userId, cookie: data.cookie });
   }
   res.json({ success: false });
