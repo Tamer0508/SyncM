@@ -14,7 +14,6 @@ import '../../services/api_service.dart';
 import '../../widgets/playlist_card.dart';
 import '../../widgets/scrollable_playlist_row.dart';
 import '../../widgets/interactive_card.dart';
-import '../../widgets/mini_player.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../providers/session_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -1200,9 +1199,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ProfileScreen(embedded: true),
         const SettingsScreen(embedded: true)
       ];
-      final miniPlayerWidget = const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: MiniPlayer());
       final navItems = [
         const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Главная'),
         BottomNavigationBarItem(
@@ -1233,13 +1229,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final mobileBottomNav = !isDesktop
           ? SafeArea(
               top: false,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                miniPlayerWidget,
-                BottomNavigationBar(
-                    currentIndex: _currentIndex,
-                    onTap: (i) => setState(() => _currentIndex = i),
-                    items: navItems)
-              ]))
+              child: BottomNavigationBar(
+                  currentIndex: _currentIndex,
+                  onTap: (i) => setState(() => _currentIndex = i),
+                  items: navItems))
           : null;
 
       return Scaffold(

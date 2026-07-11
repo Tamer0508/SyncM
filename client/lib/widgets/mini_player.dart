@@ -45,9 +45,10 @@ class MiniPlayer extends StatelessWidget {
     final track = pb.currentTrack!;
     final imageBytes = pb.currentImageBytes;
     final imageUrl = track['imageUrl'] as String?;
+    final isCompact = MediaQuery.of(context).size.width < 900;
 
     return Container(
-      height: 72,
+      height: isCompact ? 64 : 72,
       width: double.infinity,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -73,12 +74,12 @@ class MiniPlayer extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: imageBytes != null
-                        ? Image.memory(imageBytes, width: 48, height: 48, fit: BoxFit.cover)
+                        ? Image.memory(imageBytes, width: isCompact ? 40 : 48, height: isCompact ? 40 : 48, fit: BoxFit.cover)
                         : imageUrl != null && imageUrl.isNotEmpty && !imageUrl.startsWith('data:')
-                            ? Image.network(imageUrl, width: 48, height: 48, fit: BoxFit.cover)
+                            ? Image.network(imageUrl, width: isCompact ? 40 : 48, height: isCompact ? 40 : 48, fit: BoxFit.cover)
                             : Container(
-                                width: 48,
-                                height: 48,
+                                width: isCompact ? 40 : 48,
+                                height: isCompact ? 40 : 48,
                                 color: theme.colorScheme.primary.withOpacity(0.2),
                                 child: Icon(Icons.music_note, color: theme.colorScheme.primary),
                               ),
@@ -112,21 +113,21 @@ class MiniPlayer extends StatelessWidget {
           ),
           // Control buttons - previous, play/pause, next
           IconButton(
-            icon: Icon(Icons.skip_previous_rounded, size: 28, color: theme.colorScheme.onSurface),
+            icon: Icon(Icons.skip_previous_rounded, size: isCompact ? 24 : 28, color: theme.colorScheme.onSurface),
             onPressed: () => pb.skipPrevious(),
             tooltip: 'Previous',
           ),
           IconButton(
             icon: Icon(
               pb.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              size: 32,
+              size: isCompact ? 28 : 32,
               color: theme.colorScheme.primary,
             ),
             onPressed: () => pb.togglePlay(),
             tooltip: pb.isPlaying ? 'Pause' : 'Play',
           ),
           IconButton(
-            icon: Icon(Icons.skip_next_rounded, size: 28, color: theme.colorScheme.onSurface),
+            icon: Icon(Icons.skip_next_rounded, size: isCompact ? 24 : 28, color: theme.colorScheme.onSurface),
             onPressed: () => pb.skipNext(),
             tooltip: 'Next',
           ),

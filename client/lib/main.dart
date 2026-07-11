@@ -13,6 +13,7 @@ import 'theme.dart';
 import 'utils/app_globals.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'widgets/app_shell.dart';
 
 void main() async {
   runApp(const MyApp());
@@ -68,6 +69,7 @@ class MyApp extends StatelessWidget {
           themeMode: themeProvider.themeMode,
           navigatorKey: navigatorKey,
           scaffoldMessengerKey: scaffoldMessengerKey,
+          builder: (context, child) => AppShell(child: child ?? const SizedBox.shrink()),
           home: const _AuthGate(),
           onGenerateRoute: generateRoute,
         ),
