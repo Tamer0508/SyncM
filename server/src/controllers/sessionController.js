@@ -66,7 +66,7 @@ const addTracksBodySchema = z.object({
     z.object({
       spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
       trackName: z.string().min(1, 'trackName обязателен'),
-      artistName: z.string().optional().default(''),
+      artistName: z.string().nullable().optional().transform((v) => v ?? ''),
       imageUrl: httpUrlSchema.optional().nullable(),
       durationMs: z.number().int().positive().optional().nullable(),
     })
@@ -302,7 +302,6 @@ const rateTrack = asyncHandler(async (req, res) => {
       update: { rating },
       create: { trackId, userId, rating },
     });
-
 
     try {
       await addNotificationJob({

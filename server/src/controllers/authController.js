@@ -632,13 +632,28 @@ const ALLOWED_MIME = {
   'image/webp': '.webp',
 };
 
+const ALLOWED_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+
+// Пакет http в Dart при MultipartFile.fromBytes без явного contentType
+// проставляет application/octet-stream. Проверка только по MIME отклоняла
+// такие загрузки, хотя файл корректный, — поэтому смотрим ещё и на
+// расширение исходного имени.
+function resolveImageExt(file) {
+  const byMime = ALLOWED_MIME[file.mimetype];
+  if (byMime) return byMime;
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  if (ALLOWED_EXT.has(ext)) return ext === '.jpeg' ? '.jpg' : ext;
+  return null;
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     fs.mkdir(AVATARS_DIR, { recursive: true }, (err) => cb(err, AVATARS_DIR));
   },
   filename: (req, file, cb) => {
-    const ext = ALLOWED_MIME[file.mimetype] || '.png';
-    cb(null, `${req.session.userId}_${Date.now()}_${crypto.randomBytes(6).toString('hex')}${ext}`);
+    const ext = resolveImageExt(file) || '.png';
+    const owner = req.userId || req.session?.userId || 'user';
+    cb(null, `${owner}_${Date.now()}_${crypto.randomBytes(6).toString('hex')}${ext}`);
   },
 });
 
@@ -646,7 +661,7 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) => {
-    if (ALLOWED_MIME[file.mimetype]) return cb(null, true);
+    if (resolveImageExt(file)) return cb(null, true);
     cb(new Error('Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP'), false);
   },
 }).single('avatar');

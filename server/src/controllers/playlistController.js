@@ -6,26 +6,33 @@ const { addPlaylistSyncJob } = require('../infrastructure/queue');
 const asyncHandler = require('../utils/asyncHandler');
 const logger = require('../infrastructure/logger');
 
+const getUserId = (req) => {
+  if (req.session?.userId) return req.session.userId;
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
+  return null;
+};
+
 const httpUrlSchema = z.string().url().refine((url) => /^https?:\/\//i.test(url), {
   message: 'Разрешены только http/https ссылки',
 });
 
 const createCustomPlaylistSchema = z.object({
   name: z.string().trim().min(1, 'Название обязательно').max(100, 'Название не должно превышать 100 символов'),
-  description: z.string().max(500, 'Описание не должно превышать 500 символов').optional(),
+  description: z.string().max(500, 'Описание не должно превышать 500 символов').nullable().optional(),
   imageUrl: httpUrlSchema.optional().nullable(),
 });
 
 const toggleLikeSchema = z.object({
   spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
-  trackName: z.string().optional(),
-  artistName: z.string().optional(),
+  trackName: z.string().nullable().optional(),
+  artistName: z.string().nullable().optional(),
 });
 
 const importPlaylistSchema = z.object({
   spotifyPlaylistId: z.string().min(1, 'spotifyPlaylistId обязателен'),
-  name: z.string().optional(),
-  description: z.string().max(500, 'Описание не должно превышать 500 символов').optional(),
+  name: z.string().nullable().optional(),
+  description: z.string().max(500, 'Описание не должно превышать 500 символов').nullable().optional(),
   imageUrl: httpUrlSchema.optional().nullable(),
 });
 
@@ -40,19 +47,19 @@ const trackUriParamsSchema = z.object({
 const addTrackSchema = z.object({
   trackUri: z.string().min(1, 'trackUri обязателен'),
   trackName: z.string().min(1, 'trackName обязателен'),
-  artistName: z.string().optional().default(''),
+  artistName: z.string().nullable().optional().transform((v) => v ?? ''),
   durationMs: z.number().int().positive().optional().nullable(),
 });
 
 const logPlaySchema = z.object({
   spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
-  trackName: z.string().optional(),
-  artistName: z.string().optional(),
+  trackName: z.string().nullable().optional(),
+  artistName: z.string().nullable().optional(),
 });
 
 
 const createCustomPlaylist = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { name, description, imageUrl } = createCustomPlaylistSchema.parse(req.body);
@@ -72,7 +79,7 @@ const createCustomPlaylist = asyncHandler(async (req, res) => {
 });
 
 const getUserPlaylists = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const playlists = await getOrSet(`db:user-playlists-db:${userId}`, 'list', 120, async () => {
@@ -86,7 +93,7 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
 });
 
 const toggleLike = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { spotifyUri, trackName, artistName } = toggleLikeSchema.parse(req.body);
@@ -109,7 +116,7 @@ const toggleLike = asyncHandler(async (req, res) => {
 });
 
 const getLikedTracks = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const tracks = await getOrSet(`db:liked-tracks:${userId}`, 'list', 120, async () => {
@@ -123,7 +130,7 @@ const getLikedTracks = asyncHandler(async (req, res) => {
 });
 
 const importPlaylist = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { spotifyPlaylistId, name, description, imageUrl } = importPlaylistSchema.parse(req.body);
@@ -162,7 +169,7 @@ const importPlaylist = asyncHandler(async (req, res) => {
 });
 
 const deletePlaylist = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
@@ -179,7 +186,7 @@ const deletePlaylist = asyncHandler(async (req, res) => {
 });
 
 const addTrackToPlaylist = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
@@ -213,7 +220,7 @@ const addTrackToPlaylist = asyncHandler(async (req, res) => {
 });
 
 const removeTrackFromPlaylist = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
@@ -236,7 +243,7 @@ const removeTrackFromPlaylist = asyncHandler(async (req, res) => {
 });
 
 const getPlaylistTracks = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
@@ -259,7 +266,7 @@ const getPlaylistTracks = asyncHandler(async (req, res) => {
 });
 
 const logPlay = asyncHandler(async (req, res) => {
-  const userId = req.userId;
+  const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { spotifyUri, trackName, artistName } = logPlaySchema.parse(req.body);
