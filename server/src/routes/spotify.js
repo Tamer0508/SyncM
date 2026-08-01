@@ -16,12 +16,7 @@ const {
   SpotifyNotConnectedError,
 } = require('../infrastructure/spotify/auth');
 
-const getUserId = (req) => {
-  if (req.session?.userId) return req.session.userId;
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
-  return null;
-};
+const getUserId = (req) => req.userId || req.session?.userId || null;
 
 const extractTrack = (item) => item.track || item.item || null;
 

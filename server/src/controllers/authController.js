@@ -381,19 +381,15 @@ async function upsertGoogleUser(payload) {
     throw err;
   }
 
-  let user = await prisma.user.findUnique({ where: { email: payload.email } });
-  if (user) {
-    if (!user.usernameChangedByUser && payload.name && user.username !== payload.name) {
-      user = await prisma.user.update({
-        where: { email: payload.email },
-        data: { username: payload.name },
-      });
-    }
-    return user;
-  }
+  const existing = await prisma.user.findUnique({ where: { email: payload.email } });
 
-  return prisma.user.create({
-    data: {
+  const shouldSyncName =
+    payload.name && (!existing || (!existing.usernameChangedByUser && existing.username !== payload.name));
+
+  return prisma.user.upsert({
+    where: { email: payload.email },
+    update: shouldSyncName ? { username: payload.name } : {},
+    create: {
       username: payload.name || payload.email.split('@')[0],
       email: payload.email,
       passwordHash: '',
@@ -629,7 +625,6 @@ const checkPendingAuth = asyncHandler(async (req, res) => {
   }
   res.json({ success: false });
 });
-
 const ALLOWED_MIME = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
@@ -724,7 +719,6 @@ async function safeDeleteOldAvatar(oldAvatarUrl, currentFilename) {
 
     await fsp.unlink(resolved);
   } catch (err) {
-    // Файла может не быть (внешний URL, уже удалён) — это не ошибка запроса.
     if (err.code !== 'ENOENT') {
       logger.warn({ err, oldAvatarUrl }, 'Could not delete old avatar file');
     }
