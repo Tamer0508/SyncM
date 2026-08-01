@@ -22,7 +22,12 @@ class Friend {
         avatarUrl: json['avatarUrl'] as String?,
         friendshipId: json['friendshipId'] as String?, 
         isOnline: json['isOnline'] == true,
-        lastSeenAt: json['lastSeenAt'] != null ? DateTime.parse(json['lastSeenAt']) : null,
+        // .toLocal(): сервер отдаёт время в UTC, а сравнивается оно с
+        // DateTime.now() (местным). Без перевода «был в сети» показывал
+        // смещение на весь часовой пояс (для UTC+5 — минус 5 часов).
+        lastSeenAt: json['lastSeenAt'] != null
+            ? DateTime.parse(json['lastSeenAt']).toLocal()
+            : null,
         isOnlineHidden: json['isOnlineHidden'] == true,
       );
 }

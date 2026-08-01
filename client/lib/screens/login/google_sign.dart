@@ -88,7 +88,6 @@ class GoogleSignInButton extends StatelessWidget {
   print('token: $token');
   print('cookie: $cookie');
   
-  // Используем token (userId) как основной идентификатор
   if (token != null && token.isNotEmpty) {
     auth.setCookie(token);
   } else if (cookie != null && cookie.isNotEmpty) {
@@ -137,10 +136,14 @@ class GoogleSignInButton extends StatelessWidget {
         final auth = Provider.of<AuthProvider>(context, listen: false);
         final cookie = resp['cookie'] as String?;
         final user = resp['user'] as Map<String, dynamic>?;
-        if (cookie != null) auth.setCookie(cookie);
+        final issued = resp['authToken'] as String?;
+        if (issued != null && issued.isNotEmpty) {
+          auth.setCookie(issued);
+        } else if (cookie != null && cookie.isNotEmpty) {
+          auth.setCookie(cookie);
+        }
         if (user != null) {
           auth.setUser(auth.userFromMap(user));
-          auth.setCookie(user['id'] as String);
         }
         await auth.fetchMe();
         if (auth.isLoggedIn && context.mounted) {

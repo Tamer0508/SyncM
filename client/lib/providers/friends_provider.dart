@@ -183,7 +183,11 @@ class FriendsProvider with ChangeNotifier {
         avatarUrl: old.avatarUrl,
         friendshipId: old.friendshipId,
         isOnline: online,
-        lastSeenAt: online ? null : (lastSeenAt != null ? DateTime.parse(lastSeenAt) : old.lastSeenAt),
+        lastSeenAt: online
+            ? null
+            : (lastSeenAt != null ? DateTime.parse(lastSeenAt).toLocal() : old.lastSeenAt),
+        // Раньше поле терялось при каждом событии присутствия.
+        isOnlineHidden: old.isOnlineHidden,
       );
       notifyListeners();
     }

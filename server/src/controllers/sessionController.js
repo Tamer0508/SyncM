@@ -7,12 +7,16 @@ const { getIo } = require('../socket');
 const { withLock } = require('../infrastructure/lock');
 const asyncHandler = require('../utils/asyncHandler');
 
-const getUserId = (req) => {
-  if (req.session?.userId) return req.session.userId;
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
-  return null;
-};
+const invalidateSessionsListForMembers = (members) =>
+  Promise.all(
+    members
+      .filter((m) => m.status === 'accepted')
+      .map((m) => incrementVersion(`db:sessions-list:${m.userId}`))
+  );
+
+const httpUrlSchema = z.string().url().refine((url) => /^https?:\/\//i.test(url), {
+  message: 'Разрешены только http/https ссылки',
+});
 
 async function notifySessionInvite({ toUserId, sessionId, sessionName, hostId }) {
   const timestamp = Date.now();
@@ -43,7 +47,9 @@ async function notifyInviteResponse({ toUserId, userId, accept, sessionId }) {
 }
 
 const createSessionSchema = z.object({
-  name: z.string().optional(),
+  name: z.string().trim().min(1).max(100, 'Название не должно превышать 100 символов')
+    .optional()
+    .transform((v) => v && v.length > 0 ? v : 'Совместная сессия'),
   friendId: z.string().min(1, 'friendId обязателен'),
 });
 
@@ -61,14 +67,16 @@ const addTracksBodySchema = z.object({
       spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
       trackName: z.string().min(1, 'trackName обязателен'),
       artistName: z.string().optional().default(''),
-      imageUrl: z.string().optional().nullable(),
+      imageUrl: httpUrlSchema.optional().nullable(),
       durationMs: z.number().int().positive().optional().nullable(),
     })
-  ).min(1, 'Необходимо передать хотя бы один трек'),
+  ).min(1, 'Необходимо передать хотя бы один трек').max(100, 'Слишком много треков за раз'),
 });
 
 const rateTrackBodySchema = z.object({
-  rating: z.number().int(),
+  rating: z.number().int().refine((v) => v === 1 || v === -1, {
+    message: 'rating должен быть 1 (лайк) или -1 (дизлайк)',
+  }),
 });
 
 const respondToInviteBodySchema = z.object({
@@ -77,7 +85,7 @@ const respondToInviteBodySchema = z.object({
 
 
 const createSession = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { name, friendId } = createSessionSchema.parse(req.body);
@@ -145,19 +153,20 @@ const createSession = asyncHandler(async (req, res) => {
       logger.error({ err: e }, 'Failed to send session invite notification');
     }
 
-    // Инвалидация кэша
-    await incrementVersion();
+    await Promise.all([
+      incrementVersion(`db:sessions-list:${userId}`),
+      incrementVersion(`db:invites-list:${friendId}`),
+    ]);
 
     res.status(201).json(session);
   });
 });
 
 const getMySessions = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const cacheKey = `db:sessions-list:${userId}`;
-  const sessions = await getOrSet(cacheKey, 30, async () => {
+  const sessions = await getOrSet(`db:sessions-list:${userId}`, 'list', 30, async () => {
     return prisma.session.findMany({
       where: {
         isActive: true,
@@ -178,7 +187,7 @@ const getMySessions = asyncHandler(async (req, res) => {
 });
 
 const addTracks = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { sessionId } = sessionIdParamsSchema.parse(req.params);
@@ -226,8 +235,7 @@ const addTracks = asyncHandler(async (req, res) => {
     const autoplayIndex = allTracks.findIndex((t) => t.id === createdTracks[0].id);
     const autoplayUri = createdTracks[0].spotifyUri;
 
-    // Инвалидация кэша
-    await incrementVersion();
+    await invalidateSessionsListForMembers(session.members);
 
     // Уведомление
     const tracksPayload = {
@@ -270,30 +278,36 @@ const addTracks = asyncHandler(async (req, res) => {
 });
 
 const rateTrack = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { trackId } = trackIdParamsSchema.parse(req.params);
   const { rating } = rateTrackBodySchema.parse(req.body);
 
   await withLock(`track:rating:${trackId}`, 3000, async () => {
+    const track = await prisma.sessionTrack.findUnique({
+      where: { id: trackId },
+      include: { session: { include: { members: true } } },
+    });
+
+    if (!track || !track.session) return res.status(404).json({ error: 'Трек не найден' });
+
+    const isMember = track.session.members.some(
+      (m) => m.userId === userId && m.status === 'accepted'
+    );
+    if (!isMember) return res.status(403).json({ error: 'Вы не участник этой сессии' });
+
     const result = await prisma.trackRating.upsert({
       where: { trackId_userId: { trackId, userId } },
       update: { rating },
       create: { trackId, userId, rating },
     });
 
-    const track = await prisma.sessionTrack.findUnique({
-      where: { id: trackId },
-      include: { session: { include: { members: true } } },
-    });
-
-    await incrementVersion();
 
     try {
       await addNotificationJob({
         type: 'track_rated',
-        sessionId: track?.session?.id,
+        sessionId: track.session.id,
         trackId,
         userId,
         rating,
@@ -308,7 +322,7 @@ const rateTrack = asyncHandler(async (req, res) => {
 });
 
 const endSession = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { sessionId } = sessionIdParamsSchema.parse(req.params);
@@ -346,14 +360,14 @@ const endSession = asyncHandler(async (req, res) => {
         track.ratings.every((r) => r.rating === 1)
     );
 
-    await incrementVersion();
+    await invalidateSessionsListForMembers(session.members);
 
     res.json({ message: 'Сессия завершена', mutualLikes });
   });
 });
 
 const respondToInvite = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { sessionId } = sessionIdParamsSchema.parse(req.params);
@@ -361,10 +375,15 @@ const respondToInvite = asyncHandler(async (req, res) => {
 
   await withLock(`session:${sessionId}:member:${userId}`, 5000, async () => {
     const status = accept ? 'accepted' : 'declined';
-    await prisma.sessionMember.updateMany({
-      where: { sessionId, userId },
+
+    const { count } = await prisma.sessionMember.updateMany({
+      where: { sessionId, userId, status: 'pending' },
       data: { status },
     });
+
+    if (count === 0) {
+      return res.status(404).json({ error: 'Приглашение не найдено' });
+    }
 
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
@@ -389,18 +408,20 @@ const respondToInvite = asyncHandler(async (req, res) => {
       logger.error({ err: e }, 'Failed to send invite_response notification');
     }
 
-    await incrementVersion();
+    await Promise.all([
+      incrementVersion(`db:invites-list:${userId}`),
+      invalidateSessionsListForMembers(session.members),
+    ]);
 
     res.json({ status, session });
   });
 });
 
 const getMyInvites = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const cacheKey = `db:invites-list:${userId}`;
-  const invites = await getOrSet(cacheKey, 30, async () => {
+  const invites = await getOrSet(`db:invites-list:${userId}`, 'list', 30, async () => {
     const invitesData = await prisma.sessionMember.findMany({
       where: { userId, status: 'pending' },
       include: {

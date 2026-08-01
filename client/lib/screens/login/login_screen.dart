@@ -258,7 +258,6 @@ class _LoginScreenState extends State<LoginScreen> {
               final auth = Provider.of<AuthProvider>(context, listen: false);
               final user = auth.userFromMap(data);
               auth.setUser(user);
-              auth.setCookie(user.id);
               if (mounted) {
                 Navigator.of(context).pushReplacementNamed('/home');
               }
@@ -298,7 +297,8 @@ class _LoginScreenState extends State<LoginScreen> {
         if (user != null) {
           final auth = Provider.of<AuthProvider>(context, listen: false);
           auth.setUser(auth.userFromMap(user));
-          auth.setCookie(user['id']);
+          final issued = resp['authToken'] as String?;
+          if (issued != null && issued.isNotEmpty) auth.setCookie(issued);
           await auth.fetchMe();
           if (auth.isLoggedIn && mounted) {
             Navigator.of(context).pushReplacementNamed('/home');

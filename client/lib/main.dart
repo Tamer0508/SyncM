@@ -10,12 +10,13 @@ import 'providers/theme_provider.dart';
 import 'services/socket_service.dart';
 import 'services/api_service.dart';
 import 'theme.dart';
+import 'config.dart';
 import 'utils/app_globals.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'widgets/app_shell.dart';
 
-void main() async {
+void main() {
   runApp(const MyApp());
 }
 
@@ -102,7 +103,7 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
 
         if (authDone != null) {
           if (token != null && token.isNotEmpty) {
-            auth.setCookie(Uri.decodeComponent(token));
+            auth.setCookie(token);
           } else if (cookie != null && cookie.isNotEmpty) {
             auth.setCookie(Uri.decodeComponent(cookie));
           }
@@ -114,20 +115,17 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
     });
   }
 
-  // Инициализирует сокет и realtime-провайдеры, когда пользователь известен.
-  // РАНЬШЕ это было только в initState — если userId появлялся ПОЗЖЕ (свежая
-  // установка: сначала логин, потом userId), сокет не поднимался до перезахода,
-  // из-за чего не работали онлайн-статусы и приглашения в реальном времени.
-  // Теперь вызывается и после логина (из build), защита от повторного запуска
-  // внутри.
   bool _socketInitialized = false;
   void _ensureSocketInitialized(AuthProvider auth) {
     if (_socketInitialized) return;
-    final userId = auth.user?.id;
-    if (userId == null) return;
+    if (auth.user?.id == null) return;
+
+    final token = auth.cookie ?? '';
+    if (!kIsWeb && token.isEmpty) return;
+
     _socketInitialized = true;
     final socket = SocketService();
-    socket.init('https://syncm-production.up.railway.app', userId);
+    socket.init(Config.baseUrl, token);
     Provider.of<FriendsProvider>(context, listen: false).init(socket);
     Provider.of<SessionProvider>(context, listen: false).init(socket);
     Provider.of<SessionProvider>(context, listen: false).fetchInvites();
@@ -136,10 +134,6 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // Шаг 1 (жизненный цикл): при СВОРАЧИВАНИИ (paused/inactive/hidden) ничего
-    // не рвём — сокет держится сам, сколько позволит ОС, и участник остаётся
-    // в сессии. При ВОЗВРАТЕ (resumed) освежаем часы и ресинкаем состояние
-    // сессии, чтобы мгновенно вернуться в синхру после паузы/блокировки экрана.
     if (state == AppLifecycleState.resumed) {
       SocketService().resyncNow();
     }
@@ -161,18 +155,13 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
           );
         }
         if (auth.isLoggedIn) {
-          // Пользователь залогинен — поднимаем сокет, если он ещё не поднят
-          // (важно для свежего логина, когда userId появился после initState).
-          // Откладываем на post-frame, чтобы не вызывать провайдеры во время build.
-          if (!_socketInitialized && auth.user?.id != null) {
+          if (!_socketInitialized && auth.user?.id != null && (kIsWeb || (auth.cookie ?? '').isNotEmpty)) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _ensureSocketInitialized(auth);
             });
           }
           return const HomeScreen();
         }
-        // Не залогинен (в т.ч. после логаута) — сбрасываем флаг, чтобы при
-        // следующем входе сокет поднялся заново (возможно, другим аккаунтом).
         _socketInitialized = false;
         return const LoginScreen();
       },

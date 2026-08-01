@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../models/user.dart';
 import '../models/friend.dart';
 import '../utils/retry.dart';
+import '../config.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -28,8 +29,11 @@ class ApiService {
   String? _cookie;
   String? getCookie() => _cookie;
 
+  void Function(String token)? _onTokenIssued;
+  set onTokenIssued(void Function(String token) cb) => _onTokenIssued = cb;
+
   ApiService({String? baseUrl, Duration? timeout})
-      : baseUrl = baseUrl ?? 'https://syncm-production.up.railway.app',
+      : baseUrl = baseUrl ?? Config.baseUrl,
         timeout = timeout ?? const Duration(seconds: 30);
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
@@ -102,10 +106,31 @@ class ApiService {
   // ---------- Все остальные методы без изменений (только не трогал) ----------
 
   Future<User?> getMe() async {
-    final res = await http.get(_uri('/auth/me'), headers: _headers).timeout(timeout);
-    if (res.statusCode == 200) return User.fromJson(_decode(res.body) as Map<String, dynamic>);
+    final needToken = (_cookie == null || _cookie!.isEmpty) ? '?needToken=1' : '';
+    final res = await http.get(_uri('/auth/me' + needToken), headers: _headers).timeout(timeout);
+    if (res.statusCode == 200) {
+      final data = _decode(res.body) as Map<String, dynamic>;
+      final issued = data['authToken'] as String?;
+      if (issued != null && issued.isNotEmpty) {
+        _cookie = issued;
+        _onTokenIssued?.call(issued);
+      }
+      return User.fromJson(data);
+    }
     if (res.statusCode == 401) return null;
     throw ApiException('Failed to get /auth/me', res.statusCode, _extractError(res));
+  }
+
+  Future<String> createSpotifyLinkIntent({String? returnTo}) async {
+    final res = await http.post(
+      _uri('/auth/spotify/link-intent'),
+      headers: _headers,
+      body: json.encode({'returnTo': returnTo}),
+    ).timeout(timeout);
+    if (res.statusCode != 200) {
+      throw ApiException('Не удалось начать привязку Spotify', res.statusCode, _extractError(res));
+    }
+    return (_decode(res.body) as Map<String, dynamic>)['state'] as String;
   }
 
   Future<Map<String, dynamic>> updatePrivacySettings(Map<String, bool> settings) async {

@@ -53,86 +53,96 @@ function getTTLForKey(key, explicitType = null) {
   return TTL_CONFIG.default;
 }
 
-const STALE_EXTRA = 3600;
+const STALE_EXTRA_MAX = 3600;
 
 function getJitteredTTL(baseTtl, jitterFactor = 0.1) {
   const randomFactor = 1 + (Math.random() * jitterFactor * 2 - jitterFactor);
   return Math.max(1, Math.floor(baseTtl * randomFactor));
 }
 
+function getStaleExtraSeconds(baseTtl) {
+  return Math.min(STALE_EXTRA_MAX, Math.max(baseTtl * 5, 30));
+}
+
+const pendingFetches = new Map();
+
+async function fetchAndStore(cacheKey, baseTtl, jitter, lockTtlSeconds, fetchFn) {
+  if (pendingFetches.has(cacheKey)) {
+    return pendingFetches.get(cacheKey);
+  }
+
+  const promise = (async () => {
+    const lockKey = `lock:${cacheKey}`;
+    const token = await redis.acquireLock(lockKey, lockTtlSeconds);
+    try {
+      if (!token) {
+        await new Promise(resolve => setTimeout(resolve, 150));
+        try {
+          const raw = await redis.redisClient.get(cacheKey);
+          const parsed = raw ? JSON.parse(raw) : null;
+          if (parsed?.exp > Date.now()) return parsed.data;
+        } catch (err) {
+        }
+      }
+
+      const fresh = await fetchFn();
+      if (redis.isRedisAvailable()) {
+        const finalTtl = getJitteredTTL(baseTtl, jitter);
+        const logicalExpiry = Date.now() + finalTtl * 1000;
+        const physicalTtl = finalTtl + getStaleExtraSeconds(finalTtl);
+        await redis.redisClient
+          .setex(cacheKey, physicalTtl, JSON.stringify({ data: fresh, exp: logicalExpiry }))
+          .catch(err => logger.error({ err, cacheKey }, `Failed to set cache ${cacheKey}`));
+      }
+      return fresh;
+    } finally {
+      if (token) await redis.releaseLock(lockKey, token);
+      pendingFetches.delete(cacheKey);
+    }
+  })();
+
+  pendingFetches.set(cacheKey, promise);
+  return promise;
+}
+
 async function getOrSet(cacheKey, ttlSeconds, fetchFn, options = {}) {
-  const { staleWhileRevalidate = true, jitter = 0.1 } = options;
+  const { staleWhileRevalidate = true, jitter = 0.1, lockTtlSeconds = 15 } = options;
   const baseTtl = ttlSeconds !== undefined ? ttlSeconds : getTTLForKey(cacheKey);
 
-  // Пытаемся прочитать физический ключ
   let raw;
   try {
     raw = await redis.redisClient.get(cacheKey);
   } catch (err) {
-    // Fallback: идём в источник
-    return await fetchFn();
+    return fetchAndStore(cacheKey, baseTtl, jitter, lockTtlSeconds, fetchFn);
   }
 
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
-      // Ожидаем структуру { data, exp }
       if (parsed && typeof parsed.exp === 'number' && parsed.data !== undefined) {
         const now = Date.now();
         if (parsed.exp > now) {
-          // Fresh
           logger.info({ cacheKey }, `Cache HIT (fresh)`);
           return parsed.data;
-        } else if (staleWhileRevalidate && parsed.exp + STALE_EXTRA * 1000 > now) {
-          // Stale, но ещё в пределах физического хранения
+        } else if (staleWhileRevalidate && parsed.exp + getStaleExtraSeconds(baseTtl) * 1000 > now) {
           logger.info({ cacheKey }, `Cache STALE (will revalidate)`);
-          // Фоновое обновление
-          (async () => {
-            try {
-              const fresh = await fetchFn();
-              const finalTtl = getJitteredTTL(baseTtl, jitter);
-              const logicalExpiry = Date.now() + finalTtl * 1000;
-              const physicalTtl = finalTtl + STALE_EXTRA;
-              await redis.redisClient.setex(
-                cacheKey,
-                physicalTtl,
-                JSON.stringify({ data: fresh, exp: logicalExpiry })
-              );
-              logger.info({ cacheKey }, 'Background refresh OK');
-            } catch (err) {
-              logger.error({ err, cacheKey }, 'Background refresh failed');
-            }
-          })();
-          return parsed.data; // отдаём устаревшие данные
+          fetchAndStore(cacheKey, baseTtl, jitter, lockTtlSeconds, fetchFn).catch(err =>
+            logger.error({ err, cacheKey }, 'Background refresh failed')
+          );
+          return parsed.data; 
         }
-        // Иначе истекло даже физически — идём ниже
       } else {
-        // Старый формат (без exp), чтобы не ломаться, считаем fresh
         logger.info({ cacheKey }, 'Cache HIT (old format, treating as fresh)');
         return parsed.data !== undefined ? parsed.data : parsed;
       }
     } catch (e) {
-      // Если не JSON, возвращаем как есть (на случай старых ключей)
       logger.info({ cacheKey }, 'Cache HIT (plain value)');
       return raw;
     }
   }
 
-  // Честный MISS или физически истекло
   logger.info({ cacheKey }, 'Cache MISS');
-  const freshData = await fetchFn();
-  if (redis.isRedisAvailable()) {
-    const finalTtl = getJitteredTTL(baseTtl, jitter);
-    const logicalExpiry = Date.now() + finalTtl * 1000;
-    const physicalTtl = finalTtl + STALE_EXTRA;
-    // Сохраняем в фоне, не блокируем ответ
-    redis.redisClient.setex(
-      cacheKey,
-      physicalTtl,
-      JSON.stringify({ data: freshData, exp: logicalExpiry })
-    ).catch(err => logger.error({ err, cacheKey }, `Failed to set cache ${cacheKey}`));
-  }
-  return freshData;
+  return fetchAndStore(cacheKey, baseTtl, jitter, lockTtlSeconds, fetchFn);
 }
 
 async function deleteKey(key) {
@@ -148,7 +158,7 @@ async function deleteKey(key) {
 
 async function invalidateUserDB(userId, additionalKeys = []) {
   if (!redis.isRedisAvailable()) return false;
-  
+
   const keysToDelete = [
     `db:user-profile:${userId}`,
     `db:user-settings:${userId}`,
@@ -158,14 +168,14 @@ async function invalidateUserDB(userId, additionalKeys = []) {
     `db:invites-list:${userId}`,
     ...additionalKeys
   ];
-  
+
   try {
     await Promise.all(keysToDelete.map(key => redis.del(key)));
-    
+
     await redis.deleteByPattern(`db:friends-list:${userId}:*`);
     await redis.deleteByPattern(`db:friend-requests:${userId}:*`);
     await redis.deleteByPattern(`db:search-users:*:${userId}`);
-    
+
     logger.info({ userId }, 'Invalidated DB cache for user');
     return true;
   } catch (err) {

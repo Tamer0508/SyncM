@@ -5,12 +5,13 @@ const { addNotificationJob } = require('../infrastructure/queue');
 const { withLock } = require('../infrastructure/lock');
 const asyncHandler = require('../utils/asyncHandler');
 
-const getUserId = (req) => {
-  if (req.session?.userId) return req.session.userId;
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
-  return null;
-};
+const invalidateFriendshipCaches = (userIdA, userIdB) =>
+  Promise.all([
+    incrementVersion(`db:friends-list:${userIdA}`),
+    incrementVersion(`db:friends-list:${userIdB}`),
+    incrementVersion(`db:user-profile:${userIdA}`),
+    incrementVersion(`db:user-profile:${userIdB}`),
+  ]);
 
 const searchQuerySchema = z.object({
   query: z.string().trim().min(1).max(100),
@@ -39,19 +40,19 @@ const friendIdParamsSchema = z.object({
 
 
 const searchUsers = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { query } = searchQuerySchema.parse(req.query);
 
-  const cacheKey = `db:search-users:${query.toLowerCase()}:${userId}`;
-
-  const users = await getOrSet(cacheKey, 120, async () => {
+  const users = await getOrSet(`db:search-users:${userId}`, query.toLowerCase(), 120, async () => {
     const found = await prisma.user.findMany({
       where: {
         username: { contains: query, mode: 'insensitive' },
         id: { not: userId },
       },
+      take: 20,
+      orderBy: { username: 'asc' },
       include: {
         spotifyUser: { select: { avatarUrl: true } },
         sentRequests: {
@@ -89,7 +90,7 @@ const searchUsers = asyncHandler(async (req, res) => {
 });
 
 const sendRequest = asyncHandler(async (req, res) => {
-  const senderId = getUserId(req);
+  const senderId = req.userId;
   if (!senderId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { receiverId } = sendRequestBodySchema.parse(req.body);
@@ -117,7 +118,7 @@ const sendRequest = asyncHandler(async (req, res) => {
     }
 
     const friendship = await prisma.friendship.create({
-      data: { senderId, receiverId },
+      data: { senderId, receiverId, pairKey },
       include: {
         sender: { select: { id: true, username: true } },
         receiver: {
@@ -131,8 +132,7 @@ const sendRequest = asyncHandler(async (req, res) => {
       },
     });
 
-    // Инвалидация кэша через глобальное версионирование
-    await incrementVersion();
+    await incrementVersion(`db:friend-requests:${receiverId}`);
 
     await addNotificationJob({
       type: 'friend_request',
@@ -160,7 +160,7 @@ const sendRequest = asyncHandler(async (req, res) => {
 });
 
 const acceptRequest = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { friendshipId } = friendshipIdParamsSchema.parse(req.params);
@@ -190,7 +190,6 @@ const acceptRequest = asyncHandler(async (req, res) => {
         },
       });
 
-      // Пересчёт friendsCount через COUNT
       const [senderCount, receiverCount] = await Promise.all([
         tx.friendship.count({
           where: {
@@ -218,7 +217,10 @@ const acceptRequest = asyncHandler(async (req, res) => {
       return updatedFriendship;
     });
 
-    await incrementVersion();
+    await Promise.all([
+      incrementVersion(`db:friend-requests:${userId}`),
+      invalidateFriendshipCaches(friendship.senderId, friendship.receiverId),
+    ]);
 
     await addNotificationJob({
       type: 'friend_request_accepted',
@@ -245,13 +247,12 @@ const acceptRequest = asyncHandler(async (req, res) => {
 });
 
 const getFriends = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { cursor, limit } = cursorLimitSchema.parse(req.query);
-  const cacheKey = `db:friends-list:${userId}:${cursor || '0'}:${limit}`;
 
-  const result = await getOrSet(cacheKey, 120, async () => {
+  const result = await getOrSet(`db:friends-list:${userId}`, `${cursor || '0'}:${limit}`, 120, async () => {
     const friendships = await prisma.friendship.findMany({
       where: {
         status: 'accepted',
@@ -293,9 +294,8 @@ const getFriends = asyncHandler(async (req, res) => {
 
 const getUserById = asyncHandler(async (req, res) => {
   const { userId: targetUserId } = userIdParamsSchema.parse(req.params);
-  const cacheKey = `db:user-profile:${targetUserId}`;
 
-  const user = await getOrSet(cacheKey, 300, async () => {
+  const user = await getOrSet(`db:user-profile:${targetUserId}`, 'profile', 300, async () => {
     const found = await prisma.user.findUnique({
       where: { id: targetUserId },
       include: { spotifyUser: { select: { avatarUrl: true, displayName: true } } },
@@ -321,13 +321,12 @@ const getUserById = asyncHandler(async (req, res) => {
 });
 
 const getIncomingRequests = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { cursor, limit } = cursorLimitSchema.parse(req.query);
-  const cacheKey = `db:friend-requests:${userId}:${cursor || '0'}:${limit}`;
 
-  const result = await getOrSet(cacheKey, 120, async () => {
+  const result = await getOrSet(`db:friend-requests:${userId}`, `${cursor || '0'}:${limit}`, 120, async () => {
     const requests = await prisma.friendship.findMany({
       where: {
         receiverId: userId,
@@ -362,7 +361,7 @@ const getIncomingRequests = asyncHandler(async (req, res) => {
 });
 
 const deleteRequest = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { friendshipId } = friendshipIdParamsSchema.parse(req.params);
@@ -382,14 +381,14 @@ const deleteRequest = asyncHandler(async (req, res) => {
     }
 
     await prisma.friendship.delete({ where: { id: friendshipId } });
-    await incrementVersion();
+    await incrementVersion(`db:friend-requests:${friendship.receiverId}`);
 
     res.json({ message: 'Удалено' });
   });
 });
 
 const deleteFriendByUserId = asyncHandler(async (req, res) => {
-  const userId = getUserId(req);
+  const userId = req.userId;
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
   const { friendId } = friendIdParamsSchema.parse(req.params);
@@ -407,36 +406,43 @@ const deleteFriendByUserId = asyncHandler(async (req, res) => {
   if (!friendship) return res.status(404).json({ error: 'Дружба не найдена' });
 
   await withLock(`friendship:${friendship.id}`, 5000, async () => {
-    await prisma.$transaction(async (tx) => {
-      await tx.friendship.delete({ where: { id: friendship.id } });
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.friendship.delete({ where: { id: friendship.id } });
 
-      // Пересчитываем friendsCount для обоих
-      const [senderCount, receiverCount] = await Promise.all([
-        tx.friendship.count({
-          where: {
-            status: 'accepted',
-            OR: [{ senderId: friendship.senderId }, { receiverId: friendship.senderId }],
-          },
-        }),
-        tx.friendship.count({
-          where: {
-            status: 'accepted',
-            OR: [{ senderId: friendship.receiverId }, { receiverId: friendship.receiverId }],
-          },
-        }),
-      ]);
+        // Пересчитываем friendsCount для обоих
+        const [senderCount, receiverCount] = await Promise.all([
+          tx.friendship.count({
+            where: {
+              status: 'accepted',
+              OR: [{ senderId: friendship.senderId }, { receiverId: friendship.senderId }],
+            },
+          }),
+          tx.friendship.count({
+            where: {
+              status: 'accepted',
+              OR: [{ senderId: friendship.receiverId }, { receiverId: friendship.receiverId }],
+            },
+          }),
+        ]);
 
-      await tx.user.update({
-        where: { id: friendship.senderId },
-        data: { friendsCount: senderCount },
+        await tx.user.update({
+          where: { id: friendship.senderId },
+          data: { friendsCount: senderCount },
+        });
+        await tx.user.update({
+          where: { id: friendship.receiverId },
+          data: { friendsCount: receiverCount },
+        });
       });
-      await tx.user.update({
-        where: { id: friendship.receiverId },
-        data: { friendsCount: receiverCount },
-      });
-    });
+    } catch (err) {
+      if (err.code === 'P2025') {
+        return res.status(404).json({ error: 'Дружба уже удалена' });
+      }
+      throw err;
+    }
 
-    await incrementVersion();
+    await invalidateFriendshipCaches(friendship.senderId, friendship.receiverId);
 
     res.json({ message: 'Друг удален' });
   });

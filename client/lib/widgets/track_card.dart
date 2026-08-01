@@ -104,7 +104,7 @@ class _TrackCardState extends State<TrackCard>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final pb = Provider.of<PlaybackProvider>(context, listen: false);
+    final pb = context.watch<PlaybackProvider>();
     final backgroundColor = widget.selected
         ? theme.colorScheme.primary.withOpacity(0.08)
         : Colors.transparent;

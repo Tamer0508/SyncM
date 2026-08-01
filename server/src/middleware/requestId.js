@@ -1,60 +1,61 @@
 const crypto = require('crypto');
 const logger = require('../infrastructure/logger');
 
+const ALL_ZERO_TRACE_ID = '0'.repeat(32);
+const ALL_ZERO_SPAN_ID = '0'.repeat(16);
+
+const TRACE_ID_REGEX = /^[0-9a-f]{32}$/;
+const SPAN_ID_REGEX = /^[0-9a-f]{16}$/;
+const FLAGS_REGEX = /^[0-9a-f]{2}$/;
+
+const DEFAULT_FLAGS = '01'; // sampled
+
 function generateHex(bytes) {
-  if (typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID().replace(/-/g, '');
-  }
   return crypto.randomBytes(bytes).toString('hex');
 }
 
 function parseTraceParent(header) {
-  if (!header) return null;
-  const parts = header.split('-');
+  if (!header || typeof header !== 'string') return null;
+
+  const parts = header.trim().split('-');
   if (parts.length !== 4) return null;
-  const [version, traceId, spanId] = parts;
-  if (version !== '00') return null; // Пока поддерживаем только версию 00
-  if (traceId.length !== 32 || spanId.length !== 16) return null;
-  if (!/^[0-9a-fA-F]+$/.test(traceId) || !/^[0-9a-fA-F]+$/.test(spanId)) return null;
-  return { traceId, spanId };
+
+  const [version, traceId, spanId, flags] = parts;
+
+  if (version !== '00') return null; // поддержка только версии 00
+  if (traceId === ALL_ZERO_TRACE_ID || !TRACE_ID_REGEX.test(traceId)) return null;
+  if (spanId === ALL_ZERO_SPAN_ID || !SPAN_ID_REGEX.test(spanId)) return null;
+  if (!FLAGS_REGEX.test(flags)) return null;
+
+  return { traceId, spanId, flags };
 }
 
-/**
- * Генерация нового trace-id (32 hex) и span-id (16 hex)
- */
-function generateTraceContext() {
-  return {
-    traceId: generateHex(16), // 32 символа hex
-    spanId: generateHex(8),   // 16 символов hex
-  };
-}
+module.exports = function requestIdMiddleware(req, res, next) {
+  const parsed = parseTraceParent(req.headers['traceparent']);
 
-module.exports = function requestId(req, res, next) {
-  // 1. Попытка извлечь W3C Trace Context
-  const traceparentHeader = req.headers['traceparent'];
-  let traceCtx = parseTraceParent(traceparentHeader);
+  const traceId = parsed ? parsed.traceId : generateHex(16);
+  const parentSpanId = parsed ? parsed.spanId : null;
+  const spanId = generateHex(8);
+  const flags = parsed ? parsed.flags : DEFAULT_FLAGS;
 
-  // 2. Если traceparent нет — генерируем новый контекст
-  if (!traceCtx) {
-    traceCtx = generateTraceContext();
-  }
+  req.traceId = traceId;
+  req.spanId = spanId;
+  req.parentSpanId = parentSpanId;
+  req.requestId = traceId;
+  req.id = traceId; // используется genReqId в pino-http (см. index.js)
+  req.traceFlags = flags;
 
-  // 3. Добавляем в запрос
-  req.traceId = traceCtx.traceId;
-  req.spanId = traceCtx.spanId;
-  req.requestId = req.traceId; // Основной идентификатор запроса
-  req.id = req.requestId;      // Для обратной совместимости с req.id
-
-  // 4. Устанавливаем заголовок traceparent в ответе (если res.setHeader доступен)
   if (typeof res.setHeader === 'function') {
-    // Формируем traceparent ответа: версия 00, traceId без изменений, spanId может быть тот же или новый
-    res.setHeader('traceparent', `00-${traceCtx.traceId}-${traceCtx.spanId}-01`);
-    // Для обратной совместимости с X-Request-Id
-    res.setHeader('X-Request-Id', req.requestId);
+    res.setHeader('traceparent', `00-${traceId}-${spanId}-${flags}`);
+    res.setHeader('X-Request-Id', traceId);
   }
 
-  // 5. Создаём дочерний логгер с контекстом
-  req.log = logger.child({ traceId: req.traceId, requestId: req.requestId });
+  req.log = logger.child({
+    traceId,
+    spanId,
+    ...(parentSpanId && { parentSpanId }),
+    requestId: traceId,
+  });
 
   next();
 };

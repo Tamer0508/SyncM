@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const Redis = require('ioredis');
 const logger = require('./logger');
 
@@ -12,7 +13,7 @@ let isRedisReady = false;
 
 if (REDIS_URL) {
   redisClient = new Redis(REDIS_URL, {
-    maxRetriesPerRequest: null,
+    maxRetriesPerRequest: 3,
     retryStrategy(times) {
       const delay = Math.min(times * 50, 2000);
       logger.info({ attempt: times, delay }, `Redis reconnecting attempt ${times}, delay ${delay}ms`);
@@ -44,7 +45,7 @@ if (REDIS_URL) {
   });
 }
 
-const pendingFetches = new Map(); // fullKey -> Promise
+const pendingFetches = new Map(); 
 
 function isRedisAvailable() {
   return redisClient && isRedisReady;
@@ -102,22 +103,31 @@ async function getWithTTL(key) {
   }
 }
 
+
 async function acquireLock(lockKey, ttlSeconds = 5) {
-  if (!isRedisAvailable()) return false;
+  if (!isRedisAvailable()) return null;
+  const token = crypto.randomUUID();
   try {
-    const result = await redisClient.set(lockKey, 'locked', 'NX', 'EX', ttlSeconds);
-    return result === 'OK';
+    const result = await redisClient.set(lockKey, token, 'NX', 'EX', ttlSeconds);
+    return result === 'OK' ? token : null;
   } catch (err) {
     logger.error({ err, lockKey }, `Redis acquireLock error for ${lockKey}`);
-    return false;
+    return null;
   }
 }
 
-async function releaseLock(lockKey) {
+const RELEASE_LOCK_SCRIPT = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+else
+  return 0
+end`;
+
+async function releaseLock(lockKey, token) {
   if (!isRedisAvailable()) return false;
   try {
-    await redisClient.del(lockKey);
-    return true;
+    const result = await redisClient.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, token);
+    return result === 1;
   } catch (err) {
     logger.error({ err, lockKey }, `Redis releaseLock error for ${lockKey}`);
     return false;
@@ -146,90 +156,95 @@ async function deleteByPattern(pattern) {
   }
 }
 
-//  Cache versioning
-const VERSION_KEY = 'cache:version';
 
-async function getCacheVersion() {
+function versionKeyFor(namespace) {
+  return `cache:ver:${namespace}`;
+}
+
+async function getCacheVersion(namespace) {
   if (!isRedisAvailable()) return 0;
   try {
-    const version = await redisClient.get(VERSION_KEY);
+    const version = await redisClient.get(versionKeyFor(namespace));
     return version ? parseInt(version, 10) : 0;
   } catch (err) {
-    logger.error({ err }, 'Failed to get cache version');
+    logger.error({ err, namespace }, `Failed to get cache version for namespace "${namespace}"`);
     return 0;
   }
 }
 
-async function incrementVersion() {
+async function incrementVersion(namespace) {
   if (!isRedisAvailable()) return 0;
   try {
-    const newVersion = await redisClient.incr(VERSION_KEY);
-    logger.info({ newVersion }, 'Cache version incremented');
+    const newVersion = await redisClient.incr(versionKeyFor(namespace));
+    logger.info({ namespace, newVersion }, `Cache version incremented for namespace "${namespace}"`);
     return newVersion;
   } catch (err) {
-    logger.error({ err }, 'Failed to increment cache version');
+    logger.error({ err, namespace }, `Failed to increment cache version for namespace "${namespace}"`);
     return 0;
   }
 }
 
-function buildVersionedKey(version, key) {
-  return `cache:v${version}:${key}`;
+function buildVersionedKey(namespace, version, key) {
+  return `cache:${namespace}:v${version}:${key}`;
 }
 
-async function getVersioned(key) {
+async function getVersioned(namespace, key) {
   if (!isRedisAvailable()) return null;
-  const version = await getCacheVersion();
-  const fullKey = buildVersionedKey(version, key);
-  return get(fullKey);
+  const version = await getCacheVersion(namespace);
+  return get(buildVersionedKey(namespace, version, key));
 }
 
-async function setVersioned(key, value, ttlSeconds) {
+async function setVersioned(namespace, key, value, ttlSeconds) {
   if (!isRedisAvailable()) return false;
-  const version = await getCacheVersion();
-  const fullKey = buildVersionedKey(version, key);
-  return set(fullKey, value, ttlSeconds);
+  const version = await getCacheVersion(namespace);
+  return set(buildVersionedKey(namespace, version, key), value, ttlSeconds);
 }
 
-async function invalidateVersionedKey(key) {
+async function invalidateVersionedKey(namespace, key) {
   if (!isRedisAvailable()) return;
-  const version = await getCacheVersion();
-  const fullKey = buildVersionedKey(version, key);
-  await del(fullKey);
+  const version = await getCacheVersion(namespace);
+  await del(buildVersionedKey(namespace, version, key));
 }
 
-async function getOrSet(key, ttlSeconds, fetchFn, { versioned = true } = {}) {
+async function getOrSet(namespace, key, ttlSeconds, fetchFn, { versioned = true, lockTtlSeconds = 10 } = {}) {
   if (!isRedisAvailable()) {
     return fetchFn();
   }
 
-  let fullKey;
-  if (versioned) {
-    const version = await getCacheVersion();
-    fullKey = buildVersionedKey(version, key);
-  } else {
-    fullKey = key;
-  }
+  const version = versioned ? await getCacheVersion(namespace) : null;
+  const fullKey = versioned
+    ? buildVersionedKey(namespace, version, key)
+    : `cache:${namespace}:${key}`;
 
-  // 1. Check cache
   const cached = await get(fullKey);
   if (cached !== null) {
     return cached;
   }
 
-  // 2. In-flight deduplication
   if (pendingFetches.has(fullKey)) {
-    logger.debug({ fullKey }, 'Awaiting in-flight fetch for key');
+    logger.debug({ fullKey }, 'Awaiting in-process in-flight fetch for key');
     return pendingFetches.get(fullKey);
   }
 
-  // 3. Create new fetch promise
   const fetchPromise = (async () => {
     try {
-      const result = await fetchFn();
-      await set(fullKey, result, ttlSeconds).catch(err =>
-        logger.error({ err, fullKey }, 'Failed to cache result in getOrSet')
-      );
-      return result;
+      const lockKey = `lock:${fullKey}`;
+      const token = await acquireLock(lockKey, lockTtlSeconds);
+
+      if (!token) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const retryCached = await get(fullKey);
+        if (retryCached !== null) return retryCached;
+        return fetchFn();
+      }
+
+      try {
+        const result = await fetchFn();
+        await set(fullKey, result, ttlSeconds);
+        return result;
+      } finally {
+        await releaseLock(lockKey, token);
+      }
     } catch (err) {
       logger.error({ err, fullKey }, 'Error in fetchFn for getOrSet');
       throw err;

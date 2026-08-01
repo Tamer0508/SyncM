@@ -1,105 +1,169 @@
 const crypto = require('crypto');
-const { get, set, isRedisAvailable } = require('../infrastructure/redis');
+const { get, set, acquireLock, releaseLock, isRedisAvailable } = require('../infrastructure/redis');
+const { resolveUserId } = require('./requireAuth');
 const logger = require('../infrastructure/logger');
 
-const ID_TTL_SECONDS = 30; 
-
+const DEFAULT_RESULT_TTL_SECONDS = 30;
+const DEFAULT_LOCK_TTL_SECONDS = 20;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
-function getUserIdFromReq(req) {
-  if (req.user?.id) return req.user.id;
-  if (req.session?.userId) return req.session.userId;
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
-  return '';
+const REPLAYED_HEADERS = ['content-type', 'content-disposition'];
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
 }
 
-/**
- * Генерирует детерминированный ключ идемпотентности,
- * если клиент не передал явный Idempotency-Key.
- */
 function generateDefaultKey(req) {
-  const userId = getUserIdFromReq(req);
-  const payload = JSON.stringify({
+  const payload = stableStringify({
     method: req.method,
     path: req.originalUrl || req.url,
     body: req.body,
-    userId,
+    userId: resolveUserId(req) || '',
   });
   return crypto.createHash('sha256').update(payload).digest('hex');
 }
 
-module.exports = function idempotencyMiddleware(req, res, next) {
-  // Применяем только к мутирующим методам
-  if (!MUTATING_METHODS.includes(req.method)) return next();
+module.exports = function idempotencyMiddleware(options = {}) {
+  const {
+    resultTtlSeconds = DEFAULT_RESULT_TTL_SECONDS,
+    lockTtlSeconds = DEFAULT_LOCK_TTL_SECONDS,
+  } = options;
 
-  // Если Redis недоступен – пропускаем
-  if (!isRedisAvailable()) {
-    logger.warn('Redis unavailable, skipping idempotency check');
-    return next();
-  }
+  return function idempotency(req, res, next) {
+    if (!MUTATING_METHODS.includes(req.method)) return next();
 
-  (async () => {
-    try {
-      // 1. Определяем ключ
-      let idempotencyKey = req.get('Idempotency-Key') || req.get('idempotency-key');
-      if (!idempotencyKey) {
-        idempotencyKey = generateDefaultKey(req);
-        logger.debug({ idempotencyKey }, 'Generated default idempotency key');
-      }
-
-      const storageKey = `idem:${idempotencyKey}`;
-
-      // 2. Проверяем, нет ли сохранённого ответа
-      const cached = await get(storageKey);
-      if (cached && cached.status != null) {
-        logger.info({ storageKey }, 'Returning cached idempotent response');
-        if (cached.headers?.['content-type']) {
-          res.setHeader('Content-Type', cached.headers['content-type']);
-        }
-        return res.status(cached.status).json(cached.body);
-      }
-
-      // 3. Перехватываем отправку ответа, чтобы сохранить его
-      const originalJson = res.json.bind(res);
-      const originalSend = res.send.bind(res);
-      let stored = false;
-
-      const storeResponse = async (body) => {
-        if (stored) return;
-        stored = true;
-        const status = res.statusCode || 200;
-        const headers = {};
-        const contentType = typeof res.getHeader === 'function' ? res.getHeader('content-type') : null;
-        if (contentType) headers['content-type'] = contentType;
-        await set(storageKey, { status, body, headers }, ID_TTL_SECONDS).catch((err) =>
-          logger.error({ err, storageKey }, 'Failed to store idempotent response')
-        );
-        logger.debug({ storageKey }, 'Stored idempotent response');
-      };
-
-      res.json = function (body) {
-        storeResponse(body);
-        return originalJson(body);
-      };
-
-      res.send = function (body) {
-        let parsed = body;
-        if (typeof body === 'string') {
-          try {
-            parsed = JSON.parse(body);
-          } catch (e) {
-            // оставляем как есть
-          }
-        }
-        storeResponse(parsed);
-        return originalSend(body);
-      };
-
-      next();
-    } catch (error) {
-      logger.error({ err: error }, 'Idempotency middleware error, passing through');
-      next();
+    if (!isRedisAvailable()) {
+      (req.log || logger).warn('Redis unavailable, skipping idempotency');
+      return next();
     }
-  })();
+
+    (async () => {
+      let lockToken = null;
+      let lockKey = null;
+      const log = req.log || logger;
+
+      try {
+        let idempotencyKey = req.headers['idempotency-key'];
+        if (!idempotencyKey || typeof idempotencyKey !== 'string') {
+          idempotencyKey = generateDefaultKey(req);
+        }
+
+        const storageKey = `idem:${idempotencyKey}`;
+        lockKey = `idem-lock:${idempotencyKey}`;
+
+        const replay = (cached) => {
+          log.info({ storageKey }, 'Returning cached idempotent response');
+
+          if (cached.headers) {
+            for (const [key, value] of Object.entries(cached.headers)) {
+              res.setHeader(key, value);
+            }
+          }
+
+          if (cached.kind === 'send') {
+            return res.status(cached.status).send(cached.body);
+          }
+          return res.status(cached.status).json(cached.body);
+        };
+
+        const cached = await get(storageKey).catch((err) => {
+          log.error({ err, storageKey }, 'Redis get error');
+          return null;
+        });
+
+        if (cached && cached.status != null) return replay(cached);
+
+        const token = await acquireLock(lockKey, lockTtlSeconds).catch((err) => {
+          log.error({ err, lockKey }, 'Redis lock error');
+          return null;
+        });
+
+        if (!token) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          const recheck = await get(storageKey).catch(() => null);
+          if (recheck && recheck.status != null) return replay(recheck);
+
+          return res.status(409).json({
+            error: 'Conflict',
+            message: 'A request with this idempotency key is already being processed',
+          });
+        }
+
+        lockToken = token;
+
+        const originalJson = res.json.bind(res);
+        const originalSend = res.send.bind(res);
+        let storePromise = null;
+
+        const storeResponse = (body, kind) => {
+          if (storePromise) return storePromise;
+
+          storePromise = (async () => {
+            if (Buffer.isBuffer(body)) {
+              log.debug({ storageKey }, 'Skipping idempotency cache for binary/Buffer');
+              return;
+            }
+
+            try {
+              const status = res.statusCode || 200;
+              if (status >= 500) {
+                log.debug({ storageKey, status }, 'Skipping cache for server error');
+                return;
+              }
+
+              const headers = {};
+              if (typeof res.getHeaders === 'function') {
+                const currentHeaders = res.getHeaders();
+                for (const key of REPLAYED_HEADERS) {
+                  if (currentHeaders[key]) headers[key] = currentHeaders[key];
+                }
+              }
+
+              await set(storageKey, { status, body, headers, kind }, resultTtlSeconds);
+            } catch (err) {
+              log.error({ err, storageKey }, 'Failed to store idempotent response');
+            }
+          })();
+          return storePromise;
+        };
+
+        res.json = function (body) {
+          storeResponse(body, 'json');
+          return originalJson(body);
+        };
+
+        res.send = function (body) {
+          storeResponse(body, 'send');
+          return originalSend(body);
+        };
+
+        let lockReleased = false;
+        const releaseIdemLock = async () => {
+          if (lockReleased) return;
+          lockReleased = true;
+
+          if (storePromise) await storePromise.catch(() => {});
+
+          await releaseLock(lockKey, token).catch((err) =>
+            log.error({ err, lockKey }, 'Failed to release idempotency lock')
+          );
+        };
+
+        res.once('finish', releaseIdemLock);
+        res.once('close', releaseIdemLock);
+        res.once('error', releaseIdemLock);
+
+        next();
+      } catch (error) {
+        log.error({ err: error }, 'Idempotency middleware unexpected error');
+        if (lockToken && lockKey) {
+          await releaseLock(lockKey, lockToken).catch(() => {});
+        }
+        next();
+      }
+    })();
+  };
 };

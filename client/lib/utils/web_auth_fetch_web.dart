@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:html' as html;
 
 Future<Map<String, dynamic>?> fetchMeWithCredentials(String baseUrl) async {
-  final url = Uri.parse('$baseUrl/auth/me').toString();
+  final url = Uri.parse('$baseUrl/auth/me?needToken=1').toString();
   try {
     final resp = await html.HttpRequest.request(url, method: 'GET', withCredentials: true);
     if (resp.status == 200) {

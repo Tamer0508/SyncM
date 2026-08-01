@@ -70,6 +70,11 @@ model Friendship {
   id         String           @id @default(uuid())
   senderId   String
   receiverId String
+  // Отсортированная "senderId:receiverId" — @@unique([senderId, receiverId])
+  // ниже не защищает от встречной пары (A→B и B→A — разные комбинации для
+  // упорядоченного уникального индекса), а pairKey защищает независимо от
+  // направления. Заполняется в приложении при создании (см. sendRequest).
+  pairKey    String
   status     FriendshipStatus @default(pending)
   createdAt  DateTime         @default(now())
 
@@ -79,6 +84,7 @@ model Friendship {
   @@index([receiverId, status])
   @@index([senderId, status])
   @@unique([senderId, receiverId])
+  @@unique([pairKey])
 }
 
 model Playlist {
@@ -96,6 +102,10 @@ model Playlist {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
 
   @@index([userId])
+  // NULL в spotifyId не конфликтует сам с собой в Postgres, так что кастомные
+  // плейлисты (spotifyId: null) этим ограничением не затрагиваются — защищает
+  // только повторный импорт одного и того же Spotify-плейлиста одним юзером.
+  @@unique([userId, spotifyId])
 }
 
 model PlaylistTrack {
@@ -140,12 +150,18 @@ model Session {
   @@index([hostId, createdAt])
 }
 
+enum SessionMemberStatus {
+  pending
+  accepted
+  declined
+}
+
 model SessionMember {
-  id        String   @id @default(uuid())
+  id        String              @id @default(uuid())
   sessionId String
   userId    String
-  status    String   @default("pending") // pending | accepted | declined
-  joinedAt  DateTime @default(now())
+  status    SessionMemberStatus @default(pending)
+  joinedAt  DateTime            @default(now())
 
   session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade) // cascade
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade

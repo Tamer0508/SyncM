@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { rateLimitMiddleware } = require('../infrastructure/rateLimiter');
-const idempotency = require('../middleware/idempotency');
+const idempotency = require('../middleware/idempotency')();
+const requireAuth = require('../middleware/requireAuth');
 const {
   searchUsers,
   sendRequest,
@@ -12,6 +13,8 @@ const {
   getFriends,
   getIncomingRequests,
 } = require('../controllers/friendsController');
+
+router.use(requireAuth);
 
 router.get('/search', rateLimitMiddleware(15, 60), searchUsers);
 router.get('/', rateLimitMiddleware(15, 60), getFriends);

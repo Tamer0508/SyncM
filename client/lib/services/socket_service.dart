@@ -218,6 +218,7 @@ class SocketService {
       // не завершает хендшейк и даёт timeout — раньше всё работало именно на
       // чистом websocket, возвращаем его.
       'transports': ['websocket'],
+      'auth': {'token': token},
       'autoConnect': true,
       'reconnection': true,
       'reconnectionAttempts': 9999,
@@ -227,7 +228,6 @@ class SocketService {
     });
 
     _socket!.onConnect((_) async {
-      _socket!.emit('authenticate', {'token': token});
 
       // Фаза 6: после ЛЮБОГО подключения заново измеряем offset часов.
       // Ускоренная процедура сама по себе быстрая (несколько ping/pong).

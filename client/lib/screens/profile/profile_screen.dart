@@ -154,16 +154,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ---------- Spotify connect / disconnect logic (unchanged) ----------
 
-  String _encodeState(Map<String, String> data) => base64Url.encode(utf8.encode(jsonEncode(data)));
-
   void _connectSpotify(BuildContext context) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final api = auth.api;
-    final userId = auth.user?.id ?? '';
 
     if (kIsWeb) {
-      final webState = _encodeState({'returnTo': Uri.base.origin, 'userId': userId});
-      final webUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(webState)}';
+      final state =
+          await api.createSpotifyLinkIntent(returnTo: Uri.base.origin);
+      final webUrl = '${api.baseUrl}/auth/login?state=$state';
       redirectToUrl(webUrl);
       return;
     }
@@ -187,8 +185,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         _oauthServer = server;
 
-        final state = _encodeState({'returnTo': 'http://localhost:8282/callback', 'userId': userId});
-        final authUrl = Uri.parse('${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}');
+        final state = await api.createSpotifyLinkIntent(
+            returnTo: 'http://localhost:8282/callback');
+        final authUrl = Uri.parse('${api.baseUrl}/auth/login?state=$state');
         await launchUrl(authUrl, mode: LaunchMode.externalApplication);
         server.listen((request) async {
           final uri = request.requestedUri;
@@ -238,8 +237,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     // Android/iOS
-    final state = _encodeState({'returnTo': 'myapp://callback', 'userId': userId});
-    final authUrl = '${api.baseUrl}/auth/login?state=${Uri.encodeComponent(state)}';
+    final state =
+        await api.createSpotifyLinkIntent(returnTo: 'myapp://callback');
+    final authUrl = '${api.baseUrl}/auth/login?state=$state';
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(builder: (_) => buildSpotifyWebView(authUrl)),
     );

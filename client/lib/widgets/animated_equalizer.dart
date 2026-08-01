@@ -21,7 +21,6 @@ class AnimatedEqualizer extends StatefulWidget {
 
 class _AnimatedEqualizerState extends State<AnimatedEqualizer>
     with TickerProviderStateMixin {
-  late final AnimationController _controller;
   late final List<AnimationController> _barControllers;
   late final Random _random;
 
@@ -34,24 +33,15 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
     super.initState();
     _random = Random();
 
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-
     _barControllers = List.generate(
       _barCount,
       (_) => AnimationController(
         vsync: this,
-        duration: Duration(
-          milliseconds: 400 + _random.nextInt(200),
-        ),
+        duration: Duration(milliseconds: 400 + _random.nextInt(200)),
       ),
     );
 
-    if (widget.isPlaying) {
-      _startAnimation();
-    }
+    if (widget.isPlaying) _startAnimation();
   }
 
   @override
@@ -67,39 +57,25 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
   }
 
   void _startAnimation() {
-    for (var controller in _barControllers) {
+    for (final controller in _barControllers) {
       if (!controller.isAnimating) {
-        controller.forward();
+        controller.repeat(reverse: true);
       }
     }
   }
 
   void _stopAnimation() {
-    for (var controller in _barControllers) {
+    for (final controller in _barControllers) {
       controller.stop();
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
-    for (var controller in _barControllers) {
+    for (final controller in _barControllers) {
       controller.dispose();
     }
     super.dispose();
-  }
-
-  void _resetBarAnimation(int index) {
-    _barControllers[index]
-      ..reset()
-      ..duration = Duration(
-        milliseconds: 400 + _random.nextInt(200),
-      )
-      ..forward().then((_) {
-        if (widget.isPlaying) {
-          _resetBarAnimation(index);
-        }
-      });
   }
 
   @override
@@ -129,51 +105,29 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
-        children: List.generate(
-          _barCount,
-          (index) {
-            return AnimatedBuilder(
-              animation: _barControllers[index],
-              builder: (context, child) {
-                final animation = _barControllers[index];
+        children: List.generate(_barCount, (index) {
+          return AnimatedBuilder(
+            animation: _barControllers[index],
+            builder: (context, child) {
+              // reverse:true уже даёт движение вверх-вниз, поэтому значение
+              // контроллера отображается на высоту напрямую.
+              final height = _minBarHeight +
+                  _barControllers[index].value * (_maxBarHeight - _minBarHeight);
 
-                // Create a wave-like effect
-                late double height;
-                if (animation.value < 0.5) {
-                  // Going up (0 to 0.5 maps to 0.3 to 1.0)
-                  height = _minBarHeight +
-                      (animation.value * 2) * (_maxBarHeight - _minBarHeight);
-                } else {
-                  // Going down (0.5 to 1.0 maps to 1.0 to 0.3)
-                  height = _maxBarHeight -
-                      ((animation.value - 0.5) * 2) *
-                          (_maxBarHeight - _minBarHeight);
-                }
-
-                if (widget.isPlaying && !animation.isAnimating) {
-                  _resetBarAnimation(index);
-                }
-
-                return Padding(
-                  padding: EdgeInsets.symmetric(horizontal: barSpacing / 2),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: barWidth,
-                        height: widget.size * height * 0.7,
-                        decoration: BoxDecoration(
-                          color: widget.color,
-                          borderRadius: BorderRadius.circular(barWidth / 2),
-                        ),
-                      ),
-                    ],
+              return Padding(
+                padding: EdgeInsets.symmetric(horizontal: barSpacing / 2),
+                child: Container(
+                  width: barWidth,
+                  height: widget.size * height * 0.7,
+                  decoration: BoxDecoration(
+                    color: widget.color,
+                    borderRadius: BorderRadius.circular(barWidth / 2),
                   ),
-                );
-              },
-            );
-          },
-        ),
+                ),
+              );
+            },
+          );
+        }),
       ),
     );
   }

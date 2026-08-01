@@ -10,7 +10,13 @@ class AuthProvider with ChangeNotifier {
   User? _user;
   bool _loading = false;
 
-  AuthProvider({ApiService? api}) : api = api ?? ApiService();
+  AuthProvider({ApiService? api}) : api = api ?? ApiService() {
+    this.api.onTokenIssued = (token) {
+      _cookie = token;
+      saveAuthToken(token);
+      notifyListeners();
+    };
+  }
 
   User? get user => _user;
   bool get isLoggedIn => _user != null;

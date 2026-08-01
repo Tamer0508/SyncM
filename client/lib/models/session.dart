@@ -7,7 +7,9 @@ class SessionModel {
 
   factory SessionModel.fromJson(Map<String, dynamic> json) => SessionModel(
         id: json['id'] as String,
-        name: json['name'] as String,
+        // Имя может отсутствовать у старых записей — жёсткое приведение
+        // роняло разбор ВСЕГО списка сессий.
+        name: json['name'] as String? ?? 'Сессия',
         isActive: json['isActive'] as bool? ?? true,
       );
 

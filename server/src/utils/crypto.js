@@ -1,56 +1,121 @@
 const crypto = require('crypto');
+const { promisify } = require('util');
 const logger = require('../infrastructure/logger');
 
-// Алгоритм AES-256-GCM (с аутентификацией)
+const scrypt = promisify(crypto.scrypt);
+const randomBytes = promisify(crypto.randomBytes);
+
 const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 12;   // GCM рекомендует 12 байт
-const TAG_LENGTH = 16;  // Длина auth tag
-const KEY_LENGTH = 32;  // 256 бит
+const IV_LENGTH = 12;
+const TAG_LENGTH = 16;
+const PREFIX = 'enc:v2:'; // Новая версия схемы шифрования с поддержкой KDF и AAD
+const KEY_LENGTH = 32;
 
-// Получаем ключ из переменной окружения
-function getKey() {
-  const secret = process.env.ENCRYPTION_KEY;
-  if (!secret) {
-    throw new Error('ENCRYPTION_KEY не задан в .env');
+const SCRYPT_OPTIONS = {
+  N: 16384, // CPU/Memory cost
+  r: 8,     // Block size
+  p: 1      // Parallelization
+};
+
+let cachedKeyPromise = null;
+
+function getSalt() {
+  const salt = process.env.ENCRYPTION_SALT;
+  if (!salt) {
+    throw new Error('КРИТИЧЕСКАЯ ОШИБКА: ENCRYPTION_SALT не задан в .env');
   }
-  // Превращаем любую строку в 32-байтный ключ через SHA-256
-  return crypto.createHash('sha256').update(secret).digest();
+  if (salt.length < 16) {
+    logger.warn('ENCRYPTION_SALT слишком короткий (менее 16 символов) — это снижает стойкость scrypt');
+  }
+  return Buffer.from(salt, 'utf-8');
 }
 
-/**
- * Шифрует строку. Возвращает base64(iv + authTag + encrypted)
- */
-function encrypt(plaintext) {
-  if (!plaintext) return null;
-  
-  const key = getKey();
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+function getEncryptionKey() {
+  if (cachedKeyPromise) return cachedKeyPromise;
 
-  const encrypted = Buffer.concat([
-    cipher.update(plaintext, 'utf8'),
-    cipher.final()
-  ]);
+  cachedKeyPromise = (async () => {
+    const secret = process.env.ENCRYPTION_KEY;
+    if (!secret) {
+      throw new Error('КРИТИЧЕСКАЯ ОШИБКА: ENCRYPTION_KEY не задан в .env');
+    }
 
-  const authTag = cipher.getAuthTag();
+    if (/^[0-9a-f]{64}$/i.test(secret)) {
+      return Buffer.from(secret, 'hex');
+    }
 
-  // Склеиваем iv + authTag + encrypted и кодируем в base64
-  return Buffer.concat([iv, authTag, encrypted]).toString('base64');
+    try {
+      const salt = getSalt();
+      return await scrypt(secret, salt, KEY_LENGTH, SCRYPT_OPTIONS);
+    } catch (error) {
+      logger.error({ err: error }, 'Ошибка деривации ключа через scrypt');
+      throw new Error('Внутренняя ошибка инициализации криптографии');
+    }
+  })();
+
+  cachedKeyPromise.catch(() => {
+    cachedKeyPromise = null;
+  });
+
+  return cachedKeyPromise;
 }
 
-/**
- * Расшифровывает base64-строку обратно в plaintext
- */
-function decrypt(payload) {
-  if (!payload) return null;
+async function encrypt(plaintext, options = {}) {
+  if (typeof plaintext !== 'string') {
+    throw new TypeError(`Ожидалась строка для шифрования, получен тип: ${typeof plaintext}`);
+  }
+  if (plaintext.length === 0) {
+    throw new Error('Попытка зашифровать пустую строку');
+  }
+
+  const { aad } = options;
 
   try {
-    const key = getKey();
-    const data = Buffer.from(payload, 'base64');
+    const key = await getEncryptionKey();
+    const iv = await randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
 
-    // Если данные слишком короткие — это plain text токен
-    if (data.length < IV_LENGTH + TAG_LENGTH + 1) {
-      return payload; // возвращаем как есть
+    if (aad) {
+      cipher.setAAD(Buffer.from(aad, 'utf8'));
+    }
+
+    const encrypted = Buffer.concat([
+      cipher.update(plaintext, 'utf8'),
+      cipher.final()
+    ]);
+
+    const authTag = cipher.getAuthTag();
+    const payload = Buffer.concat([iv, authTag, encrypted]).toString('base64');
+
+    return `${PREFIX}${payload}`;
+  } catch (error) {
+    logger.error({ err: error }, 'Encrypt error');
+    throw new Error('Ошибка шифрования данных');
+  }
+}
+
+async function decrypt(payload, options = {}) {
+  if (typeof payload !== 'string') {
+    throw new TypeError(`Ожидалась строка для расшифровки, получен тип: ${typeof payload}`);
+  }
+
+  const { strict = true, aad } = options;
+
+  const isEncrypted = payload.startsWith(PREFIX);
+
+  if (!isEncrypted) {
+    if (strict) {
+      throw new Error('Недопустимый формат данных: отсутствует префикс шифрования');
+    }
+    return payload; // legacy mode — только при явном strict: false
+  }
+
+  try {
+    const key = await getEncryptionKey();
+    const b64Data = payload.slice(PREFIX.length);
+    const data = Buffer.from(b64Data, 'base64');
+
+    if (data.length < IV_LENGTH + TAG_LENGTH) {
+      throw new Error('Слишком короткий payload, данные повреждены');
     }
 
     const iv = data.subarray(0, IV_LENGTH);
@@ -60,6 +125,10 @@ function decrypt(payload) {
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     decipher.setAuthTag(authTag);
 
+    if (aad) {
+      decipher.setAAD(Buffer.from(aad, 'utf8'));
+    }
+
     const decrypted = Buffer.concat([
       decipher.update(encrypted),
       decipher.final()
@@ -67,9 +136,8 @@ function decrypt(payload) {
 
     return decrypted.toString('utf8');
   } catch (error) {
-    // Если расшифровка не удалась — возможно plain text, возвращаем как есть
     logger.error({ err: error }, 'Decrypt error');
-    return payload;
+    throw new Error('Ошибка расшифровки данных (неверный ключ, контекст AAD или данные повреждены)');
   }
 }
 

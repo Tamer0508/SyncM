@@ -1,25 +1,22 @@
 const { Queue, Worker } = require('bullmq');
-const axios = require('axios');
-const { redisClient } = require('./redis');
-const { encrypt, decrypt } = require('../utils/crypto');
+const Redis = require('ioredis');
+const { redisClient, incrementVersion } = require('./redis');
+const { withLock } = require('./lock');
+const { getSpotifyUser, spotifyGet } = require('./spotify/auth');
 const prisma = require('../db/prisma');
 const logger = require('./logger');
 const { getIo } = require('../socket');
 
 const connection = redisClient;
 
-// Переменные, инициализируемые в initQueues
 let notificationsQueue;
 let notificationsDLQ;
 let playlistSyncQueue;
 let playlistSyncDLQ;
 let notificationWorker;
 let playlistSyncWorker;
+let workerConnection;
 
-/**
- * Отложенная инициализация очередей и воркеров.
- * Вызывать после того как Redis готов.
- */
 function initQueues() {
   if (!connection) {
     logger.warn('Redis client is not available. BullMQ queues disabled.');
@@ -27,6 +24,17 @@ function initQueues() {
   }
 
   logger.info('Initializing BullMQ queues...');
+
+  workerConnection = new Redis(process.env.REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    retryStrategy(times) {
+      return Math.min(times * 50, 2000);
+    },
+  });
+  workerConnection.on('error', (err) => {
+    logger.error({ err }, 'BullMQ worker Redis connection error');
+  });
 
   notificationsQueue = new Queue('notifications', { connection });
   notificationsDLQ = new Queue('notifications-dlq', { connection });
@@ -138,7 +146,7 @@ function initQueues() {
       return { processed: true, type: data.type };
     },
     {
-      connection,
+      connection: workerConnection,
       concurrency: 5,
       removeOnComplete: { count: 100 },
       removeOnFail: { count: 100 },
@@ -171,196 +179,89 @@ function initQueues() {
     logger.info({ jobId: job.id, type: job.data?.type }, 'Notification job completed');
   });
 
-  // Playlist sync worker
   playlistSyncWorker = new Worker(
     'playlistSync',
     async (job) => {
       const { userId, playlistId, fullSync = false } = job.data;
       logger.info({ jobId: job.id, userId, playlistId, fullSync }, 'Processing playlist sync job');
 
-      const spotifyUser = await prisma.spotifyUser.findFirst({
-        where: { OR: [{ userId }, { id: userId }] }
-      });
-      if (!spotifyUser) throw new Error(`Spotify not connected for user ${userId}`);
+      return withLock(`playlist-sync:${playlistId}`, 60000, async () => {
+        const spotifyUser = await getSpotifyUser(userId);
+        if (!spotifyUser?.accessToken) throw new Error(`Spotify not connected for user ${userId}`);
 
-      let accessToken;
-      try {
-        accessToken = decrypt(spotifyUser.accessToken);
-      } catch (e) {
-        throw new Error('Invalid Spotify token');
-      }
+        const playlistData = await spotifyGet(spotifyUser, `https://api.spotify.com/v1/playlists/${playlistId}`);
 
-      // Функция запроса с авто-обновлением токена и retry для 429
-      const spotifyRequest = async (url, attempt = 1) => {
-        const makeRequest = async (token) =>
-          axios.get(url, {
-            headers: { Authorization: `Bearer ${token}` },
-            validateStatus: (status) => status < 500, // не кидать ошибку на 429, обработаем сами
+        let trackItems = [];
+        let nextUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50&market=from_token`;
+        while (nextUrl) {
+          const data = await spotifyGet(spotifyUser, nextUrl);
+          trackItems.push(...data.items);
+          nextUrl = data.next;
+        }
+
+        const trackRows = trackItems
+          .filter(item => item.track?.id && item.track?.uri)
+          .map(item => ({
+            spotifyUri: item.track.uri,
+            trackName: item.track.name,
+            artistName: item.track.artists?.map(a => a.name).join(', ') || '',
+            durationMs: item.track.duration_ms ?? null,
+            addedAt: new Date(item.added_at || Date.now()),
+          }));
+
+        const result = await prisma.$transaction(async (tx) => {
+          const savedPlaylist = await tx.playlist.upsert({
+            where: { userId_spotifyId: { userId, spotifyId: playlistId } },
+            update: {
+              name: playlistData.name,
+              description: playlistData.description || '',
+              imageUrl: playlistData.images?.[0]?.url || null,
+            },
+            create: {
+              userId,
+              spotifyId: playlistId,
+              name: playlistData.name,
+              description: playlistData.description || '',
+              imageUrl: playlistData.images?.[0]?.url || null,
+              isCustom: false,
+            },
           });
 
-        let response;
-        try {
-          response = await makeRequest(accessToken);
-        } catch (err) {
-          if (err.response?.status === 401) {
-            logger.info({ userId }, 'Spotify token expired, refreshing...');
-            accessToken = await refreshAccessToken(spotifyUser);
-            response = await makeRequest(accessToken);
-          } else {
-            throw err;
+          if (fullSync) {
+            await tx.playlistTrack.deleteMany({ where: { playlistId: savedPlaylist.id } });
           }
-        }
 
-        if (response.status === 429 && attempt <= 5) {
-          const retryAfter = parseInt(response.headers['retry-after'], 10) || 5;
-          logger.warn({ url, attempt, retryAfter }, 'Spotify rate limited, retrying...');
-          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-          return spotifyRequest(url, attempt + 1);
-        }
-
-        if (response.status >= 400) {
-          throw new Error(`Spotify API error ${response.status}: ${response.statusText}`);
-        }
-
-        return response.data;
-      };
-
-      // Получаем информацию о плейлисте
-      const playlistData = await spotifyRequest(`https://api.spotify.com/v1/playlists/${playlistId}`);
-
-      // Собираем все треки
-      let trackItems = [];
-      let nextUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50&market=from_token`;
-      while (nextUrl) {
-        const data = await spotifyRequest(nextUrl);
-        trackItems.push(...data.items);
-        nextUrl = data.next;
-      }
-
-      // Подготовка данных для пакетной вставки
-      const tracks = trackItems
-        .filter(item => item.track?.id)
-        .map((item, index) => ({
-          spotifyId: item.track.id,
-          name: item.track.name,
-          artist: item.track.artists?.map(a => a.name).join(', ') || '',
-          album: item.track.album?.name || '',
-          imageUrl: item.track.album?.images?.[0]?.url || null,
-          durationMs: item.track.duration_ms,
-          previewUrl: item.track.preview_url,
-          spotifyUri: item.track.uri,
-          position: index,
-          addedAt: new Date(item.added_at || Date.now()),
-        }));
-
-      const trackSpotifyIds = tracks.map(t => t.spotifyId);
-
-      // Транзакция с батчевыми операциями
-      const result = await prisma.$transaction(async (tx) => {
-        // Сохраняем плейлист
-        const savedPlaylist = await tx.playlist.upsert({
-          where: { spotifyId: playlistId },
-          update: {
-            name: playlistData.name,
-            description: playlistData.description || '',
-            imageUrl: playlistData.images?.[0]?.url || null,
-            ownerName: playlistData.owner?.display_name || null,
-            isPublic: playlistData.public || false,
-            trackCount: tracks.length,
-            lastSyncedAt: new Date(),
-          },
-          create: {
-            spotifyId: playlistId,
-            name: playlistData.name,
-            description: playlistData.description || '',
-            imageUrl: playlistData.images?.[0]?.url || null,
-            ownerName: playlistData.owner?.display_name || null,
-            isPublic: playlistData.public || false,
-            trackCount: tracks.length,
-            lastSyncedAt: new Date(),
-          },
-        });
-
-        // Удаляем старые связи, если fullSync
-        if (fullSync) {
-          await tx.playlistTrack.deleteMany({ where: { playlistId: savedPlaylist.id } });
-        }
-
-        // Пакетная вставка треков (skipDuplicates)
-        await tx.track.createMany({
-          data: tracks.map(({ spotifyId, name, artist, album, imageUrl, durationMs, previewUrl, spotifyUri }) => ({
-            spotifyId,
-            name,
-            artist,
-            album,
-            imageUrl,
-            durationMs,
-            previewUrl,
-            spotifyUri,
-          })),
-          skipDuplicates: true,
-        });
-
-        // Получаем id всех треков, которые уже есть в БД
-        const existingTracks = await tx.track.findMany({
-          where: { spotifyId: { in: trackSpotifyIds } },
-          select: { id: true, spotifyId: true },
-        });
-        const trackIdBySpotifyId = new Map(existingTracks.map(t => [t.spotifyId, t.id]));
-
-        // Получаем существующие связи в плейлисте
-        const existingLinks = await tx.playlistTrack.findMany({
-          where: {
-            playlistId: savedPlaylist.id,
-            trackId: { in: existingTracks.map(t => t.id) },
-          },
-          select: { trackId: true },
-        });
-        const linkedTrackIds = new Set(existingLinks.map(l => l.trackId));
-
-        // Подготовка новых связей
-        const newLinks = [];
-        for (const t of tracks) {
-          const trackId = trackIdBySpotifyId.get(t.spotifyId);
-          if (trackId && !linkedTrackIds.has(trackId)) {
-            newLinks.push({
-              playlistId: savedPlaylist.id,
-              trackId,
-              position: t.position,
-              addedAt: t.addedAt,
+          let tracksAdded = 0;
+          if (trackRows.length > 0) {
+            const { count } = await tx.playlistTrack.createMany({
+              data: trackRows.map(row => ({ ...row, playlistId: savedPlaylist.id })),
+              skipDuplicates: true,
             });
+            tracksAdded = count;
           }
-        }
 
-        if (newLinks.length > 0) {
-          await tx.playlistTrack.createMany({
-            data: newLinks,
-            skipDuplicates: true,
-          });
-        }
+          return {
+            playlist: savedPlaylist,
+            tracksAdded,
+            totalTracks: trackRows.length,
+          };
+        }, {
+          timeout: 20000,
+        });
 
-        return {
-          playlist: savedPlaylist,
-          tracksAdded: newLinks.length,
-          tracksAlreadyLinked: trackItems.length - newLinks.length,
-          totalTracks: trackItems.length,
-        };
-      });
-
-      // Инвалидация кэша Redis (можно использовать версионирование, но пока так)
-      if (redisClient) {
         await Promise.all([
-          redisClient.del(`spotify:user-playlists:${userId}`),
-          redisClient.del(`spotify:playlist:${playlistId}:items`),
-          redisClient.del(`spotify:playlist:${playlistId}:info`),
+          incrementVersion(`db:user-playlists-db:${userId}`),
+          incrementVersion(`db:playlist-tracks-db:${playlistId}`),
+          incrementVersion(`spotify:user-playlists:${userId}`),
+          incrementVersion(`spotify:playlist-tracks:${playlistId}`),
         ]);
-      }
 
-      logger.info({ jobId: job.id, playlistId, ...result }, 'Playlist sync completed');
-      return { status: 'ok', syncedAt: new Date().toISOString(), ...result };
+        logger.info({ jobId: job.id, playlistId, ...result }, 'Playlist sync completed');
+        return { status: 'ok', syncedAt: new Date().toISOString(), ...result };
+      }, { failOpen: false });
     },
     {
-      connection,
+      connection: workerConnection,
       concurrency: 2,
       removeOnComplete: { count: 50 },
       removeOnFail: { count: 50 },
@@ -396,66 +297,13 @@ function initQueues() {
   logger.info('BullMQ queues initialized');
 }
 
-const refreshAccessToken = async (spotifyUser) => {
-  const lockKey = `spotify:refresh_lock:${spotifyUser.id}`;
-  try {
-    const locked = await redisClient.set(lockKey, 'locked', 'EX', 5, 'NX');
-    if (!locked) {
-      logger.info({ userId: spotifyUser.userId }, 'Refresh token already in progress, waiting');
-      await new Promise(resolve => setTimeout(resolve, 100));
-      const freshSpotifyUser = await prisma.spotifyUser.findUnique({
-        where: { id: spotifyUser.id }
-      });
-      if (freshSpotifyUser && freshSpotifyUser.accessToken) {
-        const newToken = decrypt(freshSpotifyUser.accessToken);
-        if (newToken) return newToken;
-      }
-      throw new Error('Could not obtain fresh token');
-    }
-
-    const decryptedRefreshToken = decrypt(spotifyUser.refreshToken);
-    if (!decryptedRefreshToken) {
-      throw new Error('Не удалось расшифровать refresh token');
-    }
-
-    const response = await axios.post(
-      'https://accounts.spotify.com/api/token',
-      new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: decryptedRefreshToken,
-      }),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Authorization: `Basic ${Buffer.from(
-            `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
-          ).toString('base64')}`,
-        },
-      }
-    );
-
-    const newAccessToken = response.data.access_token;
-    await prisma.spotifyUser.update({
-      where: { id: spotifyUser.id },
-      data: {
-        accessToken: encrypt(newAccessToken),
-        ...(response.data.refresh_token && { refreshToken: encrypt(response.data.refresh_token) }),
-      },
-    });
-
-    return newAccessToken;
-  } finally {
-    await redisClient.del(lockKey);
-  }
-};
-
 const addNotificationJob = async (data) => {
   if (!notificationsQueue) throw new Error('Notifications queue is not available');
   return notificationsQueue.add('notification', data, {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
     removeOnComplete: true,
-    removeOnFail: false,
+    removeOnFail: { count: 100 },
   });
 };
 
@@ -465,7 +313,7 @@ const addPlaylistSyncJob = async (data) => {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
     removeOnComplete: true,
-    removeOnFail: false,
+    removeOnFail: { count: 50 },
   });
 };
 
@@ -479,6 +327,7 @@ const closeQueues = async () => {
   if (notificationsDLQ) promises.push(notificationsDLQ.close());
   if (playlistSyncDLQ) promises.push(playlistSyncDLQ.close());
   await Promise.all(promises);
+  if (workerConnection) await workerConnection.quit();
   logger.info('BullMQ queues closed');
 };
 

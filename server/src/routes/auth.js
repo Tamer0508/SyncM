@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { rateLimitMiddleware } = require('../infrastructure/rateLimiter');
+const idempotency = require('../middleware/idempotency')();
+const requireAuth = require('../middleware/requireAuth');
 const {
   login,
   callback,
@@ -14,22 +16,26 @@ const {
   googleWebCallback,
   checkPendingAuth,
   uploadAvatar,
+  createSpotifyLinkIntent,
 } = require('../controllers/authController');
 
-// Для эндпоинтов аутентификации (часто анонимные) используем rateLimitMiddleware,
-// который сам определит: если есть userId – лимит по пользователю, иначе по IP.
-router.get('/login',       rateLimitMiddleware(10, 60), login);
-router.get('/callback',    rateLimitMiddleware(10, 60), callback);
-router.post('/google',     rateLimitMiddleware(10, 60), googleAuth);
-router.get('/google-web',  rateLimitMiddleware(10, 60), googleWebLogin);
-router.get('/google-callback', rateLimitMiddleware(10, 60), googleWebCallback);
-router.get('/check-pending',   rateLimitMiddleware(10, 60), checkPendingAuth);
+const authLimit = (limit, windowSeconds) =>
+  rateLimitMiddleware(limit, windowSeconds, { failOpen: false });
 
-router.get('/me',          rateLimitMiddleware(15, 60), getMe);
-router.get('/logout',      rateLimitMiddleware(10, 60), logout);
-router.post('/avatar',     rateLimitMiddleware(10, 60), uploadAvatar);
-router.get('/settings',    rateLimitMiddleware(15, 60), getSettings);
-router.patch('/settings',  rateLimitMiddleware(10, 60), updateSettings);
-router.patch('/profile',   rateLimitMiddleware(10, 60), updateProfile);
+router.get('/login',           authLimit(10, 60), login);
+router.get('/callback',        authLimit(10, 60), callback);
+router.post('/google',         authLimit(10, 60), googleAuth);
+router.get('/google-web',      authLimit(10, 60), googleWebLogin);
+router.get('/google-callback', authLimit(10, 60), googleWebCallback);
+router.get('/check-pending',   authLimit(20, 60), checkPendingAuth);
+
+router.post('/spotify/link-intent', requireAuth, rateLimitMiddleware(10, 60), createSpotifyLinkIntent);
+
+router.get('/me',          requireAuth, rateLimitMiddleware(15, 60), getMe);
+router.get('/logout',      requireAuth, rateLimitMiddleware(10, 60), logout);
+router.post('/avatar',     requireAuth, rateLimitMiddleware(10, 60), uploadAvatar);
+router.get('/settings',    requireAuth, rateLimitMiddleware(15, 60), getSettings);
+router.patch('/settings',  requireAuth, rateLimitMiddleware(10, 60), idempotency, updateSettings);
+router.patch('/profile',   requireAuth, rateLimitMiddleware(10, 60), idempotency, updateProfile);
 
 module.exports = router;
