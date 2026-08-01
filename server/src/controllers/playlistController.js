@@ -6,12 +6,7 @@ const { addPlaylistSyncJob } = require('../infrastructure/queue');
 const asyncHandler = require('../utils/asyncHandler');
 const logger = require('../infrastructure/logger');
 
-const getUserId = (req) => {
-  if (req.session?.userId) return req.session.userId;
-  const auth = req.headers.authorization;
-  if (auth?.startsWith('Bearer ')) return auth.replace('Bearer ', '');
-  return null;
-};
+const getUserId = (req) => req.userId || req.session?.userId || null;
 
 const httpUrlSchema = z.string().url().refine((url) => /^https?:\/\//i.test(url), {
   message: 'Разрешены только http/https ссылки',

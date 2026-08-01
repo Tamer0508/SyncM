@@ -49,7 +49,6 @@ function corsOriginCheck(origin, callback) {
   return callback(err);
 }
 
-// Отложенная инициализация BullMQ
 initQueues();
 
 const pool = new Pool({
@@ -118,7 +117,7 @@ io.engine.use(sessionMiddleware);
 
 app.use((req, res, next) => {
   try {
-    const userId = req.session?.userId || null;
+    const userId = req.userId || req.session?.userId || null;
     req.log = (req.log || logger).child({
       userId: userId || undefined,
       traceId: req.traceId,
@@ -130,6 +129,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+
 app.use('/health', healthRoutes);
 
 app.use(rateLimitMiddleware(100, 60, {
