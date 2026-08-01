@@ -192,21 +192,22 @@ function initQueues() {
         const playlistData = await spotifyGet(spotifyUser, `https://api.spotify.com/v1/playlists/${playlistId}`);
 
         let trackItems = [];
-        let nextUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50&market=from_token`;
+        let nextUrl = `https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50`;
         while (nextUrl) {
           const data = await spotifyGet(spotifyUser, nextUrl);
-          trackItems.push(...data.items);
+          trackItems.push(...(data.items || []));
           nextUrl = data.next;
         }
 
         const trackRows = trackItems
-          .filter(item => item.track?.id && item.track?.uri)
-          .map(item => ({
-            spotifyUri: item.track.uri,
-            trackName: item.track.name,
-            artistName: item.track.artists?.map(a => a.name).join(', ') || '',
-            durationMs: item.track.duration_ms ?? null,
-            addedAt: new Date(item.added_at || Date.now()),
+          .map(entry => ({ track: entry.item || entry.track, addedAt: entry.added_at }))
+          .filter(({ track }) => track?.id && track?.uri)
+          .map(({ track, addedAt }) => ({
+            spotifyUri: track.uri,
+            trackName: track.name,
+            artistName: track.artists?.map(a => a.name).join(', ') || '',
+            durationMs: track.duration_ms ?? null,
+            addedAt: new Date(addedAt || Date.now()),
           }));
 
         const result = await prisma.$transaction(async (tx) => {

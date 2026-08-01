@@ -18,7 +18,7 @@ const {
 
 const getUserId = (req) => req.userId || req.session?.userId || null;
 
-const extractTrack = (item) => item.track || item.item || null;
+const extractTrack = (item) => item.item || item.track || null;
 
 const CACHE_TTL = {
   userPlaylists: 600,
@@ -102,7 +102,9 @@ router.get('/playlists', rateLimitMiddleware(30, 60), asyncHandler(async (req, r
         name: p.name,
         description: p.description,
         imageUrl: p.images?.[0]?.url || null,
-        trackCount: p.tracks?.total ?? 0,
+        // tracks.total -> items.total (февральская миграция 2026). Без этого
+        // в списке у всех плейлистов показывалось «0 треков».
+        trackCount: p.items?.total ?? p.tracks?.total ?? 0,
         owner: p.owner?.display_name,
         isPublic: p.public,
       }));
@@ -125,10 +127,10 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
       const spotifyUser = await requireSpotifyUser(userId);
       const data = await spotifyGet(
         spotifyUser,
-        `https://api.spotify.com/v1/playlists/${encodeURIComponent(playlistId)}/tracks?limit=50&market=from_token`
+        `https://api.spotify.com/v1/playlists/${encodeURIComponent(playlistId)}/items?limit=50`
       );
 
-      return data.items
+      return (data.items || [])
         .map((item) => extractTrack(item))
         .filter((track) => track !== null && track.id)
         .map((track) => ({
