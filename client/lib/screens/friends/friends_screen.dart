@@ -113,9 +113,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
     Widget content;
     if (prov.friendsLoading && prov.friends.isEmpty) {
-      // Скелетон вместо кружка: список друзей — самый посещаемый экран
-      // после главного, и повтор его формы делает ожидание незаметнее.
-      content = const SkeletonList(itemCount: 6);
+      content = const SingleChildScrollView(
+        physics: AlwaysScrollableScrollPhysics(),
+        child: SkeletonList(itemCount: 6),
+      );
     } else if (prov.friends.isEmpty) {
       content = ListView(
         physics: const AlwaysScrollableScrollPhysics(),

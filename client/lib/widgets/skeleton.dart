@@ -2,24 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Мерцающая заглушка на месте ещё не загруженных данных.
-///
-/// Зачем вместо кружка загрузки: кружок сообщает «идёт работа», но не
-/// показывает, что появится. Экран остаётся пустым, и переход к содержимому
-/// выглядит как рывок. Скелетон повторяет форму будущего списка, поэтому
-/// разметка не «прыгает» при подстановке данных, а ожидание воспринимается
-/// короче — интерфейс уже выглядит наполненным.
-///
-/// Реализовано без внешних пакетов: движущийся градиент поверх серых блоков
-/// через ShaderMask. Пакет ради этого тянуть незачем — здесь два десятка
-/// строк, а лишняя зависимость всегда стоит обновлений и совместимости.
 class Skeleton extends StatefulWidget {
   const Skeleton({super.key, required this.child, this.enabled = true});
 
   final Widget child;
 
-  /// Когда false, содержимое показывается как есть, без мерцания.
-  /// Удобно, чтобы не городить условие на месте использования.
   final bool enabled;
 
   @override
@@ -120,8 +107,6 @@ class SkeletonBox extends StatelessWidget {
   }
 }
 
-/// Заглушка строки списка: круглый аватар, заголовок и подпись.
-/// Повторяет разметку FriendTile и _HomeTile.
 class SkeletonListTile extends StatelessWidget {
   const SkeletonListTile({super.key, this.avatarRadius = 24});
 
@@ -180,20 +165,17 @@ class SkeletonList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Skeleton(
-      child: ListView.separated(
-        // Прокрутку отключаем: это заглушка, листать в ней нечего, а
-        // инерция под пальцем на неживом содержимом сбивает с толку.
-        physics: const NeverScrollableScrollPhysics(),
-        padding: padding ??
-            const EdgeInsets.fromLTRB(
-              AppSpacing.sm,
-              AppSpacing.sm,
-              AppSpacing.sm,
-              AppSpacing.sm,
-            ),
-        itemCount: itemCount,
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
-        itemBuilder: (_, _) => SkeletonListTile(avatarRadius: avatarRadius),
+      child: Padding(
+        padding: padding ?? const EdgeInsets.all(AppSpacing.sm),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < itemCount; i++) ...[
+              if (i > 0) const SizedBox(height: AppSpacing.xs),
+              SkeletonListTile(avatarRadius: avatarRadius),
+            ],
+          ],
+        ),
       ),
     );
   }
