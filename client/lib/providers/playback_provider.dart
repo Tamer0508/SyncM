@@ -8,7 +8,6 @@ import 'package:spotify_sdk/models/player_state.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
-import '../config.dart';
 import '../services/socket_service.dart';
 import '../services/session_foreground_service.dart';
 
@@ -102,6 +101,44 @@ class PlaybackProvider extends ChangeNotifier {
 
   Map<String, dynamic>? get currentTrack => _currentTrack;
   bool get isPlaying => _isPlaying;
+
+  /// Открыт ли полноэкранный плеер.
+  ///
+  /// Нужен оболочке приложения: мини-плеер внизу — это способ вернуться к
+  /// текущему треку, и поверх уже открытого большого плеера он бессмыслен,
+  /// а на деле ещё и перекрывал его управление.
+  ///
+  /// Флаг живёт в провайдере, а не в состоянии оболочки, потому что
+  /// AppShell подключается через builder в MaterialApp и находится ВЫШЕ
+  /// Navigator — узнать оттуда, какой экран открыт, обычными средствами
+  /// нельзя.
+  bool _fullScreenPlayerOpen = false;
+  bool get isFullScreenPlayerOpen => _fullScreenPlayerOpen;
+
+  void setFullScreenPlayerOpen(bool value) {
+    if (_fullScreenPlayerOpen == value) return;
+    _fullScreenPlayerOpen = value;
+
+    // Страховка от зависшего флага.
+    //
+    // Флаг снимает экран плеера при закрытии. Если это по какой-то причине
+    // не произойдёт (исключение в dispose, аварийное закрытие маршрута),
+    // мини-плеер исчезнет НАВСЕГДА — состояние, из которого пользователь не
+    // выберется без перезапуска приложения. Поэтому поднятый флаг живёт не
+    // дольше получаса: экран плеера столько открытым не держат, а стоимость
+    // ошибочного сброса — лишь ненадолго показанная панель внизу.
+    _fullScreenGuardTimer?.cancel();
+    if (value) {
+      _fullScreenGuardTimer = Timer(const Duration(minutes: 30), () {
+        _fullScreenPlayerOpen = false;
+        notifyListeners();
+      });
+    }
+
+    notifyListeners();
+  }
+
+  Timer? _fullScreenGuardTimer;
   bool get isConnected => _isConnected;
   int get durationMs => _durationMs;
   // Фаза 4.3: в активной сессии во время воспроизведения позиция для UI
@@ -135,7 +172,6 @@ class PlaybackProvider extends ChangeNotifier {
   static const _clientId = '809ce8e069a64cb5970c20e356024786';
   static const _redirectUrl = 'syncm://callback';
 
-  String get _socketUrl => _apiService?.baseUrl ?? Config.baseUrl;
 
   void setApiService(ApiService api) {
     _apiService = api;
@@ -149,7 +185,7 @@ class PlaybackProvider extends ChangeNotifier {
       _audioLatencyMs = prefs.getInt(_kAudioLatencyKey) ?? 0;
       notifyListeners();
     } catch (e) {
-      print('[SyncM] Не удалось загрузить калибровку задержки: $e');
+      debugPrint('[SyncM] Не удалось загрузить калибровку задержки: $e');
     }
   }
 
@@ -162,7 +198,7 @@ class PlaybackProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kAudioLatencyKey, _audioLatencyMs);
     } catch (e) {
-      print('[SyncM] Не удалось сохранить калибровку задержки: $e');
+      debugPrint('[SyncM] Не удалось сохранить калибровку задержки: $e');
     }
   }
 
@@ -270,7 +306,7 @@ class PlaybackProvider extends ChangeNotifier {
         _isAdvancingQueue = false;
       }
     } catch (e) {
-      print('[SyncM] _advanceSessionQueue error: $e');
+      debugPrint('[SyncM] _advanceSessionQueue error: $e');
       _isAdvancingQueue = false;
     }
   }
@@ -278,6 +314,7 @@ class PlaybackProvider extends ChangeNotifier {
   Timer? _advanceResetTimer;
   void _scheduleAdvanceFlagReset() {
     _advanceResetTimer?.cancel();
+
     _advanceResetTimer = Timer(const Duration(milliseconds: 3500), () {
       _isAdvancingQueue = false;
     });
@@ -371,7 +408,7 @@ class PlaybackProvider extends ChangeNotifier {
           }
           notifyListeners();
         } catch (e) {
-          print('[Polling] error: $e');
+          debugPrint('[Polling] error: $e');
         }
       }
     });
@@ -395,19 +432,7 @@ class PlaybackProvider extends ChangeNotifier {
     // Без явной очистки старые обработчики остаются висеть на сокете, и
     // ОДНО серверное событие (например session_prepare) обрабатывается
     // несколько раз подряд — это и вызывало повторные "скипы" трека.
-    for (final event in const [
-      'session_prepare',
-      'session_start',
-      'session_sync',
-      'session_reseek',
-      'session_pause',
-      'session_resume',
-      'session_state',
-      'session_play',
-      'play',
-      'seek',
-      'tracks-added',
-    ]) {
+    for (final event in _sessionEvents) {
       socketService.off(event);
     }
 
@@ -482,7 +507,7 @@ class PlaybackProvider extends ChangeNotifier {
           _positionMs = positionMs;
           notifyListeners();
         } catch (e) {
-          print('[Session Seek] Чистый seek не удался, полный ре-старт: $e');
+          debugPrint('[Session Seek] Чистый seek не удался, полный ре-старт: $e');
           await _playAtPosition(trackId, positionMs);
         }
         await _restoreVolumeIfMuted();
@@ -554,7 +579,7 @@ class PlaybackProvider extends ChangeNotifier {
           final svc = _apiService;
           if (svc != null) {
             svc.seekToPosition(expectedPos).catchError((e) {
-              print('[SyncM] session_sync авто-коррекция позиции не удалась: $e');
+              debugPrint('[SyncM] session_sync авто-коррекция позиции не удалась: $e');
             });
           }
         }
@@ -593,13 +618,13 @@ class PlaybackProvider extends ChangeNotifier {
           await SpotifySdk.seekTo(positionedMilliseconds: target);
         }
       } catch (e) {
-        print('[SyncM] session_reseek не удался: $e');
+        debugPrint('[SyncM] session_reseek не удался: $e');
       }
     });
 
     // ─── Фаза 5: Пауза от сервера ───────────────────────────────────────────
     socketService.on('session_pause', (data) async {
-      print('[Socket] Получен session_pause: $data');
+      debugPrint('[Socket] Получен session_pause: $data');
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final positionMs = (map['positionMs'] as num?)?.toInt();
 
@@ -640,7 +665,7 @@ class PlaybackProvider extends ChangeNotifier {
             await SpotifySdk.resume();
           }
         } catch (e) {
-          print('[Socket] Resume error: $e');
+          debugPrint('[Socket] Resume error: $e');
         }
       } else {
         // Отправитель: уже возобновили локально в togglePlay, просто уведомляем UI
@@ -688,7 +713,7 @@ class PlaybackProvider extends ChangeNotifier {
       final int? pos = (map['position_ms'] as num?)?.toInt();
 
       if (uri == null) return;
-      print('[Socket Play] Сервер приказал включить трек: $uri');
+      debugPrint('[Socket Play] Сервер приказал включить трек: $uri');
 
       // Ищем полную инфу о треке (с картинкой и именем), сохранённую в очереди сессии
       Map<String, dynamic> fullTrackData = {'uri': uri};
@@ -716,7 +741,7 @@ class PlaybackProvider extends ChangeNotifier {
             await SpotifySdk.resume();
           }
         } catch (e) {
-          print('Ошибка снятия с паузы в сессии: $e');
+          debugPrint('Ошибка снятия с паузы в сессии: $e');
         }
       }
     });
@@ -731,7 +756,7 @@ class PlaybackProvider extends ChangeNotifier {
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final int pos = (map['position_ms'] as num?)?.toInt() ?? 0;
 
-      print('[Socket] Получена глобальная перемотка на: $pos мс');
+      debugPrint('[Socket] Получена глобальная перемотка на: $pos мс');
       _isSeekingFromRemote = true;
       _positionMs = pos;
       notifyListeners();
@@ -745,7 +770,7 @@ class PlaybackProvider extends ChangeNotifier {
           await _apiService?.seekToPosition(pos);
         }
       } catch (e) {
-        print('[Socket Seek] Ошибка физической перемотки: $e');
+        debugPrint('[Socket Seek] Ошибка физической перемотки: $e');
       } finally {
         await Future.delayed(const Duration(milliseconds: 300));
         _isSeekingFromRemote = false;
@@ -808,7 +833,7 @@ class PlaybackProvider extends ChangeNotifier {
     try {
       await _apiService?.setVolume(vol);
     } catch (e) {
-      print('[SyncM] Volume restore error: $e');
+      debugPrint('[SyncM] Volume restore error: $e');
     }
   }
 
@@ -825,11 +850,6 @@ class PlaybackProvider extends ChangeNotifier {
 
     final track = Map<String, dynamic>.from(_sessionQueue[index]);
     await playTrack(track, positionMs: positionMs, fromSession: true);
-  }
-
-  // Предзагрузка трека (подготовка без воспроизведения)
-  Future<void> _prepareTrack(Map<String, dynamic> track, int index) async {
-    _preparedTrackId = track['uri'] as String?;
   }
 
   Future<bool> connect() async {
@@ -849,7 +869,7 @@ class PlaybackProvider extends ChangeNotifier {
       notifyListeners();
       return _isConnected;
     } catch (e) {
-      print('[Spotify] Connect error: $e');
+      debugPrint('[Spotify] Connect error: $e');
       _isConnected = false;
       notifyListeners();
       return false;
@@ -893,7 +913,7 @@ class PlaybackProvider extends ChangeNotifier {
               notifyListeners();
             }
           } catch (e) {
-            print('[Spotify] Ошибка скачивания обложки: $e');
+            debugPrint('[Spotify] Ошибка скачивания обложки: $e');
             _currentImageBytes = null;
             notifyListeners();
           }
@@ -906,7 +926,7 @@ class PlaybackProvider extends ChangeNotifier {
           final activeTrackId = trackUri.split(':').last;
           if (activeTrackId == _preparedTrackId && state.isPaused) {
             _isReadySent = true;
-            print('[SyncPlay] Spotify загрузил трек. Отправляем client_ready');
+            debugPrint('[SyncPlay] Spotify загрузил трек. Отправляем client_ready');
             _socketService?.emit('client_ready', {
               'sessionId': _currentSessionId,
               'trackId': _preparedTrackId,
@@ -941,7 +961,7 @@ class PlaybackProvider extends ChangeNotifier {
             !isIntentionalPreparePause) {
           final dur = _lastActiveDurationMs;
           if (dur > 0 && _lastActivePositionMs >= dur - 1200) {
-            print('[SyncM] Трек завершился. Переключаем...');
+            debugPrint('[SyncM] Трек завершился. Переключаем...');
             _isAdvancingQueue = true; // Ставим флаг ДО вызова async метода
             _advanceSessionQueue();
           }
@@ -958,13 +978,13 @@ class PlaybackProvider extends ChangeNotifier {
             final found = _currentPlaylistTracks?.any((t) => (t['uri'] as String?) == trackUri) ?? false;
             if (!found) _playRandomFromCurrentPlaylist();
           } catch (e) {
-            print('[PlaybackProvider] Error validating track against playlist: $e');
+            debugPrint('[PlaybackProvider] Error validating track against playlist: $e');
           }
         }
       } else {
         notifyListeners();
       }
-    }, onError: (err) => print('[Spotify] PlayerState stream error: $err'));
+    }, onError: (err) => debugPrint('[Spotify] PlayerState stream error: $err'));
   }
 
   Future<void> playTrack(Map<String, dynamic> track,
@@ -1002,7 +1022,7 @@ class PlaybackProvider extends ChangeNotifier {
             try {
               await _apiService?.seekToPosition(positionMs);
             } catch (e) {
-              print('[Web/Windows] Seek after play error: $e');
+              debugPrint('[Web/Windows] Seek after play error: $e');
             }
           }
 
@@ -1015,7 +1035,7 @@ class PlaybackProvider extends ChangeNotifier {
               final tracks = await _apiService?.getPlaylistTracks(playlistId);
               _currentPlaylistTracks = tracks;
             } catch (e) {
-              print('[PlaybackProvider] Failed to prefetch playlist tracks: $e');
+              debugPrint('[PlaybackProvider] Failed to prefetch playlist tracks: $e');
             }
           } else {
             _currentPlaylistId = null;
@@ -1029,7 +1049,7 @@ class PlaybackProvider extends ChangeNotifier {
           notifyListeners();
           _startPolling();
         } catch (e) {
-          print('[Web/Windows] Play error: $e');
+          debugPrint('[Web/Windows] Play error: $e');
         }
         return;
       }
@@ -1057,7 +1077,7 @@ class PlaybackProvider extends ChangeNotifier {
           final tracks = await _apiService?.getPlaylistTracks(playlistId);
           _currentPlaylistTracks = tracks;
         } catch (e) {
-          print('[PlaybackProvider] Failed to prefetch playlist tracks: $e');
+          debugPrint('[PlaybackProvider] Failed to prefetch playlist tracks: $e');
         }
       } else {
         _currentPlaylistId = null;
@@ -1077,7 +1097,7 @@ class PlaybackProvider extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      print('[Spotify] Play error: $e');
+      debugPrint('[Spotify] Play error: $e');
       try {
         _isConnected = false;
         final reconnected = await connect();
@@ -1088,7 +1108,7 @@ class PlaybackProvider extends ChangeNotifier {
           notifyListeners();
         }
       } catch (e2) {
-        print('[Spotify] Fallback play error: $e2');
+        debugPrint('[Spotify] Fallback play error: $e2');
       }
     }
   }
@@ -1100,7 +1120,7 @@ class PlaybackProvider extends ChangeNotifier {
 
     if (_sessionMode && _currentSessionId != null) {
       if (_isPlaying) {
-        print('[Socket] Пауза → session_command');
+        debugPrint('[Socket] Пауза → session_command');
         _isPlaying = false;
         _sessionPaused = true;
         notifyListeners();
@@ -1111,14 +1131,14 @@ class PlaybackProvider extends ChangeNotifier {
             await SpotifySdk.pause();
           }
         } catch (e) {
-          print('[togglePlay] local pause error: $e');
+          debugPrint('[togglePlay] local pause error: $e');
         }
         _socketService?.emit('session_command', {
           'sessionId': _currentSessionId,
           'action': 'pause',
         });
       } else {
-        print('[Socket] Возобновление → session_command');
+        debugPrint('[Socket] Возобновление → session_command');
         _sessionPaused = false;
         _isPlaying = true;
         notifyListeners();
@@ -1130,7 +1150,7 @@ class PlaybackProvider extends ChangeNotifier {
             await SpotifySdk.resume();
           }
         } catch (e) {
-          print('[togglePlay] local resume error: $e');
+          debugPrint('[togglePlay] local resume error: $e');
         }
         _socketService?.emit('session_command', {
           'sessionId': _currentSessionId,
@@ -1159,7 +1179,7 @@ class PlaybackProvider extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
-      print('[Solo Play/Pause] Ошибка: $e');
+      debugPrint('[Solo Play/Pause] Ошибка: $e');
     }
   }
 
@@ -1192,7 +1212,7 @@ class PlaybackProvider extends ChangeNotifier {
             _playRandomFromCurrentPlaylist();
           }
         } catch (e) {
-          print('[PlaybackProvider] Error checking playlist membership: $e');
+          debugPrint('[PlaybackProvider] Error checking playlist membership: $e');
         }
       }
     }
@@ -1219,7 +1239,7 @@ class PlaybackProvider extends ChangeNotifier {
           _updateFromPlayerState(state);
         }
       } catch (e) {
-        print('[Poll] error: $e');
+        debugPrint('[Poll] error: $e');
       }
     });
   }
@@ -1234,7 +1254,7 @@ class PlaybackProvider extends ChangeNotifier {
       _paletteCache[imageUrl] = palette;
       notifyListeners();
     } catch (e) {
-      print('Preload palette error: $e');
+      debugPrint('Preload palette error: $e');
     }
   }
 
@@ -1269,7 +1289,7 @@ class PlaybackProvider extends ChangeNotifier {
         await SpotifySdk.skipNext();
       }
     } catch (e) {
-      print('Skip next error: $e');
+      debugPrint('Skip next error: $e');
     } finally {
       // Искусственная задержка, чтобы дать плееру время обновить метаданные
       await Future.delayed(const Duration(milliseconds: 500));
@@ -1296,7 +1316,7 @@ class PlaybackProvider extends ChangeNotifier {
           _pollForTrackChange();
         }
       } catch (e) {
-        print('[Web/Windows] Skip previous error: $e');
+        debugPrint('[Web/Windows] Skip previous error: $e');
       }
       return;
     }
@@ -1307,7 +1327,7 @@ class PlaybackProvider extends ChangeNotifier {
         await SpotifySdk.skipPrevious();
       }
     } catch (e) {
-      print('[Spotify] Skip previous error: $e');
+      debugPrint('[Spotify] Skip previous error: $e');
     }
   }
 
@@ -1328,7 +1348,7 @@ class PlaybackProvider extends ChangeNotifier {
         _currentPlaylistTracks = tracks;
       }
     } catch (e) {
-      print('[PlaybackProvider] Could not load playlist tracks: $e');
+      debugPrint('[PlaybackProvider] Could not load playlist tracks: $e');
     }
   }
 
@@ -1386,7 +1406,7 @@ class PlaybackProvider extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      print('[PlaybackProvider] _playRandomFromCurrentPlaylist error: $e');
+      debugPrint('[PlaybackProvider] _playRandomFromCurrentPlaylist error: $e');
     }
   }
 
@@ -1421,7 +1441,7 @@ class PlaybackProvider extends ChangeNotifier {
         await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
       }
     } catch (e) {
-      print('[Solo Seek] Ошибка: $e');
+      debugPrint('[Solo Seek] Ошибка: $e');
     }
   }
 
@@ -1456,7 +1476,7 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> setShuffle(bool enabled) async {
-    print('[PlaybackProvider] setShuffle called, enabled=$enabled');
+    debugPrint('[PlaybackProvider] setShuffle called, enabled=$enabled');
     try {
       if (_isWindows || _isWeb) {
         await _apiService?.setShuffle(enabled);
@@ -1467,7 +1487,7 @@ class PlaybackProvider extends ChangeNotifier {
       _shuffleActive = enabled;
       notifyListeners();
     } catch (e) {
-      print('[Spotify] setShuffle error: $e');
+      debugPrint('[Spotify] setShuffle error: $e');
       // Всё равно обновляем локально, чтобы кнопка переключилась
       _shuffleActive = enabled;
       notifyListeners();
@@ -1475,7 +1495,7 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> cycleRepeatMode() async {
-    print('[PlaybackProvider] cycleRepeatMode called, current mode=$_repeatMode');
+    debugPrint('[PlaybackProvider] cycleRepeatMode called, current mode=$_repeatMode');
     String newMode;
     switch (_repeatMode) {
       case 'off':
@@ -1502,7 +1522,7 @@ class PlaybackProvider extends ChangeNotifier {
       _repeatMode = newMode;
       notifyListeners();
     } catch (e) {
-      print('[Spotify] cycleRepeatMode error: $e');
+      debugPrint('[Spotify] cycleRepeatMode error: $e');
       _repeatMode = newMode;
       notifyListeners();
     }
@@ -1514,7 +1534,7 @@ class PlaybackProvider extends ChangeNotifier {
     final trackId = data['trackId'] as String?;
     if (trackId == null) return;
 
-    print('[SyncPlay] Сервер скомандовал развернуть трек: $trackId');
+    debugPrint('[SyncPlay] Сервер скомандовал развернуть трек: $trackId');
 
     _preparedTrackId = trackId;
     _isReadySent = false;
@@ -1546,7 +1566,7 @@ class PlaybackProvider extends ChangeNotifier {
         await SpotifySdk.play(spotifyUri: spotifyUri);
         await SpotifySdk.pause();
       } catch (e) {
-        print('[SyncM] Error preparing track via SDK: $e');
+        debugPrint('[SyncM] Error preparing track via SDK: $e');
       }
     } else {
       // Windows/Web: REST API — загружаем трек, ставим на паузу, сигналим готовность.
@@ -1564,7 +1584,7 @@ class PlaybackProvider extends ChangeNotifier {
         }
         await _apiService?.setVolume(0);
       } catch (e) {
-        print('[SyncM] Volume mute error: $e');
+        debugPrint('[SyncM] Volume mute error: $e');
       }
 
       try {
@@ -1585,7 +1605,7 @@ class PlaybackProvider extends ChangeNotifier {
           'trackId': trackId,
         });
       } catch (e) {
-        print('[SyncM] Error preparing track via API: $e');
+        debugPrint('[SyncM] Error preparing track via API: $e');
         // Восстанавливаем громкость — иначе она останется приглушённой
         await _restoreVolumeIfMuted();
         // Если ошибка связана с отсутствием активного устройства (404 → 409
@@ -1602,58 +1622,25 @@ class PlaybackProvider extends ChangeNotifier {
     }
   }
 
-  // Устаревшие слушатели, оставлены неиспользуемыми: события 'toggle_play' и
-  // 'seek_track' не отправляются текущим бэкендом (там используются
-  // 'session_pause'/'session_resume'/'seek'), поэтому эта функция сейчас
-  // нигде не вызывается. Сохранена как есть, со исправленным локальным багом,
-  // на случай если протокол вернётся к этим событиям.
-  void _setupSessionSocketListeners() {
-    if (_socketService == null) return;
-
-    _socketService!.on('toggle_play', (data) async {
-      print('[Socket] Получена команда toggle_play от сервера: $data');
-      final bool remoteIsPlaying = data['isPlaying'] as bool;
-
-      _isPlaying = remoteIsPlaying;
-
-      try {
-        if (_isPlaying) {
-          if (_isWindows || _isWeb) {
-            await _apiService?.resumePlayback();
-          } else {
-            await SpotifySdk.resume();
-          }
-        } else {
-          if (_isWindows || _isWeb) {
-            await _apiService?.pausePlayback();
-          } else {
-            await SpotifySdk.pause();
-          }
-        }
-      } catch (e) {
-        print('Ошибка синхронизации плеера при toggle_play: $e');
-      }
-      notifyListeners();
-    });
-
-    _socketService!.on('seek_track', (data) async {
-      print('[Socket] Получена команда seek_track от сервера: $data');
-      final int remotePosition = data['positionMs'] as int;
-
-      _positionMs = remotePosition;
-
-      try {
-        if (_isWindows || _isWeb) {
-          await _apiService?.seekToPosition(remotePosition);
-        } else {
-          await SpotifySdk.seekTo(positionedMilliseconds: remotePosition);
-        }
-      } catch (e) {
-        print('Ошибка синхронизации плеера при seek_track: $e');
-      }
-      notifyListeners();
-    });
-  }
+  /// События сессии, на которые подписывается initSession.
+  ///
+  /// Список вынесен в константу: он нужен и при подписке (чтобы снять
+  /// возможные старые обработчики), и при закрытии провайдера. Раньше он был
+  /// записан только внутри initSession, и при добавлении нового события
+  /// второе место легко было пропустить.
+  static const _sessionEvents = [
+    'session_prepare',
+    'session_start',
+    'session_sync',
+    'session_reseek',
+    'session_pause',
+    'session_resume',
+    'session_state',
+    'session_play',
+    'play',
+    'seek',
+    'tracks-added',
+  ];
 
   @override
   void dispose() {
@@ -1662,7 +1649,21 @@ class PlaybackProvider extends ChangeNotifier {
     _sessionUiTicker?.cancel();
     _sessionSeekingTimer?.cancel();
     _advanceResetTimer?.cancel();
-    // Аналогично stop() — не трогаем общий singleton-сокет здесь.
+    _fullScreenGuardTimer?.cancel();
+
+    // Снимаем подписки на события сессии.
+    //
+    // Сокет — общий синглтон и переживает провайдер. Оставленные обработчики
+    // удерживают ссылку на закрытый провайдер и продолжают вызывать
+    // notifyListeners() на нём, что приводит к исключению «A
+    // PlaybackProvider was used after being disposed».
+    final socket = _socketService;
+    if (socket != null) {
+      for (final event in _sessionEvents) {
+        socket.off(event);
+      }
+    }
+
     super.dispose();
   }
 }

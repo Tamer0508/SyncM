@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../theme.dart';
+
 class ScrollablePlaylistRow extends StatefulWidget {
   final int itemCount;
   final IndexedWidgetBuilder itemBuilder;
@@ -9,12 +11,12 @@ class ScrollablePlaylistRow extends StatefulWidget {
   final double scrollStep;
 
   const ScrollablePlaylistRow({
-    Key? key,
+    super.key,
     required this.itemCount,
     required this.itemBuilder,
     this.height = 170,
     this.scrollStep = 130,
-  }) : super(key: key);
+  });
 
   @override
   State<ScrollablePlaylistRow> createState() => _ScrollablePlaylistRowState();
@@ -22,6 +24,29 @@ class ScrollablePlaylistRow extends StatefulWidget {
 
 class _ScrollablePlaylistRowState extends State<ScrollablePlaylistRow> {
   final ScrollController _controller = ScrollController();
+
+  bool _canScrollBack = false;
+  bool _canScrollForward = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_updateArrows);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateArrows());
+  }
+
+  void _updateArrows() {
+    if (!_controller.hasClients) return;
+    final pos = _controller.position;
+    final back = pos.pixels > pos.minScrollExtent + 1;
+    final forward = pos.pixels < pos.maxScrollExtent - 1;
+    if (back != _canScrollBack || forward != _canScrollForward) {
+      setState(() {
+        _canScrollBack = back;
+        _canScrollForward = forward;
+      });
+    }
+  }
   bool _middleDrag = false;
   Offset? _lastPointerPos;
   bool _hover = false;
@@ -54,7 +79,7 @@ class _ScrollablePlaylistRowState extends State<ScrollablePlaylistRow> {
       scrollDirection: Axis.horizontal,
       itemCount: widget.itemCount,
       physics: const ClampingScrollPhysics(),
-      separatorBuilder: (_, __) => const SizedBox(width: 12),
+      separatorBuilder: (_, _) => const SizedBox(width: 12),
       itemBuilder: widget.itemBuilder,
     );
 
@@ -103,20 +128,15 @@ class _ScrollablePlaylistRowState extends State<ScrollablePlaylistRow> {
                 top: 0,
                 bottom: 0,
                 child: Center(
-                  child: Opacity(
-                    opacity: _hover ? 1.0 : 0.6,
-                    child: Material(
-                      color: Theme.of(context).cardColor.withOpacity(0.9),
-                      shape: const CircleBorder(),
-                      elevation: 2,
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
+                  child: AnimatedOpacity(
+                    opacity: _canScrollBack ? (_hover ? 1.0 : 0.65) : 0.0,
+                    duration: AppMotion.short,
+                    child: IgnorePointer(
+                      ignoring: !_canScrollBack,
+                      child: _ScrollArrow(
+                        icon: Icons.chevron_left_rounded,
+                        tooltip: 'Назад',
                         onTap: () => _scrollBy(-widget.scrollStep),
-                        child: const SizedBox(
-                          width: 40,
-                          height: 40,
-                          child: Icon(Icons.chevron_left),
-                        ),
                       ),
                     ),
                   ),
@@ -127,20 +147,15 @@ class _ScrollablePlaylistRowState extends State<ScrollablePlaylistRow> {
                 top: 0,
                 bottom: 0,
                 child: Center(
-                  child: Opacity(
-                    opacity: _hover ? 1.0 : 0.6,
-                    child: Material(
-                      color: Theme.of(context).cardColor.withOpacity(0.9),
-                      shape: const CircleBorder(),
-                      elevation: 2,
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
+                  child: AnimatedOpacity(
+                    opacity: _canScrollForward ? (_hover ? 1.0 : 0.65) : 0.0,
+                    duration: AppMotion.short,
+                    child: IgnorePointer(
+                      ignoring: !_canScrollForward,
+                      child: _ScrollArrow(
+                        icon: Icons.chevron_right_rounded,
+                        tooltip: 'Вперёд',
                         onTap: () => _scrollBy(widget.scrollStep),
-                        child: const SizedBox(
-                          width: 40,
-                          height: 40,
-                          child: Icon(Icons.chevron_right),
-                        ),
                       ),
                     ),
                   ),
@@ -151,11 +166,37 @@ class _ScrollablePlaylistRowState extends State<ScrollablePlaylistRow> {
         ),
       );
     } else {
-      // Мобильные: без стрелок, но с поддержкой колеса мыши и средней кнопки
       return SizedBox(
         height: widget.height,
         child: scrollableChild,
       );
     }
+  }
+}
+
+class _ScrollArrow extends StatelessWidget {
+  const _ScrollArrow({required this.icon, required this.tooltip, required this.onTap});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Material(
+      color: colors.surfaceContainerHigh.withValues(alpha: 0.92),
+      shape: const CircleBorder(),
+      elevation: 2,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Tooltip(
+          message: tooltip,
+          child: SizedBox(width: 40, height: 40, child: Icon(icon)),
+        ),
+      ),
+    );
   }
 }

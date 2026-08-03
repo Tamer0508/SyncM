@@ -1,4 +1,18 @@
+
 class Config {
-  static const String baseUrl = 'https://syncm-production.up.railway.app';
-  static const String wsUrl = 'wss://syncm-production.up.railway.app';
+  const Config._();
+
+  static const String _defaultBaseUrl = 'https://syncm-production.up.railway.app';
+
+  static const String baseUrl =
+      String.fromEnvironment('SYNCM_BASE_URL', defaultValue: _defaultBaseUrl);
+
+  static const Duration requestTimeout = Duration(seconds: 20);
+
+  static const Duration uploadTimeout = Duration(seconds: 60);
+
+  static const int pageSize = 20;
+
+  static bool get isLocal =>
+      baseUrl.contains('localhost') || baseUrl.contains('127.0.0.1') || baseUrl.contains('10.0.2.2');
 }

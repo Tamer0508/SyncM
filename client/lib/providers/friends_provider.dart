@@ -1,21 +1,35 @@
-// providers/friends_provider.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:syncm/services/socket_service.dart';
-import '../services/api_service.dart';
+
+import '../config.dart';
 import '../models/friend.dart';
+import '../services/api_service.dart';
+import '../utils/local_store.dart';
+import '../services/socket_service.dart';
 import '../utils/app_globals.dart';
 
 class FriendsProvider with ChangeNotifier {
-  final ApiService api;
-
-  FriendsProvider({ApiService? api}) : api = api ?? ApiService();
-
-  void syncCookie(String cookie) {
-    api.setCookie(cookie);
+  FriendsProvider({ApiService? api}) : api = api ?? ApiService() {
+    _restoreFromCache();
   }
 
+  void _restoreFromCache() {
+    final cachedFriends = LocalStore.readList(StoreKeys.friends);
+    if (cachedFriends.isNotEmpty) {
+      _friends = cachedFriends.map(Friend.fromJson).toList();
+      _friendsHasMore = true;
+    }
+
+    final cachedRequests = LocalStore.readList(StoreKeys.friendRequests);
+    if (cachedRequests.isNotEmpty) _friendRequests = cachedRequests;
+  }
+
+  final ApiService api;
+
+  void syncCookie(String cookie) => api.setCookie(cookie);
+
   List<Friend> _friends = [];
-  List<Friend> get friends => _friends;
+  List<Friend> get friends => List.unmodifiable(_friends);
 
   String? _friendsNextCursor;
   bool _friendsHasMore = true;
@@ -24,7 +38,7 @@ class FriendsProvider with ChangeNotifier {
   bool get friendsLoading => _friendsLoading;
   bool get hasMoreFriends => _friendsHasMore;
 
-  Future<void> fetchFriends({bool refresh = false, int limit = 20}) async {
+  Future<void> fetchFriends({bool refresh = false, int limit = Config.pageSize}) async {
     if (_friendsLoading) return;
     if (refresh) {
       _friends = [];
@@ -38,27 +52,101 @@ class FriendsProvider with ChangeNotifier {
 
     try {
       final res = await api.getFriends(cursor: _friendsNextCursor, limit: limit);
-      final items = res['items'] as List<Friend>;
+      final items = (res['items'] as List?)?.whereType<Friend>().toList() ?? const <Friend>[];
       final nextCursor = res['nextCursor'] as String?;
 
       _friends.addAll(items);
       _friendsNextCursor = nextCursor;
       _friendsHasMore = nextCursor != null;
+
+      if (refresh) {
+        unawaited(LocalStore.saveList(
+          StoreKeys.friends,
+          _friends.map((f) => f.toJson()).toList(),
+        ));
+      }
     } finally {
       _friendsLoading = false;
       notifyListeners();
     }
   }
 
-  Future<void> refreshFriends({int limit = 20}) async {
-    await fetchFriends(refresh: true, limit: limit);
-  }
+  Future<void> refreshFriends({int limit = Config.pageSize}) =>
+      fetchFriends(refresh: true, limit: limit);
 
   Future<List<Friend>> search(String q) => api.searchUsers(q);
 
   Future<bool> sendRequest(String receiverId) async {
     await api.sendFriendRequest(receiverId);
     return true;
+  }
+
+  Future<bool> removeFriend(String friendshipId) async {
+    final index = _friends.indexWhere((f) => f.friendshipId == friendshipId);
+    if (index == -1) return false;
+
+    final friend = _friends[index];
+    final ok = await api.deleteFriendByUserId(friend.id);
+    if (ok) {
+      _friends.removeWhere((f) => f.id == friend.id);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  Future<bool> removeFriendByUserId(String userId) async {
+    final ok = await api.deleteFriendByUserId(userId);
+    if (ok) {
+      _friends.removeWhere((f) => f.id == userId);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  // ─── Входящие заявки ─────────────────────────────────────────────────────
+
+  int _unreadFriendRequestsCount = 0;
+  int get unreadCount => _unreadFriendRequestsCount;
+
+  List<Map<String, dynamic>> _friendRequests = [];
+  List<Map<String, dynamic>> get incomingRequests => List.unmodifiable(_friendRequests);
+
+  String? _incomingNextCursor;
+  bool _incomingHasMore = true;
+  bool _incomingLoading = false;
+
+  bool get incomingLoading => _incomingLoading;
+  bool get hasMoreIncoming => _incomingHasMore;
+
+  Future<void> fetchIncomingRequests({bool refresh = false, int limit = Config.pageSize}) async {
+    if (_incomingLoading) return;
+    if (refresh) {
+      _friendRequests = [];
+      _incomingNextCursor = null;
+      _incomingHasMore = true;
+    }
+    if (!_incomingHasMore) return;
+
+    _incomingLoading = true;
+    notifyListeners();
+
+    try {
+      final res = await api.getIncomingRequests(cursor: _incomingNextCursor, limit: limit);
+      final items = (res['items'] as List?)?.whereType<Map>().map(Map<String, dynamic>.from).toList() ??
+          const <Map<String, dynamic>>[];
+      final nextCursor = res['nextCursor'] as String?;
+
+      _friendRequests.addAll(items);
+      _incomingNextCursor = nextCursor;
+      _incomingHasMore = nextCursor != null;
+
+      if (refresh) {
+        unawaited(LocalStore.saveList(StoreKeys.friendRequests, _friendRequests));
+      }
+    } finally {
+      _incomingLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<bool> acceptRequest(String friendshipId) async {
@@ -82,137 +170,114 @@ class FriendsProvider with ChangeNotifier {
 
   Future<bool> cancelSentRequest(String friendshipId) async {
     final ok = await api.deleteRequest(friendshipId);
-    if (ok) {
-      notifyListeners();
-    }
+    if (ok) notifyListeners();
     return ok;
-  }
-
-  int _unreadFriendRequestsCount = 0;
-  int get unreadCount => _unreadFriendRequestsCount;
-
-  List<Map<String, dynamic>> _friendRequests = [];
-  List<Map<String, dynamic>> get incomingRequests => _friendRequests;
-
-  String? _incomingNextCursor;
-  bool _incomingHasMore = true;
-  bool _incomingLoading = false;
-
-  bool get incomingLoading => _incomingLoading;
-  bool get hasMoreIncoming => _incomingHasMore;
-
-  Future<void> fetchIncomingRequests({bool refresh = false, int limit = 20}) async {
-    if (_incomingLoading) return;
-    if (refresh) {
-      _friendRequests = [];
-      _incomingNextCursor = null;
-      _incomingHasMore = true;
-    }
-    if (!_incomingHasMore) return;
-
-    _incomingLoading = true;
-    notifyListeners();
-
-    try {
-      final res = await api.getIncomingRequests(cursor: _incomingNextCursor, limit: limit);
-      final items = (res['items'] as List<dynamic>).cast<Map<String, dynamic>>();
-      final nextCursor = res['nextCursor'] as String?;
-
-      _friendRequests.addAll(items);
-      _incomingNextCursor = nextCursor;
-      _incomingHasMore = nextCursor != null;
-    } finally {
-      _incomingLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> removeFriend(String friendshipId) async {
-    final friend = _friends.firstWhere((f) => f.friendshipId == friendshipId);
-    final ok = await api.deleteFriendByUserId(friend.id);
-    if (ok) {
-      _friends.removeWhere((f) => f.id == friend.id);
-      notifyListeners();
-    }
-    return ok;
-  }
-
-  Future<bool> removeFriendByUserId(String userId) async {
-    final ok = await api.deleteFriendByUserId(userId);
-    if (ok) {
-      _friends.removeWhere((f) => f.id == userId);
-      notifyListeners();
-    }
-    return ok;
-  }
-
-  bool _socketListening = false;
-
-  SocketService? _socket;
-
-  void init(SocketService socketService) {
-    _socket ??= socketService;
-    listenToSocket();
-  }
-
-  void listenToSocket() {
-    if (_socketListening) return;
-    _socketListening = true;
-    _socket?.on('friend_request', (data) {
-      if (data is Map<String, dynamic>) {
-        _addNewRequest(data);
-      }
-    });
-    _socket?.on('friend_online', (data) {
-      final userId = data['userId'] as String;
-      _updateFriendOnline(userId, true);
-    });
-    _socket?.on('friend_offline', (data) {
-      final userId = data['userId'] as String;
-      _updateFriendOnline(userId, false, lastSeenAt: data['lastSeenAt'] as String?);
-    });
-  }
-
-  void _updateFriendOnline(String userId, bool online, {String? lastSeenAt}) {
-    final idx = _friends.indexWhere((f) => f.id == userId);
-    if (idx != -1) {
-      final old = _friends[idx];
-      _friends[idx] = Friend(
-        id: old.id,
-        name: old.name,
-        avatarUrl: old.avatarUrl,
-        friendshipId: old.friendshipId,
-        isOnline: online,
-        lastSeenAt: online
-            ? null
-            : (lastSeenAt != null ? DateTime.parse(lastSeenAt).toLocal() : old.lastSeenAt),
-        // Раньше поле терялось при каждом событии присутствия.
-        isOnlineHidden: old.isOnlineHidden,
-      );
-      notifyListeners();
-    }
   }
 
   void markAsRead() {
+    if (_unreadFriendRequestsCount == 0) return;
     _unreadFriendRequestsCount = 0;
     notifyListeners();
   }
 
+  // ─── Сокет ───────────────────────────────────────────────────────────────
+
+  SocketService? _socket;
+
+  // Названия событий вынесены в константы: их нужно и подписать, и отписать,
+  // а расхождение в строке приводило бы к «висящему» обработчику.
+  static const _events = ['friend_request', 'friend_online', 'friend_offline'];
+
+  /// Подписывается на события присутствия и заявок.
+  ///
+  /// Раньше здесь стоял флаг _socketListening, который выставлялся один раз
+  /// навсегда, а сам сокет присваивался через `??=`. После выхода из аккаунта
+  /// и входа под другим пользователем создаётся НОВЫЙ сокет, но провайдер
+  /// живёт дальше — и подписки на него уже не навешивались: статусы друзей и
+  /// заявки в реальном времени переставали приходить до перезапуска
+  /// приложения.
+  void init(SocketService socketService) {
+    if (identical(_socket, socketService)) return;
+
+    _detachSocket();
+    _socket = socketService;
+
+    socketService.on('friend_request', (data) {
+      if (data is Map) _addNewRequest(Map<String, dynamic>.from(data));
+    });
+
+    socketService.on('friend_online', (data) {
+      final userId = (data is Map) ? data['userId'] as String? : null;
+      if (userId != null) _updateFriendOnline(userId, true);
+    });
+
+    socketService.on('friend_offline', (data) {
+      if (data is! Map) return;
+      final userId = data['userId'] as String?;
+      if (userId == null) return;
+      _updateFriendOnline(userId, false, lastSeenAt: data['lastSeenAt'] as String?);
+    });
+  }
+
+  void _detachSocket() {
+    final socket = _socket;
+    if (socket == null) return;
+    for (final event in _events) {
+      socket.off(event);
+    }
+    _socket = null;
+  }
+
+  void _updateFriendOnline(String userId, bool online, {String? lastSeenAt}) {
+    final idx = _friends.indexWhere((f) => f.id == userId);
+    if (idx == -1) return;
+
+    final old = _friends[idx];
+    DateTime? seenAt = old.lastSeenAt;
+    if (!online && lastSeenAt != null) {
+      // Время от сервера в UTC; без toLocal() расчёт «был в сети N минут
+      // назад» уезжал на весь часовой пояс.
+      seenAt = DateTime.tryParse(lastSeenAt)?.toLocal() ?? old.lastSeenAt;
+    }
+
+    _friends[idx] = Friend(
+      id: old.id,
+      name: old.name,
+      avatarUrl: old.avatarUrl,
+      friendshipId: old.friendshipId,
+      isOnline: online,
+      lastSeenAt: online ? null : seenAt,
+      isOnlineHidden: old.isOnlineHidden,
+    );
+    notifyListeners();
+  }
+
   void _addNewRequest(Map<String, dynamic> data) {
+    final id = data['id'];
+    // Событие может продублироваться при переподключении сокета — не
+    // показываем одну и ту же заявку дважды.
+    if (id != null && _friendRequests.any((r) => r['id'] == id)) return;
+
     _friendRequests.insert(0, data);
     _unreadFriendRequestsCount++;
-    _showNotification(data['fromUserName'] ?? 'пользователь');
+    _showNotification(data['fromUserName'] as String? ?? 'пользователь');
     notifyListeners();
   }
 
   void _showNotification(String fromUserName) {
+    // Цвет и форма берутся из snackBarTheme — раньше здесь был жёстко
+    // прошитый Colors.green[700], который не менялся вместе с темой.
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
-        content: Text('📨 Новая заявка в друзья от $fromUserName'),
+        content: Text('Новая заявка в друзья от $fromUserName'),
         duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.green[700],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _detachSocket();
+    super.dispose();
   }
 }

@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
@@ -12,12 +10,13 @@ import '../../services/api_service.dart';
 import '../../theme.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/tappable_avatar.dart';
 import 'spotify_webview_screen.dart'
     if (dart.library.html) 'spotify_webview_stub.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool embedded;
-  const ProfileScreen({Key? key, this.embedded = false}) : super(key: key);
+  const ProfileScreen({super.key, this.embedded = false});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -27,8 +26,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _displayId;
   Map<String, dynamic>? _profileData;
   bool _loading = false;
-  // Loopback-сервер Spotify OAuth (Windows). Держим ссылку, чтобы закрыть его
-  // при уходе с экрана и не оставлять занятым порт 8282.
   HttpServer? _oauthServer;
 
   @override
@@ -151,9 +148,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: body,
     );
   }
-
-  // ---------- Spotify connect / disconnect logic (unchanged) ----------
-
   void _connectSpotify(BuildContext context) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final api = auth.api;
@@ -169,17 +163,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (defaultTargetPlatform == TargetPlatform.windows) {
       HttpServer? server;
       try {
-        // Если предыдущая попытка логина не закрыла свой сервер (закрыли окно
-        // браузера, не дойдя до callback) — порт 8282 остаётся занят, и новый
-        // bind падает. Сначала закрываем прошлый сервер, если он ещё висит.
         if (_oauthServer != null) {
           try { await _oauthServer!.close(force: true); } catch (_) {}
           _oauthServer = null;
         }
 
         final completer = Completer<Map<String, dynamic>?>();
-        // shared:true — как просит текст ошибки OS: разрешает повторный bind
-        // на тот же (address, port), если прошлый сокет ещё не полностью освободился.
         server = await HttpServer.bind(
           InternetAddress.loopbackIPv4, 8282, shared: true,
         );
@@ -195,8 +184,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           response.headers.set('Content-Type', 'text/html; charset=utf-8');
           response.write('<html><body><h2>Spotify connected! You can close this tab.</h2></body></html>');
           await response.close();
-          // force:true — закрываем сразу, не дожидаясь keep-alive соединений,
-          // иначе порт освобождается с задержкой и следующий логин падает.
           await server!.close(force: true);
           _oauthServer = null;
           if (!completer.isCompleted) {
@@ -217,8 +204,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (result != null) {
           final token = result['token'] as String?;
           final cookie = result['cookie'] as String?;
-          if (token != null && token.isNotEmpty) auth.setCookie(token);
-          else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
+          if (token != null && token.isNotEmpty) {
+            auth.setCookie(token);
+          } else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
           await auth.fetchMe();
           if (context.mounted) {
             showAppNotification(context, message: 'Spotify успешно подключён!', type: NotificationType.success);
@@ -246,8 +234,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (result != null) {
       final token = result['token'] as String?;
       final cookie = result['cookie'] as String?;
-      if (token != null && token.isNotEmpty) auth.setCookie(token);
-      else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
+      if (token != null && token.isNotEmpty) {
+        auth.setCookie(token);
+      } else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
       await auth.fetchMe();
       if (context.mounted) {
         showAppNotification(context, message: 'Spotify успешно подключён!', type: NotificationType.success);
@@ -335,7 +324,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// ---------- Контент профиля ----------
 
 class _ProfileContent extends StatelessWidget {
   final ThemeData theme;
@@ -351,7 +339,7 @@ class _ProfileContent extends StatelessWidget {
   final VoidCallback onLogout;
 
   const _ProfileContent({
-    Key? key,
+    super.key,
     required this.theme,
     required this.isOwnProfile,
     required this.displayName,
@@ -363,134 +351,261 @@ class _ProfileContent extends StatelessWidget {
     required this.onConnectSpotify,
     required this.onDisconnectSpotify,
     required this.onLogout,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final auth = context.watch<AuthProvider>();
     final spotifyConnected = auth.user?.spotifyConnected == true;
-    final emailValue = email ?? 'Не указан'; // гарантированный String
+    final colors = context.colors;
+    final texts = context.texts;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 20),
-          // Аватар и имя
-          Center(
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 55,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
-                  backgroundImage: avatarUrl != null && avatarUrl!.isNotEmpty
-                      ? NetworkImage(avatarUrl!)
-                      : null,
-                  child: avatarUrl == null || avatarUrl!.isEmpty
-                      ? Icon(Icons.person, size: 55, color: theme.colorScheme.primary)
-                      : null,
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.xl,
+      ),
+      children: [
+        _ProfileHeader(
+          displayName: displayName,
+          avatarUrl: avatarUrl,
+          email: isOwnProfile ? email : null,
+          isOwnProfile: isOwnProfile,
+          profileData: profileData,
+        ),
+        const SizedBox(height: AppSpacing.lg),
+
+        Row(
+          children: [
+            Expanded(
+              child: _StatTile(
+                value: '$friendsCount',
+                label: 'Друзей',
+                icon: Icons.people_rounded,
+              ),
+            ),
+            if (!isOwnProfile && mutualCount > 0) ...[
+              const SizedBox(width: AppSpacing.sm + 4),
+              Expanded(
+                child: _StatTile(
+                  value: '$mutualCount',
+                  label: 'Общих',
+                  icon: Icons.handshake_rounded,
                 ),
-                const SizedBox(height: 16),
-                Text(displayName, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-                if (email != null) ...[
-                  const SizedBox(height: 6),
-                  Text(email!, style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7))),
-                ],
-                if (!isOwnProfile) _OnlineStatus(profileData: profileData, theme: theme),
-              ],
+              ),
+            ],
+          ],
+        ),
+
+        if (isOwnProfile) ...[
+          const SizedBox(height: AppSpacing.lg),
+          _SpotifyCard(
+            connected: spotifyConnected,
+            onConnect: onConnectSpotify,
+            onDisconnect: onDisconnectSpotify,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          OutlinedButton.icon(
+            onPressed: onLogout,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Выйти из аккаунта'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: colors.error,
+              side: BorderSide(color: colors.error.withValues(alpha: 0.5)),
             ),
           ),
-          const SizedBox(height: 32),
+        ],
 
-          // Информация
-          _SectionCard(
-            theme: theme,
-            title: 'Информация',
+        if (!isOwnProfile && email != null) ...[
+          const SizedBox(height: AppSpacing.lg),
+          Text(
+            email!,
+            textAlign: TextAlign.center,
+            style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Шапка профиля: аватар, имя, статус.
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({
+    required this.displayName,
+    required this.avatarUrl,
+    required this.email,
+    required this.isOwnProfile,
+    required this.profileData,
+  });
+
+  final String displayName;
+  final String? avatarUrl;
+  final String? email;
+  final bool isOwnProfile;
+  final Map<String, dynamic>? profileData;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Column(
+      children: [
+        TappableAvatar(
+          imageUrl: avatarUrl,
+          radius: 52,
+          showRing: true,
+          title: displayName,
+          heroTag: 'profile-avatar-$displayName',
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          displayName,
+          textAlign: TextAlign.center,
+          style: texts.headlineMedium,
+        ),
+        if (email != null) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            email!,
+            textAlign: TextAlign.center,
+            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+          ),
+        ],
+        if (!isOwnProfile) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _OnlineStatus(profileData: profileData),
+        ],
+      ],
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({required this.value, required this.label, required this.icon});
+
+  final String value;
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: AppRadius.large,
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: colors.primary, size: 22),
+          const SizedBox(width: AppSpacing.sm + 4),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _InfoRow(theme: theme, label: 'Имя', value: isOwnProfile ? auth.user?.displayName ?? 'Не указано' : displayName),
-              if (isOwnProfile) ...[
-                const SizedBox(height: 12),
-                _InfoRow(theme: theme, label: 'Email', value: emailValue),
-              ],
+              Text(value, style: texts.headlineSmall),
+              Text(label, style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
             ],
           ),
-          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+}
 
+class _SpotifyCard extends StatelessWidget {
+  const _SpotifyCard({
+    required this.connected,
+    required this.onConnect,
+    required this.onDisconnect,
+  });
 
-          // Друзья
-          _SectionCard(
-            theme: theme,
-            title: 'Друзья',
+  final bool connected;
+  final VoidCallback onConnect;
+  final VoidCallback onDisconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+    final spotify = context.brand.spotify;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: AppRadius.large,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              _InfoRow(theme: theme, label: 'Количество друзей', value: '$friendsCount'),
-              if (!isOwnProfile && mutualCount > 0) ...[
-                const SizedBox(height: 12),
-                _InfoRow(theme: theme, label: 'Общие друзья', value: '$mutualCount'),
-              ],
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Spotify
-
-          if (isOwnProfile)
-            _SectionCard(
-              theme: theme,
-              title: 'Spotify',
-              children: [
-                Row(
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: spotify.withValues(alpha: 0.15),
+                  borderRadius: AppRadius.small,
+                ),
+                child: Icon(Icons.music_note_rounded, color: spotify),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(spotifyConnected ? Icons.check_circle : Icons.cancel,
-                        color: spotifyConnected ? AppTheme.spotifyGreen : theme.iconTheme.color),
-                    const SizedBox(width: 8),
-                    Text(spotifyConnected ? 'Подключен' : 'Не подключен',
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                    Text('Spotify', style: texts.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(
+                      connected ? 'Аккаунт подключён' : 'Не подключён',
+                      style: texts.bodySmall?.copyWith(
+                        color: connected ? spotify : colors.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  spotifyConnected ? 'Ваш аккаунт авторизован' : 'Подключите Spotify для доступа к плейлистам',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7)),
-                ),
-                const SizedBox(height: 16),
-                if (spotifyConnected)
-                  OutlinedButton.icon(
-                    onPressed: onDisconnectSpotify,
-                    icon: const Icon(Icons.link_off),
-                    label: const Text('Отключить Spotify'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: theme.colorScheme.error,
-                      side: BorderSide(color: theme.colorScheme.error),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  )
-                else
-                  ElevatedButton.icon(
-                    onPressed: onConnectSpotify,
-                    icon: const Icon(Icons.link),
-                    label: const Text('Подключить Spotify'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.spotifyGreen,
-                      foregroundColor: theme.colorScheme.onPrimary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-              ],
-            ),
-          const SizedBox(height: 24),
-
-          // Кнопка выхода
-          if (isOwnProfile)
-            ElevatedButton.icon(
-              onPressed: onLogout,
-              icon: const Icon(Icons.logout),
-              label: const Text('Выйти из аккаунта'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.error,
-                foregroundColor: theme.colorScheme.onError,
-                minimumSize: const Size.fromHeight(52),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            connected
+                ? 'Плейлисты и воспроизведение доступны.'
+                : 'Подключите Spotify, чтобы слушать музыку вместе с друзьями.',
+            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          if (connected)
+            OutlinedButton.icon(
+              onPressed: onDisconnect,
+              icon: const Icon(Icons.link_off_rounded),
+              label: const Text('Отключить'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: colors.error,
+                side: BorderSide(color: colors.error.withValues(alpha: 0.5)),
+              ),
+            )
+          else
+            FilledButton.icon(
+              onPressed: onConnect,
+              icon: const Icon(Icons.link_rounded),
+              label: const Text('Подключить Spotify'),
+              style: FilledButton.styleFrom(
+                backgroundColor: spotify,
+                // Тёмный текст на зелёном Spotify: белый на нём не проходит
+                // по контрасту и читается хуже.
+                foregroundColor: const Color(0xFF07240F),
               ),
             ),
         ],
@@ -499,82 +614,51 @@ class _ProfileContent extends StatelessWidget {
   }
 }
 
-// ---------- Переиспользуемые виджеты ----------
-
-class _SectionCard extends StatelessWidget {
-  final ThemeData theme;
-  final String title;
-  final List<Widget> children;
-  const _SectionCard({required this.theme, required this.title, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-        border: Border.all(color: theme.dividerColor.withOpacity(0.18)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 14),
-          ...children,
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final ThemeData theme;
-  final String label;
-  final String value;
-  const _InfoRow({required this.theme, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7))),
-        Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
-}
-
 class _OnlineStatus extends StatelessWidget {
+  const _OnlineStatus({required this.profileData});
+
   final Map<String, dynamic>? profileData;
-  final ThemeData theme;
-  const _OnlineStatus({required this.profileData, required this.theme});
 
   @override
   Widget build(BuildContext context) {
-    if (profileData == null || profileData!['isOnlineHidden'] == true) return const SizedBox.shrink();
-    final isOnline = profileData!['isOnline'] == true;
-    final lastSeenAtStr = profileData!['lastSeenAt'] as String?;
-    final lastSeenAt = lastSeenAtStr != null ? DateTime.tryParse(lastSeenAtStr) : null;
+    final data = profileData;
+    if (data == null || data['isOnlineHidden'] == true) return const SizedBox.shrink();
+
+    final colors = context.colors;
+    final texts = context.texts;
+    final isOnline = data['isOnline'] == true;
 
     if (isOnline) {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 8, height: 8, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.green)),
-          const SizedBox(width: 6),
-          Text('В сети', style: theme.textTheme.bodySmall?.copyWith(color: Colors.green)),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: context.brand.online),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text('В сети', style: texts.bodyMedium?.copyWith(color: context.brand.online)),
         ],
       );
-    } else if (lastSeenAt != null) {
-      final diff = DateTime.now().difference(lastSeenAt);
-      final text = diff.inMinutes < 1 ? 'только что'
-          : diff.inMinutes < 60 ? '${diff.inMinutes} мин. назад'
-          : diff.inHours < 24 ? '${diff.inHours} ч. назад'
-          : '${diff.inDays} д. назад';
-      return Text('Был(а) в сети $text', style: theme.textTheme.bodySmall);
     }
-    return const SizedBox.shrink();
+
+    final lastSeenAtStr = data['lastSeenAt'] as String?;
+    final lastSeenAt = lastSeenAtStr != null ? DateTime.tryParse(lastSeenAtStr)?.toLocal() : null;
+    if (lastSeenAt == null) return const SizedBox.shrink();
+
+    final diff = DateTime.now().difference(lastSeenAt);
+    final text = diff.inMinutes < 1
+        ? 'только что'
+        : diff.inMinutes < 60
+            ? '${diff.inMinutes} мин. назад'
+            : diff.inHours < 24
+                ? '${diff.inHours} ч. назад'
+                : '${diff.inDays} д. назад';
+
+    return Text(
+      'Был(а) в сети $text',
+      style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+    );
   }
 }

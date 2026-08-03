@@ -8,7 +8,7 @@ class PlayerBar extends StatelessWidget {
   final VoidCallback? onPlayPause;
   final bool isPlaying;
 
-  const PlayerBar({Key? key, this.title = '', this.artist = '', this.thumbnailUrl, this.onPlayPause, this.isPlaying = false}) : super(key: key);
+  const PlayerBar({super.key, this.title = '', this.artist = '', this.thumbnailUrl, this.onPlayPause, this.isPlaying = false});
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +21,7 @@ class PlayerBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.cardColor,
         boxShadow: [
-          BoxShadow(color: theme.shadowColor.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, -4)),
+          BoxShadow(color: theme.shadowColor.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, -4)),
         ],
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -44,7 +44,7 @@ class PlayerBar extends StatelessWidget {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceVariant,
+                color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(Icons.queue_music, color: theme.colorScheme.primary),
@@ -57,7 +57,7 @@ class PlayerBar extends StatelessWidget {
               children: [
                 Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(artist, style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.7))),
+                Text(artist, style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7))),
               ],
             ),
           ),

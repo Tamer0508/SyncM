@@ -3,14 +3,14 @@ class User {
   final String displayName;
   final String? email;
   final String? avatarUrl;
-  final String? customAvatarUrl; 
+  final String? customAvatarUrl;
   final bool spotifyConnected;
   final String? spotifyId;
   final bool isFriendsHidden;
   final bool isActivityHidden;
   final bool isOnlineHidden;
 
-  User({
+  const User({
     required this.id,
     required this.displayName,
     this.email,
@@ -23,15 +23,40 @@ class User {
     this.isOnlineHidden = false,
   });
 
+  User copyWith({
+    String? id,
+    String? displayName,
+    String? email,
+    String? avatarUrl,
+    String? customAvatarUrl,
+    bool? spotifyConnected,
+    String? spotifyId,
+    bool? isFriendsHidden,
+    bool? isActivityHidden,
+    bool? isOnlineHidden,
+  }) {
+    return User(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      email: email ?? this.email,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      customAvatarUrl: customAvatarUrl ?? this.customAvatarUrl,
+      spotifyConnected: spotifyConnected ?? this.spotifyConnected,
+      spotifyId: spotifyId ?? this.spotifyId,
+      isFriendsHidden: isFriendsHidden ?? this.isFriendsHidden,
+      isActivityHidden: isActivityHidden ?? this.isActivityHidden,
+      isOnlineHidden: isOnlineHidden ?? this.isOnlineHidden,
+    );
+  }
+
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       id: json['id'] as String,
-      displayName: json['displayName'] as String,
+      displayName: json['displayName'] as String? ?? 'Без имени',
       email: json['email'] as String?,
       avatarUrl: json['avatarUrl'] as String?,
       customAvatarUrl: json['customAvatarUrl'] as String?,
-      spotifyConnected:
-          (json['spotifyConnected'] == true) ||
+      spotifyConnected: (json['spotifyConnected'] == true) ||
           (json['spotifyLinked'] == true) ||
           ((json['spotifyId'] as String?)?.isNotEmpty ?? false),
       spotifyId: json['spotifyId'] as String?,
@@ -53,4 +78,39 @@ class User {
         'isActivityHidden': isActivityHidden,
         'isOnlineHidden': isOnlineHidden,
       };
+
+  String? get effectiveAvatarUrl {
+    if (customAvatarUrl != null && customAvatarUrl!.isNotEmpty) return customAvatarUrl;
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) return avatarUrl;
+    return null;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is User &&
+          other.id == id &&
+          other.displayName == displayName &&
+          other.email == email &&
+          other.avatarUrl == avatarUrl &&
+          other.customAvatarUrl == customAvatarUrl &&
+          other.spotifyConnected == spotifyConnected &&
+          other.spotifyId == spotifyId &&
+          other.isFriendsHidden == isFriendsHidden &&
+          other.isActivityHidden == isActivityHidden &&
+          other.isOnlineHidden == isOnlineHidden;
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        displayName,
+        email,
+        avatarUrl,
+        customAvatarUrl,
+        spotifyConnected,
+        spotifyId,
+        isFriendsHidden,
+        isActivityHidden,
+        isOnlineHidden,
+      );
 }

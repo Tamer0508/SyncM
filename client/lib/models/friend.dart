@@ -1,3 +1,26 @@
+/// Состояние отношений с пользователем в результатах поиска.
+///
+/// Сервер возвращает это поле в /friends/search, но клиент его раньше не
+/// читал: кнопка «Добавить» показывалась даже для тех, кто уже в друзьях,
+/// запрос уходил впустую и возвращался отказом «Вы уже друзья».
+enum FriendshipStatus {
+  none,
+  friends,
+  /// Заявка отправлена нами и ждёт ответа.
+  sent,
+  /// Заявка получена от этого пользователя.
+  received;
+
+  static FriendshipStatus fromJson(Object? value) {
+    return switch (value) {
+      'friends' => FriendshipStatus.friends,
+      'sent' => FriendshipStatus.sent,
+      'received' => FriendshipStatus.received,
+      _ => FriendshipStatus.none,
+    };
+  }
+}
+
 class Friend {
   final String id;
   final String name;
@@ -6,28 +29,66 @@ class Friend {
   final bool isOnline;
   final DateTime? lastSeenAt;
   final bool isOnlineHidden;
+  final FriendshipStatus friendshipStatus;
 
-  Friend({
+  const Friend({
     required this.id,
     required this.name,
     this.avatarUrl,
-    this.friendshipId, 
-    this.isOnline = false, 
+    this.friendshipId,
+    this.isOnline = false,
     this.lastSeenAt,
-    this.isOnlineHidden = false});
+    this.isOnlineHidden = false,
+    this.friendshipStatus = FriendshipStatus.none,
+  });
 
   factory Friend.fromJson(Map<String, dynamic> json) => Friend(
-        id: json['id'] ?? json['friendId'] ?? '',
+        id: (json['id'] ?? json['friendId'] ?? '') as String,
         name: json['displayName'] as String? ?? json['name'] as String? ?? '',
         avatarUrl: json['avatarUrl'] as String?,
-        friendshipId: json['friendshipId'] as String?, 
+        friendshipId: json['friendshipId'] as String?,
         isOnline: json['isOnline'] == true,
-        // .toLocal(): сервер отдаёт время в UTC, а сравнивается оно с
-        // DateTime.now() (местным). Без перевода «был в сети» показывал
-        // смещение на весь часовой пояс (для UTC+5 — минус 5 часов).
-        lastSeenAt: json['lastSeenAt'] != null
-            ? DateTime.parse(json['lastSeenAt']).toLocal()
+        lastSeenAt: json['lastSeenAt'] is String
+            ? DateTime.tryParse(json['lastSeenAt'] as String)?.toLocal()
             : null,
         isOnlineHidden: json['isOnlineHidden'] == true,
+        friendshipStatus: FriendshipStatus.fromJson(json['friendshipStatus']),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'displayName': name,
+        'avatarUrl': avatarUrl,
+        'friendshipId': friendshipId,
+        'isOnline': isOnline,
+        // ISO-8601 в UTC: fromJson переведёт обратно в местное время.
+        'lastSeenAt': lastSeenAt?.toUtc().toIso8601String(),
+        'isOnlineHidden': isOnlineHidden,
+        'friendshipStatus': friendshipStatus.name,
+      };
+
+  Friend copyWith({
+    String? id,
+    String? name,
+    String? avatarUrl,
+    String? friendshipId,
+    bool? isOnline,
+    DateTime? lastSeenAt,
+    bool? isOnlineHidden,
+    FriendshipStatus? friendshipStatus,
+  }) {
+    return Friend(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      friendshipId: friendshipId ?? this.friendshipId,
+      isOnline: isOnline ?? this.isOnline,
+      lastSeenAt: lastSeenAt ?? this.lastSeenAt,
+      isOnlineHidden: isOnlineHidden ?? this.isOnlineHidden,
+      friendshipStatus: friendshipStatus ?? this.friendshipStatus,
+    );
+  }
+
+  /// Показывать ли статус присутствия. Учитывает настройку приватности.
+  bool get showsPresence => !isOnlineHidden;
 }

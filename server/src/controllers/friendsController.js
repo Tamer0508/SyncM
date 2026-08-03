@@ -67,14 +67,15 @@ const searchUsers = asyncHandler(async (req, res) => {
     });
 
     return found.map((u) => {
-      const sent = u.sentRequests[0];
-      const received = u.receivedRequests[0];
+      const theySentToMe = u.sentRequests[0];
+      const iSentToThem = u.receivedRequests[0];
+
       let friendshipStatus = 'none';
-      if (sent?.status === 'accepted' || received?.status === 'accepted') {
+      if (theySentToMe?.status === 'accepted' || iSentToThem?.status === 'accepted') {
         friendshipStatus = 'friends';
-      } else if (sent?.status === 'pending') {
+      } else if (iSentToThem?.status === 'pending') {
         friendshipStatus = 'sent';
-      } else if (received?.status === 'pending') {
+      } else if (theySentToMe?.status === 'pending') {
         friendshipStatus = 'received';
       }
       return {
@@ -132,7 +133,11 @@ const sendRequest = asyncHandler(async (req, res) => {
       },
     });
 
-    await incrementVersion(`db:friend-requests:${receiverId}`);
+    await Promise.all([
+      incrementVersion(`db:friend-requests:${receiverId}`),
+      incrementVersion(`db:search-users:${senderId}`),
+      incrementVersion(`db:search-users:${receiverId}`),
+    ]);
 
     await addNotificationJob({
       type: 'friend_request',

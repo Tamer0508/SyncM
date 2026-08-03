@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import '../models/user.dart';
@@ -32,9 +33,19 @@ class ApiService {
   void Function(String token)? _onTokenIssued;
   set onTokenIssued(void Function(String token) cb) => _onTokenIssued = cb;
 
-  ApiService({String? baseUrl, Duration? timeout})
-      : baseUrl = baseUrl ?? Config.baseUrl,
-        timeout = timeout ?? const Duration(seconds: 30);
+  static final ApiService _shared = ApiService._internal(
+    baseUrl: Config.baseUrl,
+    timeout: Config.requestTimeout,
+  );
+
+  factory ApiService() => _shared;
+
+  factory ApiService.instance({String? baseUrl, Duration? timeout}) => ApiService._internal(
+        baseUrl: baseUrl ?? Config.baseUrl,
+        timeout: timeout ?? Config.requestTimeout,
+      );
+
+  ApiService._internal({required this.baseUrl, required this.timeout});
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
@@ -62,9 +73,13 @@ class ApiService {
     return headers;
   }
 
+  static const Set<int> _retryableStatuses = {502, 503, 504};
+
   bool _shouldRetry(Exception error) {
     if (error is ApiException) {
-      return error.statusCode == null || (error.statusCode ?? 0) >= 500;
+      // statusCode == null — ответ вообще не получен (обрыв связи).
+      if (error.statusCode == null) return true;
+      return _retryableStatuses.contains(error.statusCode);
     }
     return true;
   }
@@ -103,11 +118,18 @@ class ApiService {
     return res.body.isNotEmpty ? res.body : 'Неизвестная ошибка';
   }
 
-  // ---------- Все остальные методы без изменений (только не трогал) ----------
+  Future<void> logout() async {
+    try {
+      await http.get(_uri('/auth/logout'), headers: _headers).timeout(timeout);
+    } finally {
+      _cookie = null;
+      _idempotencyKeys.clear();
+    }
+  }
 
   Future<User?> getMe() async {
     final needToken = (_cookie == null || _cookie!.isEmpty) ? '?needToken=1' : '';
-    final res = await http.get(_uri('/auth/me' + needToken), headers: _headers).timeout(timeout);
+    final res = await http.get(_uri('/auth/me$needToken'), headers: _headers).timeout(timeout);
     if (res.statusCode == 200) {
       final data = _decode(res.body) as Map<String, dynamic>;
       final issued = data['authToken'] as String?;
@@ -413,7 +435,7 @@ class ApiService {
       request.headers['Authorization'] = _headers['Authorization'] ?? '';
       request.headers['Idempotency-Key'] = _getIdempotencyKey(operation);
       request.files.add(http.MultipartFile.fromBytes('avatar', bytes, filename: fileName));
-      final streamed = await request.send().timeout(timeout);
+      final streamed = await request.send().timeout(Config.uploadTimeout);
       final res = await http.Response.fromStream(streamed);
       if (res.statusCode == 200) {
         return _decode(res.body);
@@ -621,11 +643,11 @@ class ApiService {
       if (response.statusCode == 200 || response.statusCode == 204) {
         return true;
       } else {
-        print('[ApiService] setShuffle failed: ${response.statusCode} ${response.body}');
+        debugPrint('[ApiService] setShuffle failed: ${response.statusCode} ${response.body}');
         return false;
       }
     } catch (e) {
-      print('[ApiService] setShuffle error: $e');
+      debugPrint('[ApiService] setShuffle error: $e');
       return false;
     }
   }
@@ -637,11 +659,11 @@ class ApiService {
       if (response.statusCode == 200 || response.statusCode == 204) {
         return true;
       } else {
-        print('[ApiService] setRepeatMode failed: ${response.statusCode} ${response.body}');
+        debugPrint('[ApiService] setRepeatMode failed: ${response.statusCode} ${response.body}');
         return false;
       }
     } catch (e) {
-      print('[ApiService] setRepeatMode error: $e');
+      debugPrint('[ApiService] setRepeatMode error: $e');
       return false;
     }
   }

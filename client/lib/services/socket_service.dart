@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class SocketService {
@@ -75,6 +77,14 @@ class SocketService {
   Future<void> measureMasterOffset() async {
     if (_socket == null || !_socket!.connected || _isSyncing) return;
     _isSyncing = true;
+    try {
+      await _measure();
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+  Future<void> _measure() async {
 
     List<Map<String, int>> attempts = [];
     const int targetCycles = 12;
@@ -114,15 +124,14 @@ class SocketService {
         // давало сильный рассинхрон. 600мс покрывает практически любой RTT.
         final result = await completer.future.timeout(const Duration(milliseconds: 600));
         attempts.add(result);
-      } catch (_) {}
+      } catch (err) {
+        debugPrint('[SyncTime] Замер не удался: $err');
+      }
 
       await Future.delayed(Duration(milliseconds: 40));
     }
 
-    if (attempts.isEmpty) {
-      _isSyncing = false;
-      return;
-    }
+    if (attempts.isEmpty) return;
 
     List<int> rtts = attempts.map((e) => e['rtt']!).toList()..sort();
     int medianRtt = rtts[rtts.length ~/ 2];
@@ -144,8 +153,7 @@ class SocketService {
 
     List<int> offsets = bestAttempts.map((e) => e['offset']!).toList()..sort();
     _masterOffset = offsets[offsets.length ~/ 2]; // медиана
-    _isSyncing = false;
-    print('[SyncTime] Калибровка завершена. Офсет: $_masterOffset мс. RTT: $_lastCalculatedRtt мс. Замеров: ${attempts.length}/${targetCycles}');
+    debugPrint('[SyncTime] Офсет: $_masterOffset мс, RTT: $_lastCalculatedRtt мс, замеров: ${attempts.length}/$targetCycles');
   }
 
   void _startHeartbeat() {
@@ -258,7 +266,25 @@ class SocketService {
   }
 
   void on(String event, Function(dynamic) handler) => _socket?.on(event, (data) => handler(data));
+
   void off(String event) => _socket?.off(event);
+
   void emit(String event, [dynamic data]) => _socket?.emit(event, data);
-  void disconnect() { _stopHeartbeat(); _socket?.disconnect(); _socket = null; }
+
+  void disconnect() {
+    _stopHeartbeat();
+    _socket?.dispose();
+    _socket = null;
+    _baseUrl = null;
+    _token = null;
+    _hasConnectedOnce = false;
+    _activeSessionId = null;
+    _masterOffset = 0;
+  }
+
+  Future<void> dispose() async {
+    disconnect();
+    await _friendRequestController.close();
+    await _reconnectController.close();
+  }
 }

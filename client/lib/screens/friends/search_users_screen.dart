@@ -1,18 +1,20 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:rxdart/rxdart.dart';
-import '../../providers/friends_provider.dart';
-import '../../services/api_service.dart';
+
 import '../../models/friend.dart';
-import '../../utils/notifications.dart';
+import '../../providers/friends_provider.dart';
+import '../../theme.dart';
+import '../../utils/error_utils.dart';
+import '../../widgets/tappable_avatar.dart';
 
 class SearchUsersScreen extends StatefulWidget {
+  const SearchUsersScreen({super.key, this.embedded = false, this.onBack});
+
   final bool embedded;
   final VoidCallback? onBack;
-
-  const SearchUsersScreen({Key? key, this.embedded = false, this.onBack})
-      : super(key: key);
 
   @override
   State<SearchUsersScreen> createState() => _SearchUsersScreenState();
@@ -22,19 +24,25 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
   final _controller = TextEditingController();
   final _searchSubject = PublishSubject<String>();
   late final StreamSubscription<void> _searchSubscription;
+
   List<Friend> _results = [];
   bool _loading = false;
   bool _searched = false;
-  final Set<String> _pendingRequests = {};
+
+  final Set<String> _sentTo = {};
+
+  final Set<String> _pending = {};
 
   @override
   void initState() {
     super.initState();
     _searchSubscription = _searchSubject
-        .debounceTime(const Duration(milliseconds: 300))
+        .debounceTime(const Duration(milliseconds: 350))
         .distinct()
-        .switchMap((query) => Stream.fromFuture(_search(query))
-            .onErrorResume((_, __) => Stream<void>.empty()))
+        .switchMap(
+          (query) => Stream.fromFuture(_search(query))
+              .onErrorResume((_, _) => Stream<void>.empty()),
+        )
         .listen((_) {}, onError: (_) {});
   }
 
@@ -48,259 +56,308 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
 
   Future<void> _search(String q) async {
     if (q.trim().isEmpty) {
+      if (!mounted) return;
       setState(() {
         _searched = false;
         _results = [];
       });
       return;
     }
+
     setState(() => _loading = true);
     try {
-      final prov = Provider.of<FriendsProvider>(context, listen: false);
-      final res = await prov.search(q);
+      final results = await context.read<FriendsProvider>().search(q);
       if (!mounted) return;
       setState(() {
         _searched = true;
-        _results = res;
-        _pendingRequests.clear();
+        _results = results;
+        _sentTo.clear();
       });
-    } catch (e) {
-      if (mounted) {
-        final msg = (e is ApiException) ? e.userMessage : 'Ошибка поиска: $e';
-        showAppNotification(context,
-            message: msg, type: NotificationType.error);
-      }
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
     } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _sendRequest(String userId) async {
-    if (_pendingRequests.contains(userId)) return;
+  Future<void> _sendRequest(Friend user) async {
+    if (_pending.contains(user.id) || _sentTo.contains(user.id)) return;
 
-    setState(() => _pendingRequests.add(userId));
-
+    setState(() => _pending.add(user.id));
     try {
-      final prov = Provider.of<FriendsProvider>(context, listen: false);
-      await prov.sendRequest(userId);
-
+      await context.read<FriendsProvider>().sendRequest(user.id);
       if (!mounted) return;
-
-      showAppNotification(context,
-          message: 'Заявка отправлена!', type: NotificationType.success);
-
-      setState(() {
-        _results.removeWhere((user) => user.id == userId);
-      });
-    } catch (e) {
+      setState(() => _sentTo.add(user.id));
+      showSuccess(context, 'Заявка отправлена');
+    } catch (err) {
       if (!mounted) return;
-
-      setState(() => _pendingRequests.remove(userId));
-
-      final msg =
-          (e is ApiException) ? e.userMessage : 'Ошибка при отправке заявки';
-      showAppNotification(context,
-          message: msg, type: NotificationType.error);
+      showError(context, err);
+    } finally {
+      if (mounted) setState(() => _pending.remove(user.id));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    // Оборачиваем всё тело в GestureDetector для скрытия клавиатуры по тапу на пустое место
-    final body = GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        decoration: const InputDecoration(
-                          hintText: 'Начните вводить имя пользователя...',
-                          prefixIcon: Icon(Icons.search),
-                          border: InputBorder.none,
-                        ),
-                        onChanged: _searchSubject.add,
-                        onSubmitted: _search,
-                      ),
+    final body = Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.sm,
+          ),
+          child: TextField(
+            controller: _controller,
+            autofocus: !widget.embedded,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Имя пользователя',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _controller.text.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: 'Очистить',
+                      onPressed: () {
+                        _controller.clear();
+                        _searchSubject.add('');
+                        setState(() {});
+                      },
                     ),
-                  ],
-                ),
-              ),
             ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: _loading
-                  ? Center(
-                      child: CircularProgressIndicator(
-                        color: theme.colorScheme.primary,
-                      ),
-                    )
-                  : !_searched
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.person_search,
-                                size: 64,
-                                color: theme.colorScheme.onSurface.withOpacity(0.3),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Начните вводить имя пользователя',
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  color: theme.textTheme.bodySmall?.color
-                                      ?.withOpacity(0.7),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : _results.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.sentiment_dissatisfied,
-                                    size: 64,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.3),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Пользователи не найдены',
-                                    style: theme.textTheme.bodyLarge?.copyWith(
-                                      color: theme.textTheme.bodySmall?.color
-                                          ?.withOpacity(0.8),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView.separated(
-                              itemCount: _results.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 12),
-                              itemBuilder: (_, i) {
-                                final u = _results[i];
-                                final isPending =
-                                    _pendingRequests.contains(u.id);
+            onChanged: (value) {
+              _searchSubject.add(value);
+              // Перерисовка нужна, чтобы крестик появлялся и исчезал.
+              setState(() {});
+            },
+            onSubmitted: _search,
+          ),
+        ),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: AppMotion.short,
+            child: _buildResults(),
+          ),
+        ),
+      ],
+    );
 
-                                return Card(
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 24,
-                                          backgroundImage:
-                                              u.avatarUrl != null &&
-                                                      u.avatarUrl!.isNotEmpty
-                                                  ? NetworkImage(u.avatarUrl!)
-                                                  : null,
-                                          child: u.avatarUrl == null ||
-                                                  u.avatarUrl!.isEmpty
-                                              ? const Icon(Icons.person)
-                                              : null,
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: Text(
-                                            u.name,
-                                            style: theme
-                                                .textTheme.titleMedium
-                                                ?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 120,
-                                          height: 36,
-                                          child: ElevatedButton(
-                                            onPressed: isPending
-                                                ? null
-                                                : () => _sendRequest(u.id),
-                                            style: ElevatedButton.styleFrom(
-                                              padding: EdgeInsets.zero,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                              ),
-                                              backgroundColor: isPending
-                                                  ? theme.disabledColor
-                                                  : theme.colorScheme.primary,
-                                            ),
-                                            child: Text(
-                                              isPending
-                                                  ? 'Отправлено'
-                                                  : 'Добавить',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                color: isPending
-                                                    ? theme
-                                                        .colorScheme.onSurface
-                                                        .withOpacity(0.7)
-                                                    : theme
-                                                        .colorScheme.onPrimary,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
+    if (widget.embedded) return body;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Поиск друзей')),
+      body: body,
+    );
+  }
+
+  Widget _buildResults() {
+    if (_loading) {
+      return const Center(key: ValueKey('loading'), child: CircularProgressIndicator());
+    }
+
+    if (!_searched) {
+      return _SearchPlaceholder(
+        key: const ValueKey('idle'),
+        icon: Icons.person_search_rounded,
+        title: 'Найдите друзей',
+        subtitle: 'Введите имя пользователя, чтобы начать поиск.',
+      );
+    }
+
+    if (_results.isEmpty) {
+      return _SearchPlaceholder(
+        key: const ValueKey('empty'),
+        icon: Icons.search_off_rounded,
+        title: 'Никого не нашлось',
+        subtitle: 'Проверьте написание имени или попробуйте другое.',
+      );
+    }
+
+    return ListView.separated(
+      key: const ValueKey('results'),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.xl,
+      ),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      itemCount: _results.length,
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
+      itemBuilder: (context, i) {
+        final user = _results[i];
+        return _UserTile(
+          user: user,
+          isPending: _pending.contains(user.id),
+          isSent: _sentTo.contains(user.id),
+          onSend: () => _sendRequest(user),
+        );
+      },
+    );
+  }
+}
+
+class _UserTile extends StatelessWidget {
+  const _UserTile({
+    required this.user,
+    required this.isPending,
+    required this.isSent,
+    required this.onSend,
+  });
+
+  final Friend user;
+  final bool isPending;
+  final bool isSent;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm + 4,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: AppRadius.large,
+      ),
+      child: Row(
+        children: [
+          TappableAvatar(
+            imageUrl: user.avatarUrl,
+            radius: 24,
+            title: user.name,
+            heroTag: 'search-${user.id}',
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              user.name,
+              style: texts.titleMedium,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          _ActionButton(
+            status: user.friendshipStatus,
+            isPending: isPending,
+            isSent: isSent,
+            onSend: onSend,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.status,
+    required this.isPending,
+    required this.isSent,
+    required this.onSend,
+  });
+
+  final FriendshipStatus status;
+  final bool isPending;
+  final bool isSent;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    if (isPending) {
+      return const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    Widget label(String text, {IconData? icon, Color? color}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 16, color: color ?? colors.onSurfaceVariant),
+              const SizedBox(width: AppSpacing.xs),
+            ],
+            Text(
+              text,
+              style: texts.labelMedium?.copyWith(color: color ?? colors.onSurfaceVariant),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isSent || status == FriendshipStatus.sent) {
+      return label('Отправлено', icon: Icons.schedule_rounded);
+    }
+
+    switch (status) {
+      case FriendshipStatus.friends:
+        return label('В друзьях', icon: Icons.check_rounded, color: colors.primary);
+      case FriendshipStatus.received:
+        return label('Ждёт ответа', icon: Icons.mark_email_unread_rounded);
+      case FriendshipStatus.none:
+      case FriendshipStatus.sent:
+        return IconButton.filledTonal(
+          onPressed: onSend,
+          icon: const Icon(Icons.person_add_alt_1_rounded),
+          tooltip: 'Отправить заявку',
+          visualDensity: VisualDensity.compact,
+        );
+    }
+  }
+}
+
+class _SearchPlaceholder extends StatelessWidget {
+  const _SearchPlaceholder({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 72, color: colors.primary.withValues(alpha: 0.4)),
+            const SizedBox(height: AppSpacing.lg),
+            Text(title, style: texts.titleLarge, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],
         ),
       ),
-    );
-
-    // Встроенный режим — возвращаем только содержимое
-    if (widget.embedded) {
-      return body;
-    }
-
-    // Полноэкранный режим (мобильные устройства или отдельная страница)
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Поиск пользователей'),
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-          padding: const EdgeInsets.all(8),
-        ),
-      ),
-      body: body,
     );
   }
 }

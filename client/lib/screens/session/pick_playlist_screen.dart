@@ -1,37 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../providers/auth_provider.dart';
-import '../../utils/notifications.dart';
+import '../../theme.dart';
+import '../../utils/error_utils.dart';
 import '../../widgets/track_card.dart';
 
 class PickPlaylistScreen extends StatefulWidget {
-  const PickPlaylistScreen({Key? key}) : super(key: key);
+  const PickPlaylistScreen({super.key});
 
   @override
   State<PickPlaylistScreen> createState() => _PickPlaylistScreenState();
 }
 
 class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
-  List<dynamic> _playlists = [];
-  List<dynamic> _tracks = [];
+  List<Map<String, dynamic>> _playlists = [];
+  List<Map<String, dynamic>> _tracks = [];
   Map<String, dynamic>? _selectedPlaylist;
-  Set<String> _selectedTrackUris = {};
+  final Set<String> _selectedTrackUris = {};
+
   bool _loadingPlaylists = true;
   bool _loadingTracks = false;
+  bool _adding = false;
 
   @override
   void initState() {
     super.initState();
-    _loadPlaylists();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadPlaylists();
+    });
   }
 
   Future<void> _loadPlaylists() async {
+    setState(() => _loadingPlaylists = true);
     try {
-      final api = Provider.of<AuthProvider>(context, listen: false).api;
+      final api = context.read<AuthProvider>().api;
       final playlists = await api.getPlaylists();
-      if (mounted) setState(() => _playlists = playlists);
-    } catch (e) {
-      if (mounted) showAppNotification(context, message: 'Ошибка загрузки плейлистов', type: NotificationType.error);
+      if (!mounted) return;
+      setState(() => _playlists = playlists.whereType<Map>().map(Map<String, dynamic>.from).toList());
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
     } finally {
       if (mounted) setState(() => _loadingPlaylists = false);
     }
@@ -41,184 +50,342 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
     setState(() {
       _selectedPlaylist = playlist;
       _tracks = [];
-      _selectedTrackUris = {};
+      _selectedTrackUris.clear();
       _loadingTracks = true;
     });
 
     try {
-      final api = Provider.of<AuthProvider>(context, listen: false).api;
-      final tracks = await api.getPlaylistTracks(playlist['id']);
-      if (mounted) setState(() => _tracks = tracks);
-    } catch (e) {
-      if (mounted) showAppNotification(context, message: 'Ошибка загрузки треков', type: NotificationType.error);
+      final api = context.read<AuthProvider>().api;
+      final tracks = await api.getPlaylistTracks(playlist['id'] as String);
+      if (!mounted) return;
+      setState(() => _tracks = tracks.whereType<Map>().map(Map<String, dynamic>.from).toList());
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
     } finally {
       if (mounted) setState(() => _loadingTracks = false);
     }
   }
 
-  Future<void> _addTracks(String sessionId) async {
+  void _clearSelection() {
+    setState(() {
+      _selectedPlaylist = null;
+      _tracks = [];
+      _selectedTrackUris.clear();
+    });
+  }
+
+  Future<void> _addTracks(String? sessionId) async {
+    if (sessionId == null || sessionId.isEmpty) {
+      showError(context, 'Не удалось определить сессию', force: true);
+      return;
+    }
+
     final toAdd = _selectedTrackUris.isEmpty
         ? _tracks
         : _tracks.where((t) => _selectedTrackUris.contains(t['uri'])).toList();
 
     if (toAdd.isEmpty) {
-      showAppNotification(context, message: 'Выберите треки', type: NotificationType.error);
+      showError(context, 'В плейлисте нет треков', force: true);
       return;
     }
 
+    setState(() => _adding = true);
     try {
-      final api = Provider.of<AuthProvider>(context, listen: false).api;
-      await api.addTracks(sessionId, toAdd.map<Map<String, dynamic>>((t) => {
-        'spotifyUri': t['uri'],
-        'trackName': t['name'],
-        'artistName': t['artist'],
-        'imageUrl': t['imageUrl'],
-        'durationMs': t['durationMs'],
-      }).toList());
+      final api = context.read<AuthProvider>().api;
+      await api.addTracks(
+        sessionId,
+        toAdd
+            .map<Map<String, dynamic>>((t) => {
+                  'spotifyUri': t['uri'],
+                  'trackName': t['name'],
+                  'artistName': t['artist'],
+                  'imageUrl': t['imageUrl'],
+                  'durationMs': t['durationMs'],
+                })
+            .toList(),
+      );
 
-      if (mounted) {
-        showAppNotification(context, message: 'Добавлено ${toAdd.length} треков!', type: NotificationType.success);
-        Navigator.of(context).pop(true);
-      }
-    } catch (e) {
-      if (mounted) showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
+      if (!mounted) return;
+      showSuccess(context, 'Добавлено ${toAdd.length} ${_plural(toAdd.length)}');
+      Navigator.of(context).pop(true);
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
+    } finally {
+      if (mounted) setState(() => _adding = false);
     }
+  }
+
+  String _plural(int count) {
+    final mod100 = count % 100;
+    if (mod100 >= 11 && mod100 <= 14) return 'треков';
+    return switch (count % 10) {
+      1 => 'трек',
+      2 || 3 || 4 => 'трека',
+      _ => 'треков',
+    };
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final sessionId = ModalRoute.of(context)?.settings.arguments as String?;
+    final inPlaylist = _selectedPlaylist != null;
+    final selectedCount = _selectedTrackUris.length;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_selectedPlaylist == null ? 'Выберите плейлист' : _selectedPlaylist!['name']),
-        leading: _selectedPlaylist != null
+        title: Text(inPlaylist ? _selectedPlaylist!['name'] as String? ?? 'Плейлист' : 'Выберите плейлист'),
+        leading: inPlaylist
             ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => setState(() {
-                  _selectedPlaylist = null;
-                  _tracks = [];
-                  _selectedTrackUris = {};
-                }),
+                icon: const Icon(Icons.arrow_back_rounded),
+                tooltip: 'К списку плейлистов',
+                onPressed: _clearSelection,
               )
             : null,
         actions: [
-          if (_selectedPlaylist != null && _tracks.isNotEmpty)
+          if (inPlaylist && _tracks.isNotEmpty)
             TextButton(
-              onPressed: () => _addTracks(sessionId ?? ''),
-              child: Text(
-                _selectedTrackUris.isEmpty
-                    ? 'Добавить всё (${_tracks.length})'
-                    : 'Добавить (${_selectedTrackUris.length})',
-                style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.w700),
-              ),
+              onPressed: () => setState(() {
+                if (selectedCount == _tracks.length) {
+                  _selectedTrackUris.clear();
+                } else {
+                  _selectedTrackUris
+                    ..clear()
+                    ..addAll(_tracks.map((t) => t['uri'] as String));
+                }
+              }),
+              child: Text(selectedCount == _tracks.length ? 'Снять всё' : 'Выбрать всё'),
             ),
         ],
       ),
-      body: _selectedPlaylist == null ? _buildPlaylistList(theme) : _buildTrackList(theme),
+      body: inPlaylist ? _buildTracks() : _buildPlaylists(),
+      bottomNavigationBar: inPlaylist && _tracks.isNotEmpty
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: FilledButton.icon(
+                  onPressed: _adding ? null : () => _addTracks(sessionId),
+                  icon: _adding
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.playlist_add_rounded),
+                  label: Text(
+                    selectedCount == 0
+                        ? 'Добавить все (${_tracks.length})'
+                        : 'Добавить выбранные ($selectedCount)',
+                  ),
+                ),
+              ),
+            )
+          : null,
     );
   }
 
-  Widget _buildPlaylistList(ThemeData theme) {
-    if (_loadingPlaylists) return const Center(child: CircularProgressIndicator());
-    if (_playlists.isEmpty) return const Center(child: Text('Нет плейлистов'));
+  Widget _buildPlaylists() {
+    if (_loadingPlaylists) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _playlists.length,
-      itemBuilder: (_, i) {
-        final p = _playlists[i];
-        return Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            onTap: () => _selectPlaylist(Map<String, dynamic>.from(p)),
-            leading: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: p['imageUrl'] != null
-                  ? Image.network(p['imageUrl'], width: 48, height: 48, fit: BoxFit.cover)
-                  : Container(width: 48, height: 48, color: theme.colorScheme.surfaceVariant,
-                      child: const Icon(Icons.music_note)),
-            ),
-            title: Text(p['name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-            subtitle: Text('${p['trackCount'] ?? 0} треков'),
-            trailing: const Icon(Icons.chevron_right),
+    if (_playlists.isEmpty) {
+      return _EmptyView(
+        icon: Icons.library_music_outlined,
+        title: 'Плейлистов нет',
+        subtitle: 'Подключите Spotify или создайте свой плейлист, '
+            'чтобы добавлять треки в сессии.',
+        onRetry: _loadPlaylists,
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadPlaylists,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.xl,
+        ),
+        itemCount: _playlists.length,
+        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
+        itemBuilder: (context, i) => _PlaylistTile(
+          playlist: _playlists[i],
+          onTap: () => _selectPlaylist(_playlists[i]),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTracks() {
+    if (_loadingTracks) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_tracks.isEmpty) {
+      return _EmptyView(
+        icon: Icons.music_off_rounded,
+        title: 'Треков нет',
+        subtitle: 'Этот плейлист пуст либо его содержимое недоступно: '
+            'Spotify отдаёт треки только для ваших собственных плейлистов.',
+        onRetry: _clearSelection,
+        retryLabel: 'К списку плейлистов',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.md,
+      ),
+      itemCount: _tracks.length,
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
+      itemBuilder: (context, i) {
+        final track = _tracks[i];
+        final uri = track['uri'] as String?;
+        final selected = uri != null && _selectedTrackUris.contains(uri);
+
+        return TrackCard(
+          id: uri ?? '$i',
+          title: track['name'] as String? ?? 'Без названия',
+          artist: track['artist'] as String? ?? '',
+          artworkUrl: track['imageUrl'] as String?,
+          durationMs: (track['durationMs'] as num?)?.toInt(),
+          isActive: selected,
+          showLike: false,
+          showMore: false,
+          onPlay: () {
+            if (uri == null) return;
+            setState(() {
+              if (selected) {
+                _selectedTrackUris.remove(uri);
+              } else {
+                _selectedTrackUris.add(uri);
+              }
+            });
+          },
+          trailing: Checkbox(
+            value: selected,
+            onChanged: uri == null
+                ? null
+                : (value) => setState(() {
+                      if (value == true) {
+                        _selectedTrackUris.add(uri);
+                      } else {
+                        _selectedTrackUris.remove(uri);
+                      }
+                    }),
           ),
         );
       },
     );
   }
+}
 
-  Widget _buildTrackList(ThemeData theme) {
-    if (_loadingTracks) return const Center(child: CircularProgressIndicator());
-    if (_tracks.isEmpty) return const Center(child: Text('Нет треков'));
+class _PlaylistTile extends StatelessWidget {
+  const _PlaylistTile({required this.playlist, required this.onTap});
 
-    return Column(
-      children: [
-        // Кнопка выбрать все
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  final Map<String, dynamic> playlist;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+    final trackCount = (playlist['trackCount'] as num?)?.toInt() ?? 0;
+
+    return Material(
+      color: colors.surfaceContainerLow,
+      borderRadius: AppRadius.large,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.sm + 4),
           child: Row(
             children: [
-              TextButton.icon(
-                onPressed: () => setState(() {
-                  if (_selectedTrackUris.length == _tracks.length) {
-                    _selectedTrackUris = {};
-                  } else {
-                    _selectedTrackUris = _tracks.map((t) => t['uri'] as String).toSet();
-                  }
-                }),
-                icon: Icon(_selectedTrackUris.length == _tracks.length
-                    ? Icons.deselect : Icons.select_all),
-                label: Text(_selectedTrackUris.length == _tracks.length
-                    ? 'Снять всё' : 'Выбрать всё'),
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: AppRadius.small,
+                ),
+                alignment: Alignment.center,
+                child: Icon(Icons.queue_music_rounded, color: colors.onPrimaryContainer),
               ),
-              const Spacer(),
-              Text('${_selectedTrackUris.isEmpty ? _tracks.length : _selectedTrackUris.length} треков',
-                  style: theme.textTheme.bodySmall),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      playlist['name'] as String? ?? 'Без названия',
+                      style: texts.titleMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      trackCount > 0 ? '$trackCount в плейлисте' : 'Пусто',
+                      style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
             ],
           ),
         ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            itemCount: _tracks.length,
-            itemBuilder: (_, i) {
-              final t = _tracks[i];
-              final uri = t['uri'] as String? ?? '';
-              final selected = _selectedTrackUris.contains(uri);
+      ),
+    );
+  }
+}
 
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: TrackCard(
-                  id: uri,
-                  title: t['name'] ?? '',
-                  artist: t['artist'] ?? '',
-                  artworkUrl: t['imageUrl'] as String?,
-                  durationMs: t['durationMs'] as int?,
-                  selected: selected,
-                  showLike: false,
-                  showMore: false,
-                  trailing: Icon(
-                    selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                    color: selected ? theme.colorScheme.primary : null,
-                    size: 20,
-                  ),
-                  onPlay: () => setState(() {
-                    if (selected) {
-                      _selectedTrackUris.remove(uri);
-                    } else {
-                      _selectedTrackUris.add(uri);
-                    }
-                  }),
-                ),
-              );
-            },
-          ),
+class _EmptyView extends StatelessWidget {
+  const _EmptyView({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onRetry,
+    this.retryLabel = 'Обновить',
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onRetry;
+  final String retryLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 72, color: colors.primary.withValues(alpha: 0.4)),
+            const SizedBox(height: AppSpacing.lg),
+            Text(title, style: texts.titleLarge, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            OutlinedButton(onPressed: onRetry, child: Text(retryLabel)),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

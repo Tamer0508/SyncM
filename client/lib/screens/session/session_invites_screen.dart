@@ -1,12 +1,14 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../providers/session_provider.dart';
-import '../../utils/notifications.dart';
+import '../../theme.dart';
+import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
 
 class SessionInvitesScreen extends StatefulWidget {
-  const SessionInvitesScreen({Key? key}) : super(key: key);
+  const SessionInvitesScreen({super.key});
 
   @override
   State<SessionInvitesScreen> createState() => _SessionInvitesScreenState();
@@ -19,7 +21,8 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final prov = Provider.of<SessionProvider>(context, listen: false);
+      if (!mounted) return;
+      final prov = context.read<SessionProvider>();
       prov.markInvitesAsRead();
       prov.fetchInvites(refresh: true);
     });
@@ -28,30 +31,30 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
   Future<void> _respond(String sessionId, bool accept) async {
     if (_responding.contains(sessionId)) return;
     setState(() => _responding.add(sessionId));
+
     try {
-      final prov = Provider.of<SessionProvider>(context, listen: false);
-      final result = await prov.respondToInvite(sessionId, accept);
+      final result = await context.read<SessionProvider>().respondToInvite(sessionId, accept);
       if (!mounted) return;
+
       if (result == null) {
-        showAppNotification(
-          context,
-          message: 'Не удалось ответить на приглашение',
-          type: NotificationType.error,
-        );
+        showError(context, 'Не удалось ответить на приглашение', force: true);
         return;
       }
-      if (accept) {
-        final session = result['session'] as Map<String, dynamic>?;
-        if (session != null) {
-          Navigator.of(context).pushReplacementNamed('/session', arguments: session);
-        }
+
+      if (!accept) {
+        showSuccess(context, 'Приглашение отклонено');
+        return;
+      }
+
+      final session = result['session'] as Map<String, dynamic>?;
+      if (session != null) {
+        Navigator.of(context).pushReplacementNamed('/session', arguments: session);
       } else {
-        showAppNotification(context, message: 'Приглашение отклонено');
+        showSuccess(context, 'Вы присоединились к сессии');
       }
-    } catch (e) {
-      if (mounted) {
-        showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
-      }
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
     } finally {
       if (mounted) setState(() => _responding.remove(sessionId));
     }
@@ -59,118 +62,88 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final enablePullToRefresh = !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS);
 
-    Widget buildContent(SessionProvider prov) {
-      final isLoading = prov.invitesLoading && prov.invites.isEmpty;
-      final isEmpty = prov.invites.isEmpty && !prov.invitesLoading;
-
-      if (isLoading) {
-        return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height - kToolbarHeight,
-            child: const Center(child: CircularProgressIndicator()),
-          ),
-        );
-      }
-
-      if (isEmpty) {
-        return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height - kToolbarHeight,
-            child: _EmptyInvitesView(theme: theme),
-          ),
-        );
-      }
-
-      return _InvitesList(
-        theme: theme,
-        invites: prov.invites as List<Map<String, dynamic>>,
-        hostNameForInvite: prov.hostNameForInvite,
-        responding: _responding,
-        onAccept: (id) => _respond(id, true),
-        onDecline: (id) => _respond(id, false),
-      );
-    }
-
-    final child = Consumer<SessionProvider>(
+    final body = Consumer<SessionProvider>(
       builder: (context, prov, _) {
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: buildContent(prov),
+        if (prov.invitesLoading && prov.invites.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (prov.invites.isEmpty) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: const [SizedBox(height: 80), _EmptyInvitesView()],
+          );
+        }
+
+        return _InvitesList(
+          invites: prov.invites,
+          hostNameForInvite: prov.hostNameForInvite,
+          responding: _responding,
+          onAccept: (id) => _respond(id, true),
+          onDecline: (id) => _respond(id, false),
         );
       },
     );
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Приглашения в сессии'),
+        title: const Text('Приглашения'),
         actions: [
           AppIconButton(
-            icon: Icons.refresh,
+            icon: Icons.refresh_rounded,
             tooltip: 'Обновить',
-            onPressed: () => Provider.of<SessionProvider>(context, listen: false)
-                .fetchInvites(refresh: true),
+            onPressed: () => context.read<SessionProvider>().fetchInvites(refresh: true),
           ),
         ],
       ),
       body: enablePullToRefresh
           ? RefreshIndicator(
-              onRefresh: () => Provider.of<SessionProvider>(context, listen: false)
-                  .fetchInvites(refresh: true),
-              child: child,
+              onRefresh: () => context.read<SessionProvider>().fetchInvites(refresh: true),
+              child: body,
             )
-          : child,
+          : body,
     );
   }
 }
 
 class _EmptyInvitesView extends StatelessWidget {
-  final ThemeData theme;
-  const _EmptyInvitesView({required this.theme});
+  const _EmptyInvitesView();
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.mail_outline, size: 80, color: theme.colorScheme.primary.withOpacity(0.4)),
-            const SizedBox(height: 24),
-            Text('Приглашений нет',
-                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 12),
-            Text(
-              'Когда друг пригласит вас в сессию, уведомление появится здесь.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.textTheme.bodySmall?.color?.withOpacity(0.75),
-              ),
-            ),
-          ],
-        ),
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.mail_outline_rounded,
+            size: 72,
+            color: colors.primary.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Text('Приглашений нет', style: texts.titleLarge, textAlign: TextAlign.center),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Когда друг позовёт вас слушать музыку вместе, приглашение появится здесь.',
+            textAlign: TextAlign.center,
+            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _InvitesList extends StatelessWidget {
-  final ThemeData theme;
-  final List<Map<String, dynamic>> invites;
-  final String? Function(Map<String, dynamic>) hostNameForInvite;
-  final Set<String> responding;
-  final Function(String) onAccept;
-  final Function(String) onDecline;
-
   const _InvitesList({
-    required this.theme,
     required this.invites,
     required this.hostNameForInvite,
     required this.responding,
@@ -178,88 +151,163 @@ class _InvitesList extends StatelessWidget {
     required this.onDecline,
   });
 
+  final List<Map<String, dynamic>> invites;
+  final String? Function(Map<String, dynamic>) hostNameForInvite;
+  final Set<String> responding;
+  final void Function(String sessionId) onAccept;
+  final void Function(String sessionId) onDecline;
+
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.xl,
+      ),
       itemCount: invites.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 14),
-      itemBuilder: (_, i) {
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm + 4),
+      itemBuilder: (context, i) {
         final invite = invites[i];
         final sessionId = invite['id'] as String;
-        final name = invite['name'] as String? ?? 'Сессия';
-        final hostName = hostNameForInvite(invite) ?? 'Друг';
-        final isResponding = responding.contains(sessionId);
 
-        return Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          elevation: 0,
-          color: theme.cardColor,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.music_note, size: 24, color: theme.colorScheme.primary),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        name,
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Приглашение от $hostName',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: isResponding ? null : () => onDecline(sessionId),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.error,
-                          side: BorderSide(color: theme.colorScheme.error),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: const Text('Отклонить'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: isResponding ? null : () => onAccept(sessionId),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colorScheme.primary,
-                          foregroundColor: theme.colorScheme.onPrimary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: isResponding
-                            ? const SizedBox(
-                                height: 18,
-                                width: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Text('Принять'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+        return _InviteCard(
+          sessionName: invite['name'] as String? ?? 'Сессия',
+          hostName: hostNameForInvite(invite) ?? 'Друг',
+          trackCount: (invite['tracks'] as List?)?.length ?? 0,
+          isResponding: responding.contains(sessionId),
+          onAccept: () => onAccept(sessionId),
+          onDecline: () => onDecline(sessionId),
         );
       },
     );
+  }
+}
+
+class _InviteCard extends StatelessWidget {
+  const _InviteCard({
+    required this.sessionName,
+    required this.hostName,
+    required this.trackCount,
+    required this.isResponding,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  final String sessionName;
+  final String hostName;
+  final int trackCount;
+  final bool isResponding;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: AppRadius.large,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: AppRadius.small,
+                ),
+                child: Icon(Icons.headphones_rounded, color: colors.onPrimaryContainer),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      sessionName,
+                      style: texts.titleMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'От $hostName',
+                      style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (trackCount > 0) ...[
+            const SizedBox(height: AppSpacing.sm + 4),
+            Row(
+              children: [
+                Icon(Icons.queue_music_rounded, size: 18, color: colors.onSurfaceVariant),
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  '$trackCount ${_plural(trackCount)}',
+                  style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: isResponding ? null : onDecline,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colors.error,
+                    side: BorderSide(color: colors.error.withValues(alpha: 0.5)),
+                  ),
+                  child: const Text('Отклонить'),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm + 4),
+              Expanded(
+                child: FilledButton(
+                  onPressed: isResponding ? null : onAccept,
+                  child: isResponding
+                      ? SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colors.onPrimary,
+                          ),
+                        )
+                      : const Text('Принять'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Склонение слова «трек» по числу.
+  String _plural(int count) {
+    final mod100 = count % 100;
+    if (mod100 >= 11 && mod100 <= 14) return 'треков';
+    return switch (count % 10) {
+      1 => 'трек',
+      2 || 3 || 4 => 'трека',
+      _ => 'треков',
+    };
   }
 }

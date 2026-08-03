@@ -1,81 +1,185 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+
+import '../../theme.dart';
 
 class SessionResultsScreen extends StatelessWidget {
-  const SessionResultsScreen({Key? key}) : super(key: key);
+  const SessionResultsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    final mutualLikes = args?['mutualLikes'] as List? ?? [];
+    final mutualLikes =
+        (args?['mutualLikes'] as List?)?.whereType<Map>().toList() ?? const <Map>[];
+    final hasResults = mutualLikes.isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Результаты сессии')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      appBar: AppBar(title: const Text('Итоги сессии')),
+      body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              child: Padding(
-                padding: const EdgeInsets.all(22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Общие любимые треки 🎵',
-                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 8),
-                    Text(
-                      mutualLikes.isEmpty
-                          ? 'На этот раз общих треков не нашлось.'
-                          : 'Вам обоим понравились эти треки!',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.textTheme.bodySmall?.color?.withOpacity(0.78)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
             Expanded(
-              child: mutualLikes.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.music_off, size: 64, color: theme.colorScheme.primary.withOpacity(0.4)),
-                          const SizedBox(height: 12),
-                          Text('Нет общих треков',
-                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                        ],
-                      ),
-                    )
-                  : ListView.separated(
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemCount: mutualLikes.length,
-                      itemBuilder: (_, i) {
-                        final t = mutualLikes[i];
-                        return Card(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          child: ListTile(
-                            leading: const Icon(Icons.favorite, color: Colors.red),
-                            title: Text(t['trackName'] ?? '',
-                                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                            subtitle: Text(t['artistName'] ?? ''),
-                          ),
-                        );
-                      },
-                    ),
+              child: hasResults
+                  ? _ResultsList(tracks: mutualLikes)
+                  : const _NoMatchesView(),
             ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false),
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                padding: const EdgeInsets.symmetric(vertical: 16),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(
+                  '/home',
+                  (_) => false,
+                ),
+                child: const Text('На главную'),
               ),
-              child: const Text('На главную'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultsList extends StatelessWidget {
+  const _ResultsList({required this.tracks});
+
+  final List<Map> tracks;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      itemCount: tracks.length + 1,
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
+      itemBuilder: (context, i) {
+        if (i == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Совпадения', style: texts.headlineMedium),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'Эти треки понравились обоим.',
+                  style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final track = tracks[i - 1];
+        return _MatchTile(
+          index: i,
+          trackName: track['trackName'] as String? ?? 'Без названия',
+          artistName: track['artistName'] as String? ?? '',
+          imageUrl: track['imageUrl'] as String?,
+        );
+      },
+    );
+  }
+}
+
+class _MatchTile extends StatelessWidget {
+  const _MatchTile({
+    required this.index,
+    required this.trackName,
+    required this.artistName,
+    required this.imageUrl,
+  });
+
+  final int index;
+  final String trackName;
+  final String artistName;
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm + 4),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: AppRadius.large,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer,
+              borderRadius: AppRadius.small,
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.favorite_rounded, color: colors.onPrimaryContainer, size: 22),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  trackName,
+                  style: texts.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (artistName.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    artistName,
+                    style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoMatchesView extends StatelessWidget {
+  const _NoMatchesView();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.music_off_rounded,
+              size: 72,
+              color: colors.primary.withValues(alpha: 0.4),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text('Совпадений нет', style: texts.titleLarge, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'В этот раз вкусы разошлись. Попробуйте ещё одну сессию - '
+              'с другой подборкой результат может быть иным.',
+              textAlign: TextAlign.center,
+              style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],
         ),

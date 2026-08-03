@@ -1,28 +1,16 @@
-import 'package:flutter/material.dart';
+import 'dart:ui' show FontFeature;
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/playback_provider.dart';
+import '../theme.dart';
 import 'animated_equalizer.dart';
 
 class TrackCard extends StatefulWidget {
-  final String id;
-  final String title;
-  final String artist;
-  final String? artworkUrl;
-  final int? durationMs;
-  final bool isLiked;
-  final bool isActive;
-  final void Function()? onPlay;
-  final void Function()? onLike;
-  final void Function()? onMore;
-  final bool showLike;
-  final bool showMore;
-  final Widget? trailing;
-  final Widget? footer;
-  final bool selected;
-
   const TrackCard({
-    Key? key,
+    super.key,
     required this.id,
     required this.title,
     required this.artist,
@@ -38,49 +26,60 @@ class TrackCard extends StatefulWidget {
     this.trailing,
     this.footer,
     this.selected = false,
-  }) : super(key: key);
+  });
+
+  final String id;
+  final String title;
+  final String artist;
+  final String? artworkUrl;
+  final int? durationMs;
+  final bool isLiked;
+  final bool isActive;
+  final VoidCallback? onPlay;
+  final VoidCallback? onLike;
+  final VoidCallback? onMore;
+  final bool showLike;
+  final bool showMore;
+  final Widget? trailing;
+  final Widget? footer;
+  final bool selected;
 
   @override
   State<TrackCard> createState() => _TrackCardState();
 }
 
-class _TrackCardState extends State<TrackCard>
-    with SingleTickerProviderStateMixin {
+class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMixin {
+  late bool _isLiked;
   late final AnimationController _bounceController;
-  late final Animation<double> _scaleAnimation;
-  bool _isLiked = false;
+  late final Animation<double> _bounce;
 
   @override
   void initState() {
     super.initState();
     _isLiked = widget.isLiked;
-
-    _bounceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-
-    _scaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 30),
-      TweenSequenceItem(tween: Tween(begin: 1.25, end: 0.9), weight: 40),
-      TweenSequenceItem(tween: Tween(begin: 0.9, end: 1.0), weight: 30),
-    ]).animate(_bounceController);
+    _bounceController = AnimationController(vsync: this, duration: AppMotion.medium);
+    _bounce = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.4), weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 1.4, end: 1.0), weight: 60),
+    ]).animate(CurvedAnimation(parent: _bounceController, curve: Curves.easeOut));
   }
 
   @override
-  void didUpdateWidget(TrackCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.isLiked != widget.isLiked) {
-      setState(() {
-        _isLiked = widget.isLiked;
-      });
-    }
+  void didUpdateWidget(TrackCard old) {
+    super.didUpdateWidget(old);
+    if (old.isLiked != widget.isLiked) _isLiked = widget.isLiked;
   }
 
   @override
   void dispose() {
     _bounceController.dispose();
     super.dispose();
+  }
+
+  void _toggleLike() {
+    setState(() => _isLiked = !_isLiked);
+    widget.onLike?.call();
+    _bounceController.forward(from: 0);
   }
 
   String _formatDuration(int ms) {
@@ -90,191 +89,167 @@ class _TrackCardState extends State<TrackCard>
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
-  void _handleLike() {
-    setState(() {
-      _isLiked = !_isLiked;
-    });
-    widget.onLike?.call();
-
-    _bounceController
-      ..reset()
-      ..forward();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final pb = context.watch<PlaybackProvider>();
-    final backgroundColor = widget.selected
-        ? theme.colorScheme.primary.withOpacity(0.08)
-        : Colors.transparent;
+    final colors = context.colors;
+    final texts = context.texts;
+
+    final isPlaying = context.select<PlaybackProvider, bool>((pb) => pb.isPlaying);
+    final highlighted = widget.selected || widget.isActive;
 
     return Material(
-      color: backgroundColor,
+      color: highlighted ? colors.primaryContainer : colors.surfaceContainerLow,
+      borderRadius: AppRadius.medium,
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: widget.onPlay,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm + 2,
+            vertical: AppSpacing.sm,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Compact thumbnail or icon (always visible)
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: widget.artworkUrl != null && widget.artworkUrl!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: widget.artworkUrl!,
-                          width: 48,
-                          height: 48,
-                          fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(
-                            color: theme.colorScheme.surfaceVariant,
-                          ),
-                          errorWidget: (_, __, ___) => Container(
-                            color: theme.colorScheme.surfaceVariant,
-                            child: Icon(
-                              Icons.music_note,
-                              color: theme.colorScheme.primary,
-                              size: 20,
-                            ),
-                          ),
-                        )
-                      : Container(
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceVariant,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Icon(
-                            Icons.music_note,
-                            color: theme.colorScheme.primary,
-                            size: 20,
-                          ),
-                        ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Title and artist with equalizer indicator
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              Row(
+                children: [
+                  _Artwork(url: widget.artworkUrl, colors: colors),
+                  const SizedBox(width: AppSpacing.sm + 4),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Animated equalizer (if track is active and playing)
-                        if (widget.isActive && pb.isPlaying)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: AnimatedEqualizer(
-                              isPlaying: true,
-                              color: theme.colorScheme.primary,
-                              size: 14,
+                        Row(
+                          children: [
+                            if (widget.isActive && isPlaying)
+                              Padding(
+                                padding: const EdgeInsets.only(right: AppSpacing.xs + 2),
+                                child: AnimatedEqualizer(
+                                  isPlaying: true,
+                                  color: highlighted
+                                      ? colors.onPrimaryContainer
+                                      : colors.primary,
+                                  size: 14,
+                                ),
+                              ),
+                            Expanded(
+                              child: Text(
+                                widget.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: texts.titleSmall?.copyWith(
+                                  color: highlighted ? colors.onPrimaryContainer : null,
+                                  fontWeight:
+                                      widget.isActive ? FontWeight.w700 : FontWeight.w600,
+                                ),
+                              ),
                             ),
-                          ),
-                        Expanded(
-                          child: Text(
-                            widget.title,
+                          ],
+                        ),
+                        if (widget.artist.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.artist,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: widget.isActive
-                                  ? theme.colorScheme.primary
-                                  : theme.textTheme.bodyMedium?.color,
+                            style: texts.bodySmall?.copyWith(
+                              color: highlighted
+                                  ? colors.onPrimaryContainer.withValues(alpha: 0.75)
+                                  : colors.onSurfaceVariant,
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 2),
+                  ),
+                  if (widget.durationMs != null && widget.durationMs! > 0) ...[
+                    const SizedBox(width: AppSpacing.sm),
                     Text(
-                      widget.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+                      _formatDuration(widget.durationMs!),
+                      style: texts.bodySmall?.copyWith(
+                        color: highlighted
+                            ? colors.onPrimaryContainer.withValues(alpha: 0.75)
+                            : colors.onSurfaceVariant,
+                        // Моноширинные цифры: без них строки «3:07» и «3:11»
+                        // имеют разную ширину, и колонка длительностей
+                        // «дрожит» при прокрутке списка.
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
-                    if (widget.footer != null) ...[
-                      const SizedBox(height: 4),
-                      DefaultTextStyle(
-                        style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.textTheme.bodySmall?.color?.withOpacity(0.65),
-                            ) ?? const TextStyle(fontSize: 12),
-                        child: widget.footer!,
-                      ),
-                    ],
                   ],
-                ),
-              ),
-              if (widget.durationMs != null) ...[
-                const SizedBox(width: 10),
-                Text(
-                  _formatDuration(widget.durationMs!),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.55),
-                  ),
-                ),
-              ],
-              if (widget.trailing != null) ...[
-                const SizedBox(width: 10),
-                widget.trailing!,
-              ],
-              if (widget.showLike && widget.onLike != null) ...[
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: _handleLike,
-                  child: AnimatedBuilder(
-                    animation: _scaleAnimation,
-                    builder: (context, child) => Transform.scale(
-                      scale: _scaleAnimation.value,
-                      child: child,
+                  if (widget.showLike) ...[
+                    const SizedBox(width: AppSpacing.xs),
+                    ScaleTransition(
+                      scale: _bounce,
+                      child: IconButton(
+                        onPressed: _toggleLike,
+                        visualDensity: VisualDensity.compact,
+                        tooltip: _isLiked ? 'Убрать из любимых' : 'В любимые',
+                        icon: Icon(
+                          _isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                          size: 20,
+                          color: _isLiked ? colors.error : colors.onSurfaceVariant,
+                        ),
+                      ),
                     ),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      transitionBuilder: (child, animation) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                      child: Icon(
-                        _isLiked ? Icons.favorite : Icons.favorite_border,
-                        key: ValueKey(_isLiked),
-                        color: _isLiked
-                            ? theme.colorScheme.primary
-                            : theme.iconTheme.color,
+                  ],
+                  if (widget.showMore)
+                    IconButton(
+                      onPressed: widget.onMore,
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Ещё',
+                      icon: Icon(
+                        Icons.more_vert_rounded,
                         size: 20,
+                        color: colors.onSurfaceVariant,
                       ),
                     ),
-                  ),
-                ),
-              ],
-              if (widget.showMore && widget.onMore != null) ...[
-                const SizedBox(width: 10),
-                PopupMenuButton<String>(
-                  onSelected: (value) {
-                    widget.onMore?.call();
-                  },
-                  itemBuilder: (BuildContext context) => [
-                    const PopupMenuItem(
-                      value: 'share',
-                      child: Text('Share'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'add_to_playlist',
-                      child: Text('Add to Playlist'),
-                    ),
-                  ],
-                  child: Icon(
-                    Icons.more_vert,
-                    size: 20,
-                    color: theme.iconTheme.color,
-                  ),
-                ),
+                  if (widget.trailing != null) widget.trailing!,
+                ],
+              ),
+              if (widget.footer != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                widget.footer!,
               ],
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _Artwork extends StatelessWidget {
+  const _Artwork({required this.url, required this.colors});
+
+  final String? url;
+  final ColorScheme colors;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 48.0;
+
+    final placeholder = ColoredBox(
+      color: colors.surfaceContainerHighest,
+      child: Icon(Icons.music_note_rounded, color: colors.primary, size: 20),
+    );
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ClipRRect(
+        borderRadius: AppRadius.small,
+        child: url != null && url!.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: url!,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                placeholder: (_, _) => placeholder,
+                errorWidget: (_, _, _) => placeholder,
+              )
+            : placeholder,
       ),
     );
   }

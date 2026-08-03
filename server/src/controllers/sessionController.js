@@ -47,9 +47,7 @@ async function notifyInviteResponse({ toUserId, userId, accept, sessionId }) {
 }
 
 const createSessionSchema = z.object({
-  name: z.string().trim().min(1).max(100, 'Название не должно превышать 100 символов')
-    .optional()
-    .transform((v) => v && v.length > 0 ? v : 'Совместная сессия'),
+  name: z.string().max(100, 'Название не должно превышать 100 символов').optional(),
   friendId: z.string().min(1, 'friendId обязателен'),
 });
 
@@ -66,7 +64,7 @@ const addTracksBodySchema = z.object({
     z.object({
       spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
       trackName: z.string().min(1, 'trackName обязателен'),
-      artistName: z.string().nullable().optional().transform((v) => v ?? ''),
+      artistName: z.string().optional().default(''),
       imageUrl: httpUrlSchema.optional().nullable(),
       durationMs: z.number().int().positive().optional().nullable(),
     })
@@ -178,7 +176,13 @@ const getMySessions = asyncHandler(async (req, res) => {
             user: { select: { id: true, username: true, spotifyUser: { select: { avatarUrl: true } } } },
           },
         },
-        tracks: { include: { addedBy: { select: { username: true } } } },
+        tracks: {
+          include: {
+            addedBy: { select: { username: true } },
+            ratings: { select: { userId: true, rating: true } },
+          },
+          orderBy: { addedAt: 'asc' },
+        },
       },
     });
   });
@@ -303,6 +307,7 @@ const rateTrack = asyncHandler(async (req, res) => {
       create: { trackId, userId, rating },
     });
 
+
     try {
       await addNotificationJob({
         type: 'track_rated',
@@ -422,7 +427,11 @@ const getMyInvites = asyncHandler(async (req, res) => {
 
   const invites = await getOrSet(`db:invites-list:${userId}`, 'list', 30, async () => {
     const invitesData = await prisma.sessionMember.findMany({
-      where: { userId, status: 'pending' },
+      where: {
+        userId,
+        status: 'pending',
+        session: { isActive: true },
+      },
       include: {
         session: {
           include: {

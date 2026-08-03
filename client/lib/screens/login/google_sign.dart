@@ -51,12 +51,12 @@ class GoogleSignInButton extends StatelessWidget {
     final api = ApiService();
     final completer = Completer<Map<String, dynamic>?>();
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8181);
-    print('Local server started on port 8181');
+    debugPrint('Local server started on port 8181');
 
     final authUrl = Uri.parse(
       '${api.baseUrl}/auth/google-web?returnTo=http://localhost:8181/callback',
     );
-    print('Opening URL: $authUrl');
+    debugPrint('Opening URL: $authUrl');
 
     await launchUrl(authUrl, mode: LaunchMode.externalApplication);
 
@@ -78,15 +78,15 @@ class GoogleSignInButton extends StatelessWidget {
       onTimeout: () { server.close(); return null; },
     );
 
-    print('Auth result: $result');
+    debugPrint('Auth result: $result');
 
     if (result != null && context.mounted) {
   final auth = Provider.of<AuthProvider>(context, listen: false);
   final token = result['token'] as String?;
   final cookie = result['cookie'] as String?;
   
-  print('token: $token');
-  print('cookie: $cookie');
+  debugPrint('token: $token');
+  debugPrint('cookie: $cookie');
   
   if (token != null && token.isNotEmpty) {
     auth.setCookie(token);
@@ -95,14 +95,14 @@ class GoogleSignInButton extends StatelessWidget {
   }
   
   await auth.fetchMe();
-  print('isLoggedIn: ${auth.isLoggedIn}');
+  debugPrint('isLoggedIn: ${auth.isLoggedIn}');
   
   if (auth.isLoggedIn && context.mounted) {
     Navigator.of(context).pushReplacementNamed('/home');
   }
 }
   } catch (e) {
-    print('Windows Google Sign-In error: $e');
+    debugPrint('Windows Google Sign-In error: $e');
     if (context.mounted) {
       showAppNotification(context, message: 'Ошибка входа: $e', type: NotificationType.error);
     }
@@ -117,9 +117,8 @@ class GoogleSignInButton extends StatelessWidget {
       );
 
       final account = await GoogleSignIn.instance.authenticate();
-      if (account == null) return;
 
-      final googleAuth = await account.authentication;
+      final googleAuth = account.authentication;
       final idToken = googleAuth.idToken;
 
       if (idToken == null) {
@@ -153,7 +152,7 @@ class GoogleSignInButton extends StatelessWidget {
 
       onSignInSuccess();
     } catch (e) {
-      print('Google Sign-In error: $e');
+      debugPrint('Google Sign-In error: $e');
       if (context.mounted) {
         showAppNotification(context, message: 'Ошибка входа: $e', type: NotificationType.error);
       }

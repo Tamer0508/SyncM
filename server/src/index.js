@@ -41,12 +41,36 @@ if (process.env.NODE_ENV === 'production' && allowedOrigins.length === 0) {
   throw new Error('КРИТИЧЕСКАЯ ОШИБКА: CLIENT_ORIGINS не задан в .env (нужен хотя бы один разрешённый origin)');
 }
 
+const LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+const allowLoopbackOrigins = process.env.NODE_ENV !== 'production';
+
 function corsOriginCheck(origin, callback) {
   if (!origin) return callback(null, true);
   if (allowedOrigins.includes(origin)) return callback(null, true);
+  if (allowLoopbackOrigins && LOOPBACK_ORIGIN.test(origin)) return callback(null, true);
+
+  logger.warn({ origin }, 'CORS: origin not allowed');
   const err = new Error(`Origin ${origin} not allowed by CORS`);
   err.statusCode = 403;
   return callback(err);
+}
+
+const googleVars = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'];
+const missingGoogleVars = googleVars.filter((name) => !process.env[name]);
+if (missingGoogleVars.length > 0) {
+  logger.warn(
+    { missing: missingGoogleVars },
+    'Вход через Google в браузере работать не будет: не заданы переменные окружения'
+  );
+}
+
+const spotifyVars = ['SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET', 'SPOTIFY_REDIRECT_URI'];
+const missingSpotifyVars = spotifyVars.filter((name) => !process.env[name]);
+if (missingSpotifyVars.length > 0) {
+  logger.warn(
+    { missing: missingSpotifyVars },
+    'Подключение Spotify работать не будет: не заданы переменные окружения'
+  );
 }
 
 initQueues();

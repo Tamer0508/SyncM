@@ -1,17 +1,18 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../providers/friends_provider.dart';
-import '../../services/api_service.dart';
-import '../../utils/notifications.dart';
+import '../../theme.dart';
+import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/tappable_avatar.dart';
 
 class FriendRequestsScreen extends StatefulWidget {
+  const FriendRequestsScreen({super.key, this.embedded = false, this.onBack});
+
   final bool embedded;
   final VoidCallback? onBack;
-
-  const FriendRequestsScreen({Key? key, this.embedded = false, this.onBack})
-      : super(key: key);
 
   @override
   State<FriendRequestsScreen> createState() => _FriendRequestsScreenState();
@@ -24,7 +25,8 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final prov = Provider.of<FriendsProvider>(context, listen: false);
+      if (!mounted) return;
+      final prov = context.read<FriendsProvider>();
       prov.markAsRead();
       prov.fetchIncomingRequests(refresh: true);
     });
@@ -34,74 +36,51 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     if (_loadingIds.contains(requestId)) return;
     setState(() => _loadingIds.add(requestId));
     try {
-      await Provider.of<FriendsProvider>(context, listen: false)
-          .acceptRequest(requestId);
-    } catch (e) {
-      if (mounted) {
-        final msg =
-            (e is ApiException) ? e.userMessage : 'Ошибка принятия заявки';
-        showAppNotification(context,
-            message: msg, type: NotificationType.error);
-      }
+      await context.read<FriendsProvider>().acceptRequest(requestId);
+      if (!mounted) return;
+      showSuccess(context, 'Заявка принята');
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
     } finally {
       if (mounted) setState(() => _loadingIds.remove(requestId));
     }
   }
 
-  Future<void> _declineRequest(String requestId) async {
+  Future<void> _declineRequest(String requestId, String senderName) async {
     if (_loadingIds.contains(requestId)) return;
-    final confirm = await showDialog<bool>(
+
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
-        final theme = Theme.of(ctx);
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Icon(Icons.person_remove, color: theme.colorScheme.error),
-              const SizedBox(width: 12),
-              Text('Отклонить запрос?',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-            ],
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.person_remove_rounded, color: ctx.colors.error),
+        title: const Text('Отклонить заявку?'),
+        content: Text('$senderName не увидит, что вы отклонили заявку.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
           ),
-          content: const Text(
-              'Этот пользователь больше не сможет отправлять вам запросы.'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Отмена')),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.error,
-                foregroundColor: theme.colorScheme.onError,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text('Отклонить'),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: ctx.colors.error,
+              foregroundColor: ctx.colors.onError,
             ),
-          ],
-        );
-      },
+            child: const Text('Отклонить'),
+          ),
+        ],
+      ),
     );
-    if (confirm != true || !mounted) return;
+
+    if (confirmed != true || !mounted) return;
 
     setState(() => _loadingIds.add(requestId));
     try {
-      await Provider.of<FriendsProvider>(context, listen: false)
-          .deleteRequest(requestId);
-      // Обновляем список
-      Provider.of<FriendsProvider>(context, listen: false)
-          .fetchIncomingRequests(refresh: true);
-    } catch (e) {
-      if (mounted) {
-        final msg =
-            (e is ApiException) ? e.userMessage : 'Ошибка отклонения заявки';
-        showAppNotification(context,
-            message: msg, type: NotificationType.error);
-      }
+      await context.read<FriendsProvider>().deleteRequest(requestId);
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
     } finally {
       if (mounted) setState(() => _loadingIds.remove(requestId));
     }
@@ -109,134 +88,101 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final enablePullToRefresh = !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS);
 
-    Widget buildContent(FriendsProvider prov) {
-      final isLoading = prov.incomingLoading && prov.incomingRequests.isEmpty;
-      final isEmpty = prov.incomingRequests.isEmpty && !prov.incomingLoading;
-
-      if (isLoading) {
-        return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height - kToolbarHeight,
-            child: const Center(child: CircularProgressIndicator()),
-          ),
-        );
-      }
-
-      if (isEmpty) {
-        return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height - kToolbarHeight,
-            child: _EmptyRequestsView(theme: theme),
-          ),
-        );
-      }
-
-      return _RequestsList(
-        theme: theme,
-        requests: prov.incomingRequests,
-        hasMore: prov.hasMoreIncoming,
-        isLoadingMore: prov.incomingLoading,
-        loadingIds: _loadingIds,
-        onLoadMore: () => prov.fetchIncomingRequests(),
-        onAccept: _acceptRequest,
-        onDecline: _declineRequest,
-      );
-    }
-
     final body = Consumer<FriendsProvider>(
       builder: (context, prov, _) {
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: buildContent(prov),
+        final isInitialLoad = prov.incomingLoading && prov.incomingRequests.isEmpty;
+
+        if (isInitialLoad) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (prov.incomingRequests.isEmpty) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: const [
+              SizedBox(height: 80),
+              _EmptyRequestsView(),
+            ],
+          );
+        }
+
+        return _RequestsList(
+          requests: prov.incomingRequests,
+          hasMore: prov.hasMoreIncoming,
+          isLoadingMore: prov.incomingLoading,
+          loadingIds: _loadingIds,
+          onLoadMore: prov.fetchIncomingRequests,
+          onAccept: _acceptRequest,
+          onDecline: _declineRequest,
         );
       },
     );
 
-    // Встроенный режим — возвращаем только содержимое
-    if (widget.embedded) {
-      return body;
-    }
+    final content = enablePullToRefresh
+        ? RefreshIndicator(
+            onRefresh: () =>
+                context.read<FriendsProvider>().fetchIncomingRequests(refresh: true),
+            child: body,
+          )
+        : body;
 
-    // Полноэкранный режим (мобильные устройства или отдельная страница)
+    if (widget.embedded) return content;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Запросы в друзья'),
+        title: const Text('Заявки в друзья'),
         actions: [
           AppIconButton(
-            icon: Icons.refresh,
+            icon: Icons.refresh_rounded,
             tooltip: 'Обновить',
-            onPressed: () {
-              final prov =
-                  Provider.of<FriendsProvider>(context, listen: false);
-              prov.fetchIncomingRequests(refresh: true);
-            },
+            onPressed: () =>
+                context.read<FriendsProvider>().fetchIncomingRequests(refresh: true),
           ),
         ],
       ),
-      body: enablePullToRefresh
-          ? RefreshIndicator(
-              onRefresh: () => Provider.of<FriendsProvider>(context, listen: false)
-                  .fetchIncomingRequests(refresh: true),
-              child: body,
-            )
-          : body,
+      body: content,
     );
   }
 }
 
 class _EmptyRequestsView extends StatelessWidget {
-  final ThemeData theme;
-  const _EmptyRequestsView({required this.theme});
+  const _EmptyRequestsView();
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.person_add_disabled,
-                size: 80,
-                color: theme.colorScheme.primary.withOpacity(0.4)),
-            const SizedBox(height: 24),
-            Text('Запросов нет',
-                style: theme.textTheme.titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 12),
-            Text(
-              'Когда кто-то захочет добавить вас в друзья, запрос появится здесь.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.textTheme.bodySmall?.color?.withOpacity(0.75),
-              ),
-            ),
-          ],
-        ),
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.mark_email_read_rounded,
+            size: 72,
+            color: colors.primary.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Text('Заявок нет', style: texts.titleLarge, textAlign: TextAlign.center),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Когда кто-то захочет добавить вас в друзья, заявка появится здесь.',
+            textAlign: TextAlign.center,
+            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _RequestsList extends StatelessWidget {
-  final ThemeData theme;
-  final List<Map<String, dynamic>> requests;
-  final bool hasMore;
-  final bool isLoadingMore;
-  final Set<String> loadingIds;
-  final VoidCallback onLoadMore;
-  final Function(String) onAccept;
-  final Function(String) onDecline;
-
   const _RequestsList({
-    required this.theme,
     required this.requests,
     required this.hasMore,
     required this.isLoadingMore,
@@ -246,111 +192,143 @@ class _RequestsList extends StatelessWidget {
     required this.onDecline,
   });
 
+  final List<Map<String, dynamic>> requests;
+  final bool hasMore;
+  final bool isLoadingMore;
+  final Set<String> loadingIds;
+  final VoidCallback onLoadMore;
+  final void Function(String requestId) onAccept;
+  final void Function(String requestId, String senderName) onDecline;
+
   @override
   Widget build(BuildContext context) {
+    final showFooter = hasMore || isLoadingMore;
+
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: requests.length + (hasMore || isLoadingMore ? 1 : 0),
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, i) {
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.xl,
+      ),
+      itemCount: requests.length + (showFooter ? 1 : 0),
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm + 4),
+      itemBuilder: (context, i) {
         if (i >= requests.length) {
           if (isLoadingMore) {
             return const Padding(
-              padding: EdgeInsets.all(16),
+              padding: EdgeInsets.all(AppSpacing.md),
               child: Center(child: CircularProgressIndicator()),
             );
           }
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: OutlinedButton(
-              onPressed: onLoadMore,
-              style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text('Загрузить ещё'),
-            ),
+          return OutlinedButton(
+            onPressed: onLoadMore,
+            child: const Text('Загрузить ещё'),
           );
         }
 
-        final r = requests[i];
-        final requestId = r['id'] as String;
-        final sender = r['sender'] as Map<String, dynamic>?;
-        final isLoading = loadingIds.contains(requestId);
+        final request = requests[i];
+        final requestId = request['id'] as String;
+        final sender = request['sender'] as Map<String, dynamic>?;
+        final senderName = sender?['displayName'] as String? ?? 'Пользователь';
+        final avatarUrl = sender?['avatarUrl'] as String?;
 
-        return Card(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          elevation: 0,
-          color: theme.cardColor,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+        return _RequestCard(
+          requestId: requestId,
+          senderName: senderName,
+          avatarUrl: avatarUrl,
+          isLoading: loadingIds.contains(requestId),
+          onAccept: () => onAccept(requestId),
+          onDecline: () => onDecline(requestId, senderName),
+        );
+      },
+    );
+  }
+}
+
+class _RequestCard extends StatelessWidget {
+  const _RequestCard({
+    required this.requestId,
+    required this.senderName,
+    required this.avatarUrl,
+    required this.isLoading,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  final String requestId;
+  final String senderName;
+  final String? avatarUrl;
+  final bool isLoading;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: AppRadius.large,
+      ),
+      child: Row(
+        children: [
+          TappableAvatar(
+            imageUrl: avatarUrl,
+            radius: 26,
+            title: senderName,
+            heroTag: 'request-$requestId',
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: theme.colorScheme.surfaceVariant,
-                  backgroundImage: sender?['avatarUrl'] != null &&
-                          sender!['avatarUrl']!.isNotEmpty
-                      ? NetworkImage(sender!['avatarUrl'])
-                      : null,
-                  child: sender?['avatarUrl'] == null ||
-                          sender!['avatarUrl']!.isEmpty
-                      ? Icon(Icons.person, color: theme.colorScheme.primary)
-                      : null,
+                Text(
+                  senderName,
+                  style: texts.titleMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        sender?['displayName'] ?? 'Неизвестный',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Хочет добавить вас в друзья',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color:
-                              theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-                        ),
-                      ),
-                    ],
-                  ),
+                const SizedBox(height: 2),
+                Text(
+                  'Хочет добавить вас в друзья',
+                  style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
                 ),
-                if (isLoading)
-                  SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: theme.colorScheme.primary),
-                  )
-                else
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AppIconButton(
-                        icon: Icons.check_circle,
-                        color: theme.colorScheme.primary,
-                        tooltip: 'Принять',
-                        onPressed: () => onAccept(requestId),
-                      ),
-                      const SizedBox(width: 4),
-                      AppIconButton(
-                        icon: Icons.close,
-                        color: theme.colorScheme.error,
-                        tooltip: 'Отклонить',
-                        onPressed: () => onDecline(requestId),
-                      ),
-                    ],
-                  ),
               ],
             ),
           ),
-        );
-      },
+          const SizedBox(width: AppSpacing.sm),
+          if (isLoading)
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  onPressed: onDecline,
+                  icon: const Icon(Icons.close_rounded),
+                  tooltip: 'Отклонить',
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                IconButton.filled(
+                  onPressed: onAccept,
+                  icon: const Icon(Icons.check_rounded),
+                  tooltip: 'Принять',
+                ),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }

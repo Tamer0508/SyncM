@@ -1,0 +1,159 @@
+import 'dart:typed_data';
+import 'dart:ui' show ImageByteFormat;
+
+import 'package:crop_image/crop_image.dart';
+import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
+
+import '../../theme.dart';
+
+class AvatarCropScreen extends StatefulWidget {
+  const AvatarCropScreen({super.key, required this.imageBytes});
+
+  final Uint8List imageBytes;
+
+  static const int outputSize = 512;
+
+  @override
+  State<AvatarCropScreen> createState() => _AvatarCropScreenState();
+}
+
+class _AvatarCropScreenState extends State<AvatarCropScreen> {
+  late final CropController _controller;
+  bool _processing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = CropController(
+      aspectRatio: 1,
+      defaultCrop: const Rect.fromLTRB(0.1, 0.1, 0.9, 0.9),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _apply() async {
+    setState(() => _processing = true);
+    try {
+      final cropped = await _controller.croppedBitmap();
+      final byteData = await cropped.toByteData(format: ImageByteFormat.png);
+      if (byteData == null) throw StateError('Не удалось получить данные изображения');
+
+      final raw = byteData.buffer.asUint8List();
+      final resized = _resize(raw, AvatarCropScreen.outputSize);
+
+      if (!mounted) return;
+      Navigator.of(context).pop(resized);
+    } catch (err) {
+      if (!mounted) return;
+      setState(() => _processing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось обработать изображение')),
+      );
+    }
+  }
+
+  Uint8List _resize(Uint8List source, int size) {
+    final decoded = img.decodeImage(source);
+    if (decoded == null) return source;
+    if (decoded.width <= size && decoded.height <= size) return source;
+
+    final resized = img.copyResize(
+      decoded,
+      width: size,
+      height: size,
+      interpolation: img.Interpolation.average,
+    );
+    return Uint8List.fromList(img.encodePng(resized, level: 6));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        title: const Text('Кадрирование'),
+        actions: [
+          TextButton(
+            onPressed: _processing ? null : _apply,
+            child: _processing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Готово', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: CropImage(
+                controller: _controller,
+                image: Image.memory(widget.imageBytes),
+                gridColor: Colors.white70,
+                gridCornerSize: 28,
+                gridThinWidth: 1,
+                gridThickWidth: 4,
+                // Затемнение вне рамки: без него трудно понять, что именно
+                // попадёт в кадр.
+                scrimColor: Colors.black.withValues(alpha: 0.55),
+                alwaysShowThirdLines: true,
+                minimumImageSize: 64,
+              ),
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.md,
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Область всегда квадратная — так аватар выглядит одинаково везде.',
+                    textAlign: TextAlign.center,
+                    style: context.texts.bodySmall?.copyWith(color: Colors.white70),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      TextButton.icon(
+                        onPressed: _processing
+                            ? null
+                            : () => _controller.rotateLeft(),
+                        icon: const Icon(Icons.rotate_left_rounded, color: Colors.white),
+                        label: const Text('Влево', style: TextStyle(color: Colors.white)),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      TextButton.icon(
+                        onPressed: _processing
+                            ? null
+                            : () => _controller.rotateRight(),
+                        icon: const Icon(Icons.rotate_right_rounded, color: Colors.white),
+                        label: const Text('Вправо', style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

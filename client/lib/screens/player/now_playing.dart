@@ -1,226 +1,144 @@
-﻿import 'dart:async';
-import 'dart:math';
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
 import '../../providers/playback_provider.dart';
-import '../../widgets/app_icon_button.dart';
+import '../../theme.dart';
 
+/// Приглушённый свет на заднем плане плеера, окрашенный обложкой трека.
+///
+/// Заменяет прежний фон из сетки соединённых точек и слоя концентрических
+/// кругов. Сетка узлов с линиями — приём настолько растиражированный, что
+/// читается как оформление по умолчанию; вдобавок она перерисовывала полсотни
+/// точек и связей между ними каждый кадр, а вместе с ней в том же CustomPaint
+/// крутились два независимых контроллера анимации.
+///
+/// Здесь три пятна света, размытые по Гауссу и медленно смещающиеся. Цвета
+/// приходят из палитры обложки, поэтому фон меняется вместе с треком.
 class _AnimatedGlowBackground extends StatefulWidget {
-  final Color dominantColor;
-  final Color vibrantColor;
-
   const _AnimatedGlowBackground({
-    Key? key,
     required this.dominantColor,
     required this.vibrantColor,
-  }) : super(key: key);
+  });
+
+  final Color dominantColor;
+  final Color vibrantColor;
 
   @override
   State<_AnimatedGlowBackground> createState() => _AnimatedGlowBackgroundState();
 }
 
 class _AnimatedGlowBackgroundState extends State<_AnimatedGlowBackground>
-    with TickerProviderStateMixin {
-  late final AnimationController _circlesController;
-  late final AnimationController _particlesController;
-  final _random = Random(42);
-  late final List<_Particle> _particles;
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-    _circlesController = AnimationController(
+    // Один контроллер вместо двух: прежний фон крутил отдельные анимации для
+    // частиц и для кругов, и обе перерисовывались независимо.
+    _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 60),
+      duration: const Duration(seconds: 48),
     )..repeat();
-    _particlesController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 40),
-    )..repeat();
-    _particles = List.generate(60, (_) => _Particle(_random));
   }
 
   @override
   void dispose() {
-    _circlesController.dispose();
-    _particlesController.dispose();
+    _controller.dispose();
     super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(_AnimatedGlowBackground oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // При смене трека цвета в widget уже обновлены (через _setTargetColors
-    // родителя), но CustomPaint перерисовывается только на тике контроллера —
-    // раз в 60 секунд. Форсируем rebuild немедленно.
-    if (oldWidget.dominantColor != widget.dominantColor ||
-        oldWidget.vibrantColor != widget.vibrantColor) {
-      setState(() {});
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseDominant = widget.dominantColor;
-    final baseVibrant = widget.vibrantColor;
 
-    final circleColors = [
-      baseDominant.withOpacity(isDark ? 0.45 : 0.5),
-      baseVibrant.withOpacity(isDark ? 0.35 : 0.4),
-      baseDominant.withOpacity(isDark ? 0.25 : 0.35),
-    ];
-
-    final particleBaseColor =
-        isDark ? baseVibrant.withOpacity(0.45) : baseDominant.withOpacity(0.28);
-    final lineColor =
-        isDark ? baseVibrant.withOpacity(0.15) : baseDominant.withOpacity(0.12);
-
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: AnimatedBuilder(
-            animation: _circlesController,
-            builder: (_, __) => CustomPaint(
-              painter: _CircleLayerPainter(
-                animationValue: _circlesController.value,
-                colors: circleColors,
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(sigmaX: 100, sigmaY: 100),
+            child: CustomPaint(
+              painter: _GlowPainter(
+                progress: _controller.value,
+                dominant: widget.dominantColor,
+                vibrant: widget.vibrantColor,
+                // В тёмной теме свет заметнее из-за контраста с фоном,
+                // поэтому яркость там ниже — иначе пятна выглядят как
+                // подсветка, а не как рассеянный свет.
+                opacity: isDark ? 0.30 : 0.38,
               ),
-              size: Size.infinite,
             ),
-          ),
-        ),
-        Positioned.fill(
-          child: AnimatedBuilder(
-            animation: _particlesController,
-            builder: (_, __) => CustomPaint(
-              painter: _ParticleNetworkPainter(
-                animationValue: _particlesController.value,
-                particles: _particles,
-                particleColor: particleBaseColor,
-                lineColor: lineColor,
-              ),
-              size: Size.infinite,
-            ),
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 }
 
-class _Particle {
-  double x, y;
-  final double speed, radius, opacity, phase, connectionRadius;
-  _Particle(Random random)
-      : x = random.nextDouble(),
-        y = random.nextDouble(),
-        speed = 0.08 + random.nextDouble() * 0.06,
-        radius = 1.4 + random.nextDouble() * 2.8,
-        opacity = 0.35 + random.nextDouble() * 0.45,
-        phase = random.nextDouble() * 2 * pi,
-        connectionRadius = 0.12 + random.nextDouble() * 0.14;
-}
-
-class _ParticleNetworkPainter extends CustomPainter {
-  final double animationValue;
-  final List<_Particle> particles;
-  final Color particleColor;
-  final Color lineColor;
-
-  _ParticleNetworkPainter({
-    required this.animationValue,
-    required this.particles,
-    required this.particleColor,
-    required this.lineColor,
+class _GlowPainter extends CustomPainter {
+  _GlowPainter({
+    required this.progress,
+    required this.dominant,
+    required this.vibrant,
+    required this.opacity,
   });
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final particlePaint = Paint()..style = PaintingStyle.fill;
-    final linePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.6;
-    final positions = <Offset>[];
-
-    for (final p in particles) {
-      final dx = (animationValue * p.speed * 2 * pi + p.phase);
-      final dy = (animationValue * p.speed * 3 * pi + p.phase * 1.7);
-      final nx = (p.x + 0.60 * sin(dx)) % 1.0;
-      final ny = (p.y + 0.60 * cos(dy)) % 1.0;
-      positions.add(Offset(nx * size.width, ny * size.height));
-    }
-
-    for (int i = 0; i < positions.length; i++) {
-      for (int j = i + 1; j < positions.length; j++) {
-        final d = (positions[i] - positions[j]).distance;
-        final maxDist = size.width * particles[i].connectionRadius;
-        if (d < maxDist) {
-          final opacity = (1 - d / maxDist) * 0.4;
-          linePaint.color = lineColor.withOpacity(opacity.clamp(0.0, 1.0));
-          canvas.drawLine(positions[i], positions[j], linePaint);
-        }
-      }
-    }
-
-    for (int i = 0; i < particles.length; i++) {
-      particlePaint.color = particleColor.withOpacity(particles[i].opacity);
-      canvas.drawCircle(positions[i], particles[i].radius, particlePaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_ParticleNetworkPainter oldDelegate) =>
-      oldDelegate.animationValue != animationValue ||
-      oldDelegate.particleColor != particleColor ||
-      oldDelegate.lineColor != lineColor;
-}
-
-class _CircleLayerPainter extends CustomPainter {
-  final double animationValue;
-  final List<Color> colors;
-
-  _CircleLayerPainter({required this.animationValue, required this.colors});
+  final double progress;
+  final Color dominant;
+  final Color vibrant;
+  final double opacity;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.fill
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 55);
-    final positions = [
-      Offset(size.width * 0.25, size.height * 0.3),
-      Offset(size.width * 0.75, size.height * 0.65),
-      Offset(size.width * 0.5, size.height * 0.5),
-    ];
-    final radii = [
-      160.0 + 40 * sin(animationValue * 2 * pi),
-      200.0 + 60 * cos(animationValue * 2 * pi + 1),
-      180.0 + 50 * sin(animationValue * 2 * pi + 2),
-    ];
-    for (int i = 0; i < positions.length; i++) {
-      final t = animationValue * 2 * pi;
-      final cx = positions[i].dx + 30 * sin(t + i);
-      final cy = positions[i].dy + 30 * cos(t + i * 1.3);
-      paint.color = colors[i % colors.length];
-      canvas.drawCircle(Offset(cx, cy), radii[i], paint);
+    final t = progress * 2 * math.pi;
+    final shortest = size.shortestSide;
+
+    void glow(Offset center, double radius, Color color) {
+      canvas.drawCircle(center, radius, Paint()..color = color.withValues(alpha: opacity));
     }
+
+    // Периоды не кратны друг другу — картина не повторяется заметным циклом.
+    glow(
+      Offset(size.width * (0.22 + 0.12 * math.sin(t)),
+          size.height * (0.20 + 0.07 * math.cos(t * 0.8))),
+      shortest * 0.85,
+      dominant,
+    );
+    glow(
+      Offset(size.width * (0.82 + 0.10 * math.cos(t * 0.6)),
+          size.height * (0.42 + 0.10 * math.sin(t * 0.9))),
+      shortest * 0.70,
+      vibrant,
+    );
+    glow(
+      Offset(size.width * (0.50 + 0.14 * math.sin(t * 0.45 + 1.2)),
+          size.height * (0.88 + 0.06 * math.cos(t * 0.7))),
+      shortest * 0.75,
+      dominant,
+    );
   }
 
   @override
-  bool shouldRepaint(_CircleLayerPainter oldDelegate) =>
-      oldDelegate.animationValue != animationValue;
+  bool shouldRepaint(_GlowPainter old) =>
+      old.progress != progress ||
+      old.opacity != opacity ||
+      old.dominant != dominant ||
+      old.vibrant != vibrant;
 }
+
 
 class NowPlayingScreen extends StatefulWidget {
   final String? title;
   final String? artist;
   final String? artworkUrl;
 
-  const NowPlayingScreen({Key? key, this.title, this.artist, this.artworkUrl})
-      : super(key: key);
+  const NowPlayingScreen({super.key, this.title, this.artist, this.artworkUrl});
 
   @override
   State<NowPlayingScreen> createState() => _NowPlayingScreenState();
@@ -250,10 +168,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   // бы на нейтральных цветах до следующей смены трека.
   int? _lastPaletteImageSig;
 
+  /// Номер текущего запроса палитры — для отбрасывания устаревших результатов.
+  int _paletteRequest = 0;
+
+  /// Сохранённая ссылка на провайдер для безопасного использования в dispose.
+  PlaybackProvider? _playback;
+
   @override
   void initState() {
     super.initState();
-    _positionMs = Provider.of<PlaybackProvider>(context, listen: false).positionMs;
+    final pb = Provider.of<PlaybackProvider>(context, listen: false);
+    _playback = pb;
+    _positionMs = pb.positionMs;
+
+    // Сообщаем оболочке, что открыт полноэкранный плеер: мини-плеер внизу
+    // должен уйти. Через postFrameCallback, потому что notifyListeners во
+    // время построения дерева вызывает исключение.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      pb.setFullScreenPlayerOpen(true);
+    });
     _startTimer();
 
     _colorAnimController = AnimationController(
@@ -275,6 +208,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   @override
   void dispose() {
+    // Снимаем флаг: мини-плеер внизу должен вернуться после закрытия.
+    // Ссылка сохранена заранее: обращаться к Provider.of в dispose
+    // ненадёжно — дерево уже разбирается, и поиск провайдера может не
+    // удаться. Исключение при этом проглатывается, флаг остаётся поднятым,
+    // и мини-плеер не показывается больше никогда.
+    _playback?.setFullScreenPlayerOpen(false);
     _timer?.cancel();
     _colorAnimController.dispose();
     super.dispose();
@@ -375,6 +314,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       return;
     }
 
+    final request = ++_paletteRequest;
+
     try {
       final ImageProvider<Object> providerImg;
       if (imageBytes != null) {
@@ -385,17 +326,35 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
       final palette = await PaletteGenerator.fromImageProvider(
         providerImg,
-        size: const Size(150, 150), // Чуть уменьшили размер для ускорения парсинга
-        maximumColorCount: 12,
+        // 64×64 и 8 цветов вместо 150×150 и 12.
+        //
+        // Квантование выполняется в основном потоке, и его стоимость растёт
+        // пропорционально числу точек: 150×150 — это больше двадцати тысяч
+        // пикселей, из-за которых фон заметно отставал от смены трека.
+        // Для размытого свечения такая точность избыточна — доминирующий
+        // цвет обложки при 64×64 практически тот же.
+        size: const Size(64, 64),
+        maximumColorCount: 8,
       );
 
+      // Поздний результат от предыдущего трека отбрасываем: при быстром
+      // переключении извлечения накладываются, и раньше побеждало то,
+      // которое завершилось последним, — не обязательно актуальное.
+      if (!mounted || request != _paletteRequest) return;
+
       if (cacheKey != null) {
+        // Кэш ограничен: за долгую сессию он рос без предела, удерживая
+        // палитры всех прослушанных обложек.
+        if (provider.paletteCache.length > 60) {
+          provider.paletteCache.remove(provider.paletteCache.keys.first);
+        }
         provider.paletteCache[cacheKey] = palette;
       }
 
-      if (!mounted) return;
       _applyPalette(palette, trackUri, provider);
-    } catch (e) {
+    } catch (err) {
+      // Обложка недоступна или повреждена — остаёмся на текущих цветах.
+      debugPrint('Palette extraction failed: $err');
     }
   }
 
@@ -496,210 +455,111 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         }
 
         return Scaffold(
-  body: Stack(
-    fit: StackFit.expand,
-    children: [
-      _AnimatedGlowBackground(
-        dominantColor: _displayDominant,
-        vibrantColor: _displayVibrant,
-      ),
-      
-      // ФИКС ЧИТАЕМОСТИ: Мягкое затемнение сверху и снизу
-      Positioned.fill(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withValues(alpha: 0.4), // Затемнение под заголовок
-                Colors.transparent,
-                Colors.transparent,
-                Colors.black.withValues(alpha: 0.55), // Затемнение под элементы управления
-              ],
-              stops: const [0.0, 0.25, 0.65, 1.0],
-            ),
-          ),
-        ),
-      ),
-              SafeArea(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Row(
-                        children: [
-                          AppIconButton(
-                            icon: Icons.keyboard_arrow_down_rounded,
-                            size: 32,
-                            color: Colors.white,
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
-                          const Spacer(),
-                          Text(
-                            'NOW PLAYING',
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              letterSpacing: 3,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white70,
-                            ),
-                          ),
-                          const Spacer(),
-                          const SizedBox(width: 48),
-                        ],
-                      ),
+          backgroundColor: Colors.transparent,
+          extendBodyBehindAppBar: true,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              _AnimatedGlowBackground(
+                dominantColor: _displayDominant,
+                vibrantColor: _displayVibrant,
+              ),
+
+              // Затемнение сверху и снизу — под шапку и под управление.
+              // Без него светлая обложка делает белый текст нечитаемым.
+              const Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0x66000000),
+                        Colors.transparent,
+                        Colors.transparent,
+                        Color(0x8C000000),
+                      ],
+                      stops: [0.0, 0.25, 0.6, 1.0],
                     ),
-                    const SizedBox(height: 24),
-                    
-                    // ФИКС №1: Красивый и надежный Cross-Fade обложек через AnimatedSwitcher
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 48),
-                      height: MediaQuery.of(context).size.width * 0.58,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _displayDominant.withOpacity(0.4),
-                            blurRadius: 40,
-                            spreadRadius: 5,
-                            offset: const Offset(0, 20),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 500),
-                          transitionBuilder: (child, animation) => FadeTransition(
-                            opacity: animation,
-                            child: child,
-                          ),
-                          child: Container(
-                          // ФИКС КЛЮЧА: теперь он уникален для каждой комбинации трека и его обложки
-                          key: ValueKey<String>('${currentUri ?? 'empty'}_${imageBytes != null ? 'bytes' : imageUrl ?? 'no_url'}'),
-                          width: double.infinity,
-                          height: double.infinity,
-                          child: imageBytes != null
-                                ? Image.memory(imageBytes, fit: BoxFit.cover)
-                                : imageUrl != null && imageUrl.isNotEmpty
-                                    ? Image.network(imageUrl, fit: BoxFit.cover)
-                                    : Container(
-                                        color: Colors.white12,
-                                        child: const Icon(Icons.music_note, size: 80, color: Colors.white38),
-                                      ),
+                  ),
+                ),
+              ),
+
+              SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Размер обложки считается от доступной ВЫСОТЫ, а не от
+                    // ширины экрана. Раньше стояло width * 0.58: на низком
+                    // окне (браузер, разделённый экран, открытая клавиатура)
+                    // обложка не помещалась и содержимое переполняло экран.
+                    final artSize = (constraints.maxHeight * 0.42)
+                        .clamp(140.0, constraints.maxWidth - 96);
+
+                    return Column(
+                      children: [
+                        _Header(onClose: () => Navigator.of(context).pop()),
+                        Expanded(
+                          child: Center(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _Artwork(
+                                    size: artSize,
+                                    glowColor: _displayDominant,
+                                    imageBytes: imageBytes,
+                                    imageUrl: imageUrl,
+                                    trackKey: '$currentUri|${imageBytes?.length ?? 0}',
+                                  ),
+                                  const SizedBox(height: AppSpacing.xl),
+                                  _TrackInfo(title: title, artist: artist),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            title,
-                            style: GoogleFonts.montserrat(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              letterSpacing: -0.5,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            0,
+                            AppSpacing.lg,
+                            AppSpacing.lg,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            artist,
-                            style: GoogleFonts.montserrat(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white60,
-                            ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _NowPlayingProgressBar(
+                                positionMs: _positionMs,
+                                durationMs: duration,
+                                accentColor: _displayVibrant,
+                                onSeekStart: () => setState(() => _dragging = true),
+                                onSeekChanged: (v) => setState(() => _positionMs = v),
+                                onSeekEnd: (v) {
+                                  setState(() {
+                                    _positionMs = v;
+                                    _dragging = false;
+                                  });
+                                  pb.seekTo(v);
+                                },
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              _Controls(
+                                isPlaying: pb.isPlaying,
+                                accentColor: _displayVibrant,
+                                onPrevious: pb.skipPrevious,
+                                onNext: pb.skipNext,
+                                onToggle: pb.togglePlay,
+                                isShuffle: pb.shuffleActive,
+                                repeatMode: pb.repeatMode,
+                                onShuffle: () => pb.setShuffle(!pb.shuffleActive),
+                                onRepeat: pb.cycleRepeatMode,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    // ФИКС №2: Передаем состояние изменения ползунка onChanged
-                    _NowPlayingProgressBar(
-                      positionMs: _positionMs,
-                      durationMs: duration,
-                      activeColor: _displayVibrant,
-                      onChanged: (ms) {
-                        setState(() {
-                          _dragging = true;
-                          _positionMs = ms;
-                        });
-                      },
-                      onSeek: (ms) {
-                        setState(() {
-                          _dragging = false;
-                          _positionMs = ms;
-                        });
-                        pb.seekTo(ms);
-                      },
-                      formatMs: _formatMs,
-                    ),
-                    
-                    const SizedBox(height: 20),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          AppIconButton(
-                            icon: Icons.shuffle,
-                            onPressed: () => pb.setShuffle(!pb.shuffleActive),
-                            color: pb.shuffleActive ? _displayVibrant : Colors.white70,
-                            size: 26,
-                          ),
-                          AppIconButton(
-                            icon: Icons.skip_previous,
-                            onPressed: () {
-                              setState(() => _positionMs = 0);
-                              pb.skipPrevious();
-                            },
-                            size: 36,
-                            color: Colors.white,
-                          ),
-                          Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _displayVibrant,
-                            ),
-                            child: AppIconButton(
-                              icon: pb.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                              onPressed: () => pb.togglePlay(),
-                              color: Colors.white,
-                              size: 30,
-                            ),
-                          ),
-                          AppIconButton(
-                            icon: Icons.skip_next,
-                            onPressed: () {
-                              setState(() => _positionMs = 0);
-                              pb.skipNext();
-                            },
-                            size: 36,
-                            color: Colors.white,
-                          ),
-                          AppIconButton(
-                            icon: pb.repeatMode == 'track' ? Icons.repeat_one : Icons.repeat,
-                            color: pb.repeatActive ? _displayVibrant : Colors.white70,
-                            size: 26,
-                            onPressed: () => pb.cycleRepeatMode(),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                  ],
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -708,63 +568,359 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       },
     );
   }
+
 }
 
-class _NowPlayingProgressBar extends StatelessWidget {
-  final int positionMs;
-  final int durationMs;
-  final Color activeColor;
-  final ValueChanged<int> onChanged; // Добавлено!
-  final ValueChanged<int> onSeek;
-  final String Function(int) formatMs;
+class _Header extends StatelessWidget {
+  const _Header({required this.onClose});
 
-  const _NowPlayingProgressBar({
-    required this.positionMs,
-    required this.durationMs,
-    required this.activeColor,
-    required this.onChanged,
-    required this.onSeek,
-    required this.formatMs,
-  });
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
-    // Пример реализации на базе стандартного Slider (или твоего плагина):
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+      child: Row(
         children: [
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: activeColor,
-              inactiveTrackColor: Colors.white12,
-              thumbColor: Colors.white,
-              trackHeight: 4,
-            ),
-            child: Slider(
-              value: positionMs.toDouble().clamp(0.0, durationMs.toDouble()),
-              min: 0.0,
-              max: durationMs.toDouble() == 0.0 ? 1.0 : durationMs.toDouble(),
-              onChanged: (value) {
-                onChanged(value.toInt()); // Сообщаем экрану, что мы начали тащить ползунок
-              },
-              onChangeEnd: (value) {
-                onSeek(value.toInt()); // Пользователь отпустил палец, делаем seek в аудио-движке
-              },
+          IconButton(
+            onPressed: onClose,
+            icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30),
+            color: Colors.white,
+            tooltip: 'Свернуть',
+          ),
+          Expanded(
+            child: Text(
+              // Русская подпись вместо «NOW PLAYING»: это была одна из
+              // немногих английских строк в интерфейсе.
+              'Сейчас играет',
+              textAlign: TextAlign.center,
+              style: context.texts.labelLarge?.copyWith(
+                letterSpacing: 2,
+                fontWeight: FontWeight.w600,
+                color: Colors.white70,
+              ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(formatMs(positionMs), style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                Text(formatMs(durationMs), style: const TextStyle(color: Colors.white60, fontSize: 12)),
-              ],
-            ),
-          )
+          // Пустая область той же ширины, что кнопка слева, — чтобы подпись
+          // оставалась строго по центру.
+          const SizedBox(width: 48),
         ],
       ),
+    );
+  }
+}
+
+class _Artwork extends StatelessWidget {
+  const _Artwork({
+    required this.size,
+    required this.glowColor,
+    required this.imageBytes,
+    required this.imageUrl,
+    required this.trackKey,
+  });
+
+  final double size;
+  final Color glowColor;
+  final Uint8List? imageBytes;
+  final String? imageUrl;
+  final String trackKey;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget image;
+    if (imageBytes != null) {
+      image = Image.memory(imageBytes!, fit: BoxFit.cover, gaplessPlayback: true);
+    } else if (imageUrl != null && imageUrl!.isNotEmpty) {
+      image = Image.network(imageUrl!, fit: BoxFit.cover);
+    } else {
+      image = ColoredBox(
+        color: Colors.white.withValues(alpha: 0.08),
+        child: const Icon(Icons.music_note_rounded, size: 64, color: Colors.white54),
+      );
+    }
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: AppRadius.large,
+          boxShadow: [
+            // Свечение цветом обложки под ней самой — приём, который делает
+            // изображение «источником света» на экране.
+            BoxShadow(
+              color: glowColor.withValues(alpha: 0.45),
+              blurRadius: 48,
+              spreadRadius: 4,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: AppRadius.large,
+          child: AnimatedSwitcher(
+            duration: AppMotion.long,
+            switchInCurve: AppMotion.emphasizedDecelerate,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              // Лёгкое увеличение при появлении: смена обложки читается как
+              // движение, а не как подмена картинки.
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 1.04, end: 1.0).animate(animation),
+                child: child,
+              ),
+            ),
+            child: SizedBox(key: ValueKey(trackKey), child: image),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackInfo extends StatelessWidget {
+  const _TrackInfo({required this.title, required this.artist});
+
+  final String title;
+  final String artist;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+      child: Column(
+        children: [
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            // headlineMedium вместо titleLarge: на экране плеера название
+            // трека — главное, и крупная типографика здесь уместна.
+            style: context.texts.headlineMedium?.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            artist,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.texts.titleMedium?.copyWith(color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Controls extends StatelessWidget {
+  const _Controls({
+    required this.isPlaying,
+    required this.accentColor,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onToggle,
+    required this.isShuffle,
+    required this.repeatMode,
+    required this.onShuffle,
+    required this.onRepeat,
+  });
+
+  final bool isPlaying;
+  final Color accentColor;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback onToggle;
+  final bool isShuffle;
+  final String repeatMode;
+  final VoidCallback onShuffle;
+  final VoidCallback onRepeat;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        // Перемешивание и повтор — второстепенные режимы: меньше размером и
+        // подсвечиваются только когда включены.
+        _ModeButton(
+          icon: Icons.shuffle_rounded,
+          isActive: isShuffle,
+          accentColor: accentColor,
+          tooltip: isShuffle ? 'Перемешивание включено' : 'Перемешать',
+          onPressed: onShuffle,
+        ),
+        IconButton(
+          onPressed: onPrevious,
+          icon: const Icon(Icons.skip_previous_rounded, size: 40),
+          color: Colors.white,
+          tooltip: 'Предыдущий трек',
+        ),
+        const SizedBox(width: AppSpacing.lg),
+        // Главная кнопка — крупная и залитая акцентным цветом обложки.
+        // Раньше все три кнопки были одинаковыми иконками, и центральная
+        // ничем не выделялась, хотя нажимают её чаще остальных.
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: accentColor.withValues(alpha: 0.5),
+                blurRadius: 28,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: IconButton(
+            onPressed: onToggle,
+            iconSize: 44,
+            padding: const EdgeInsets.all(AppSpacing.md),
+            tooltip: isPlaying ? 'Пауза' : 'Воспроизвести',
+            icon: AnimatedSwitcher(
+              duration: AppMotion.short,
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: CurvedAnimation(parent: animation, curve: AppMotion.spring),
+                child: child,
+              ),
+              child: Icon(
+                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                key: ValueKey(isPlaying),
+                color: Colors.black87,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.lg),
+        IconButton(
+          onPressed: onNext,
+          icon: const Icon(Icons.skip_next_rounded, size: 40),
+          color: Colors.white,
+          tooltip: 'Следующий трек',
+        ),
+        _ModeButton(
+          // Три состояния: выключен, повтор списка, повтор одного трека.
+          // Иконка меняется на repeat_one — по одному лишь цвету отличить
+          // повтор списка от повтора трека невозможно.
+          icon: repeatMode == 'track' ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+          isActive: repeatMode != 'off',
+          accentColor: accentColor,
+          tooltip: switch (repeatMode) {
+            'track' => 'Повтор одного трека',
+            'context' => 'Повтор списка',
+            _ => 'Повтор выключен',
+          },
+          onPressed: onRepeat,
+        ),
+      ],
+    );
+  }
+}
+
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({
+    required this.icon,
+    required this.isActive,
+    required this.accentColor,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final bool isActive;
+  final Color accentColor;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 24),
+      // Белый при включённом режиме, приглушённый при выключенном: акцентный
+      // цвет обложки бывает тёмным и на затемнённом фоне терялся бы.
+      color: isActive ? Colors.white : Colors.white38,
+      style: IconButton.styleFrom(
+        backgroundColor: isActive ? accentColor.withValues(alpha: 0.28) : null,
+      ),
+    );
+  }
+}
+
+class _NowPlayingProgressBar extends StatelessWidget {
+  const _NowPlayingProgressBar({
+    required this.positionMs,
+    required this.durationMs,
+    required this.accentColor,
+    required this.onSeekStart,
+    required this.onSeekChanged,
+    required this.onSeekEnd,
+  });
+
+  final int positionMs;
+  final int durationMs;
+  final Color accentColor;
+  final VoidCallback onSeekStart;
+  final ValueChanged<int> onSeekChanged;
+  final ValueChanged<int> onSeekEnd;
+
+  String _format(int ms) {
+    final totalSeconds = ms ~/ 1000;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final safeDuration = durationMs > 0 ? durationMs : 1;
+    final value = positionMs.clamp(0, safeDuration).toDouble();
+
+    return Column(
+      children: [
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: accentColor,
+            inactiveTrackColor: Colors.white24,
+            thumbColor: Colors.white,
+            overlayColor: accentColor.withValues(alpha: 0.2),
+            trackHeight: 4,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+          ),
+          child: Slider(
+            value: value,
+            max: safeDuration.toDouble(),
+            onChangeStart: (_) => onSeekStart(),
+            onChanged: (v) => onSeekChanged(v.round()),
+            onChangeEnd: (v) => onSeekEnd(v.round()),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _format(positionMs),
+                style: context.texts.bodySmall?.copyWith(
+                  color: Colors.white70,
+                  // Моноширинные цифры: иначе левая метка дёргается по
+                  // ширине на каждой секунде и «толкает» полосу.
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              Text(
+                _format(durationMs),
+                style: context.texts.bodySmall?.copyWith(
+                  color: Colors.white70,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

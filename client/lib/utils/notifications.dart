@@ -137,7 +137,7 @@ class _AnimatedNotificationState extends State<_AnimatedNotification>
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: widget.backgroundColor.withOpacity(0.3),
+                      color: widget.backgroundColor.withValues(alpha: 0.3),
                       blurRadius: 16,
                       offset: const Offset(0, 8),
                     ),

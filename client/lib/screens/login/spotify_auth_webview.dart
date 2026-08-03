@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import '../../services/api_service.dart';
 
 class SpotifyAuthWebView extends StatefulWidget {
   final String authUrl;
-  const SpotifyAuthWebView({Key? key, required this.authUrl}) : super(key: key);
+  const SpotifyAuthWebView({super.key, required this.authUrl});
 
   @override
   State<SpotifyAuthWebView> createState() => _SpotifyAuthWebViewState();

@@ -1,13 +1,16 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../services/api_service.dart';
-import '../../widgets/track_card.dart';
-import '../../widgets/app_icon_button.dart';
-import '../player/now_playing.dart';
+import '../../theme.dart';
+import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
+import '../../widgets/app_icon_button.dart';
+import '../../widgets/track_card.dart';
+import '../player/now_playing.dart';
 
 class PlaylistTracksScreen extends StatefulWidget {
   final String playlistId;
@@ -17,13 +20,13 @@ class PlaylistTracksScreen extends StatefulWidget {
   final bool embedded;
 
   const PlaylistTracksScreen({
-    Key? key,
+    super.key,
     required this.playlistId,
     required this.playlistName,
     this.imageUrl,
     this.isCustom = false,
     this.embedded = false,
-  }) : super(key: key);
+  });
 
   @override
   State<PlaylistTracksScreen> createState() => _PlaylistTracksScreenState();
@@ -37,6 +40,10 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   Map<String, bool> _likedMap = {};
 
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
+
+  static const _unavailableMessage =
+      'Spotify не отдаёт содержимое чужих плейлистов — доступны только ваши '
+      'собственные и совместные.';
 
   @override
   void initState() {
@@ -74,7 +81,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         }
       }
 
-      final tracks = rawTracks!; // теперь точно не null
+      final tracks = rawTracks; // теперь точно не null
 
       final likedTracks = await api.getLikedTracks();
       final Map<String, bool> likedMap = {};
@@ -89,7 +96,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = getUserFriendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -186,43 +193,54 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     final theme = Theme.of(context);
     final pb = Provider.of<PlaybackProvider>(context);
 
-    // SliverAppBar только для режима не-embedded (мобильные устройства)
     final Widget sliverAppBar;
     if (!widget.embedded) {
-      sliverAppBar = SliverAppBar(
-        expandedHeight: 280,
+      sliverAppBar = SliverAppBar.large(
+        expandedHeight: 300,
         pinned: true,
+        stretch: true,
         backgroundColor: theme.colorScheme.surface,
         foregroundColor: theme.colorScheme.onSurface,
-        leading: AppIconButton(
-          icon: Icons.arrow_back,
-          onPressed: () => Navigator.of(context).pop(),
+        title: Text(
+          widget.playlistName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         flexibleSpace: FlexibleSpaceBar(
-          title: Text(
-            widget.playlistName,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              shadows: [
-                Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black.withOpacity(0.5)),
-              ],
-            ),
-          ),
+          stretchModes: const [StretchMode.zoomBackground],
           background: Stack(
             fit: StackFit.expand,
             children: [
-              if (widget.imageUrl != null)
-                Image.network(widget.imageUrl!, fit: BoxFit.cover)
+              if (widget.imageUrl != null && widget.imageUrl!.isNotEmpty)
+                CachedNetworkImage(
+                  imageUrl: widget.imageUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (_, _) => ColoredBox(color: theme.colorScheme.primaryContainer),
+                  errorWidget: (_, _, _) => ColoredBox(color: theme.colorScheme.primaryContainer),
+                )
               else
-                Container(color: theme.colorScheme.primary.withOpacity(0.3)),
-              Container(color: Colors.black.withOpacity(0.3)),
+                ColoredBox(color: theme.colorScheme.primaryContainer),
+
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      theme.colorScheme.surface.withValues(alpha: 0.55),
+                      theme.colorScheme.surface,
+                    ],
+                    stops: const [0.35, 0.8, 1.0],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       );
     } else {
-      // В десктопной версии не показываем SliverAppBar, только отступ
-      sliverAppBar = const SliverToBoxAdapter(child: SizedBox(height: 8));
+      sliverAppBar = const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.sm));
     }
 
     final content = CustomScrollView(
@@ -238,11 +256,11 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.settings, size: 64, color: theme.iconTheme.color?.withOpacity(0.8)),
+                  Icon(Icons.settings, size: 64, color: theme.iconTheme.color?.withValues(alpha: 0.8)),
                   const SizedBox(height: 12),
-                  Text('Этот плейлист пока недоступен для просмотра. Мы работаем над этим',
+                  Text(_unavailableMessage,
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodySmall?.color?.withOpacity(0.75))),
+                      style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75))),
                 ],
               ),
             ),
@@ -260,13 +278,13 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.settings, size: 64, color: theme.iconTheme.color?.withOpacity(0.8)),
+                  Icon(Icons.settings, size: 64, color: theme.iconTheme.color?.withValues(alpha: 0.8)),
                   const SizedBox(height: 12),
                   Text(
-                    'Этот плейлист пока недоступен для просмотра. Мы работаем над этим.',
+                    _unavailableMessage,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyLarge?.copyWith(
-                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.75),
+                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
                     ),
                   ),
                 ],
@@ -278,7 +296,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
             child: Center(
               child: Text('Нет треков',
                   style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.75),
+                    color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
                   )),
             ),
           )
@@ -321,11 +339,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                             });
                             setLocalState(() => liked = newLiked);
                           } catch (e) {
-                            if (mounted) {
-                              showAppNotification(context,
-                                  message: 'Ошибка: $e',
-                                  type: NotificationType.error);
-                            }
+                            if (mounted) showError(context, e);
                           }
                         },
                       );
@@ -343,7 +357,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       return content; // возвращаем только список треков без Scaffold
     }
     return Scaffold(
-      backgroundColor: theme.colorScheme.background,
+      backgroundColor: theme.colorScheme.surface,
       body: content,
     );
   }
