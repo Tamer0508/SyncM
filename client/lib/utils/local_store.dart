@@ -9,17 +9,12 @@ class LocalStore {
 
   static SharedPreferences? _prefs;
 
-  /// Готово ли хранилище. Если нет, чтение вернёт null, а запись ничего не
-  /// сделает — приложение продолжит работать, просто без ускорения старта.
   static bool get isReady => _prefs != null;
 
-  /// Вызывается один раз в main() до runApp.
   static Future<void> init() async {
     try {
       _prefs = await SharedPreferences.getInstance();
     } catch (err) {
-      // Хранилище недоступно (редко, но бывает в ограниченных средах).
-      // Это не повод не запускать приложение.
       debugPrint('LocalStore init failed, running without local cache: $err');
     }
   }
@@ -28,7 +23,6 @@ class LocalStore {
 
   static String _stampKey(String key) => '$key:savedAt';
 
-  /// Сохраняет список объектов.
   static Future<void> saveList(String key, List<Map<String, dynamic>> items) async {
     final prefs = _prefs;
     if (prefs == null) return;
@@ -38,8 +32,6 @@ class LocalStore {
       await prefs.setString(key, jsonEncode(trimmed));
       await prefs.setInt(_stampKey(key), DateTime.now().millisecondsSinceEpoch);
     } catch (err) {
-      // Данные могут содержать несериализуемое значение (например, DateTime).
-      // Это не должно ломать работу — просто останемся без кэша по этому ключу.
       debugPrint('LocalStore.saveList failed for "$key": $err');
     }
   }
@@ -75,6 +67,14 @@ class LocalStore {
     return DateTime.now().difference(saved) > maxAge;
   }
 
+  static Future<void> saveString(String key, String value) async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    await prefs.setString(key, value);
+  }
+
+  static String? readString(String key) => _prefs?.getString(key);
+
   static Future<void> remove(String key) async {
     final prefs = _prefs;
     if (prefs == null) return;
@@ -99,6 +99,8 @@ class StoreKeys {
   static const friendRequests = 'cache:friend_requests';
   static const sessions = 'cache:sessions';
   static const invites = 'cache:invites';
+
+  static const themeMode = 'settings:theme_mode';
 
   static const all = [friends, friendRequests, sessions, invites];
 }

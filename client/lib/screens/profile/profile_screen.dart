@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
 import '../../theme.dart';
+import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../widgets/tappable_avatar.dart';
@@ -66,7 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _profileData = data);
     } catch (e) {
       if (mounted && !(e is ApiException && e.suppressUiNotification)) {
-        showAppNotification(context, message: 'Ошибка загрузки профиля: $e', type: NotificationType.error);
+        showError(context, e);
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -148,6 +149,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: body,
     );
   }
+
+
   void _connectSpotify(BuildContext context) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final api = auth.api;
@@ -272,7 +275,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   showAppNotification(context, message: 'Spotify отключен', type: NotificationType.success);
                 }
               } catch (e) {
-                if (context.mounted) showAppNotification(context, message: 'Ошибка: $e', type: NotificationType.error);
+                if (context.mounted) showError(context, e);
               }
             },
             style: ElevatedButton.styleFrom(

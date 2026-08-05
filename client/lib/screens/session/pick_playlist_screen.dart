@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
+import '../../widgets/skeleton.dart';
 import '../../widgets/track_card.dart';
 
 class PickPlaylistScreen extends StatefulWidget {
@@ -187,7 +188,7 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
 
   Widget _buildPlaylists() {
     if (_loadingPlaylists) {
-      return const Center(child: CircularProgressIndicator());
+      return const SingleChildScrollView(child: SkeletonList(itemCount: 6));
     }
 
     if (_playlists.isEmpty) {
@@ -221,7 +222,7 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
 
   Widget _buildTracks() {
     if (_loadingTracks) {
-      return const Center(child: CircularProgressIndicator());
+      return const SingleChildScrollView(child: SkeletonList(itemCount: 8));
     }
 
     if (_tracks.isEmpty) {

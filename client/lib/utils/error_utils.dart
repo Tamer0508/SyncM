@@ -42,6 +42,17 @@ String getUserFriendlyError(Object? error) {
     return 'Ошибка сети. Проверьте соединение.';
   }
 
+  if (text.contains('GoogleSignInException') || text.contains('PlatformException')) {
+    if (isUserCancelled(error)) return 'Вход отменён';
+    if (text.contains('network') || text.contains('NETWORK')) {
+      return 'Не удалось связаться с Google. Проверьте соединение.';
+    }
+    if (text.contains('DEVELOPER_ERROR') || text.contains('10:')) {
+      return 'Вход через Google настроен неверно. Сообщите разработчику.';
+    }
+    return 'Не удалось войти через Google. Попробуйте ещё раз.';
+  }
+
   return 'Что-то пошло не так. Попробуйте снова.';
 }
 
@@ -80,6 +91,8 @@ void showError(BuildContext context, Object? error, {bool force = false}) {
   if (!context.mounted) return;
   if (!force && error is ApiException && error.suppressUiNotification) return;
 
+  if (!force && isUserCancelled(error)) return;
+
   showAppNotification(
     context,
     message: getUserFriendlyError(error),
@@ -90,6 +103,14 @@ void showError(BuildContext context, Object? error, {bool force = false}) {
 void showSuccess(BuildContext context, String message) {
   if (!context.mounted) return;
   showAppNotification(context, message: message, type: NotificationType.success);
+}
+
+bool isUserCancelled(Object? error) {
+  final text = error?.toString().toLowerCase() ?? '';
+  return text.contains('canceled') ||
+      text.contains('cancelled') ||
+      text.contains('sign_in_canceled') ||
+      text.contains('popup_closed');
 }
 
 bool isUnauthorized(Object? error) => error is ApiException && error.statusCode == 401;

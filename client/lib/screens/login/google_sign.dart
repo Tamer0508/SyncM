@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import 'dart:async';
 import 'dart:io';
+import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
 
 
@@ -29,7 +30,6 @@ class GoogleSignInButton extends StatelessWidget {
       return ElevatedButton(
         style: ElevatedButton.styleFrom(
           minimumSize: const Size.fromHeight(48),
-          // backgroundColor и foregroundColor пусть берутся из темы
         ),
         onPressed: () =>
             _isWindows ? _handleWindowsSignIn(context) : _handleSignIn(context),
@@ -45,7 +45,6 @@ class GoogleSignInButton extends StatelessWidget {
     }
   }
 
-  // На Windows — открываем браузер с Google OAuth
   Future<void> _handleWindowsSignIn(BuildContext context) async {
   try {
     final api = ApiService();
@@ -104,12 +103,11 @@ class GoogleSignInButton extends StatelessWidget {
   } catch (e) {
     debugPrint('Windows Google Sign-In error: $e');
     if (context.mounted) {
-      showAppNotification(context, message: 'Ошибка входа: $e', type: NotificationType.error);
+      showError(context, e);
     }
   }
 }
 
-  // На мобильных — через Google Sign In SDK
   Future<void> _handleSignIn(BuildContext context) async {
     try {
       await GoogleSignIn.instance.initialize(
@@ -154,7 +152,7 @@ class GoogleSignInButton extends StatelessWidget {
     } catch (e) {
       debugPrint('Google Sign-In error: $e');
       if (context.mounted) {
-        showAppNotification(context, message: 'Ошибка входа: $e', type: NotificationType.error);
+        showError(context, e);
       }
     }
   }

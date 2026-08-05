@@ -9,6 +9,7 @@ import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/skeleton.dart';
 import '../../widgets/track_card.dart';
 import '../player/now_playing.dart';
 
@@ -193,9 +194,14 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     final theme = Theme.of(context);
     final pb = Provider.of<PlaybackProvider>(context);
 
+    // Раскрывающаяся шапка с обложкой — только в отдельном экране.
+    // Во встроенном режиме заголовок уже есть снаружи.
     final Widget sliverAppBar;
     if (!widget.embedded) {
       sliverAppBar = SliverAppBar.large(
+        // SliverAppBar.large вместо ручной сборки: у него уже настроено
+        // поведение крупного заголовка по Material 3 — размер, отступы и
+        // переход к компактному виду при прокрутке.
         expandedHeight: 300,
         pinned: true,
         stretch: true,
@@ -248,7 +254,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         sliverAppBar,
         if (_loading)
           SliverFillRemaining(
-            child: Center(child: CircularProgressIndicator(color: theme.colorScheme.primary)),
+            child: const SkeletonList(itemCount: 8, avatarRadius: 24),
           )
         else if (_unavailable)
           SliverFillRemaining(
@@ -339,6 +345,8 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                             });
                             setLocalState(() => liked = newLiked);
                           } catch (e) {
+                            // showError вместо 'Ошибка: $e': текст исключения
+                            // пользователю ничего не объясняет.
                             if (mounted) showError(context, e);
                           }
                         },

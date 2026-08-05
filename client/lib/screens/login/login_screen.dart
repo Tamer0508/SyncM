@@ -9,6 +9,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../login/google_sign.dart';
 import '../../theme.dart';
+import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/ambient_background.dart';
 
@@ -101,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } catch (e) {
         debugPrint('onGoogleSignInSuccess error: $e');
         if (mounted) {
-          showAppNotification(context, message: 'Google Sign-In error: $e', type: NotificationType.error);
+          showError(context, e);
         }
       }
     }
@@ -114,7 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       debugPrint('_signInWithGoogle error: $e');
       if (mounted) {
-        showAppNotification(context, message: 'Google Sign-In error: $e', type: NotificationType.error);
+        showError(context, e);
       }
     }
   }

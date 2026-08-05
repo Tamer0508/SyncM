@@ -6,6 +6,7 @@ import '../../providers/session_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/skeleton.dart';
 
 class SessionInvitesScreen extends StatefulWidget {
   const SessionInvitesScreen({super.key});
@@ -69,7 +70,7 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
     final body = Consumer<SessionProvider>(
       builder: (context, prov, _) {
         if (prov.invitesLoading && prov.invites.isEmpty) {
-          return const Center(child: CircularProgressIndicator());
+          return const SingleChildScrollView(child: SkeletonList(itemCount: 4));
         }
 
         if (prov.invites.isEmpty) {
@@ -253,6 +254,8 @@ class _InviteCard extends StatelessWidget {
           ),
           if (trackCount > 0) ...[
             const SizedBox(height: AppSpacing.sm + 4),
+            // Количество треков помогает решить, стоит ли присоединяться:
+            // пустая сессия и сессия с готовой подборкой — разные приглашения.
             Row(
               children: [
                 Icon(Icons.queue_music_rounded, size: 18, color: colors.onSurfaceVariant),

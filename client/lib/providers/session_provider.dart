@@ -6,13 +6,13 @@ import '../services/api_service.dart';
 import '../utils/local_store.dart';
 import '../services/socket_service.dart';
 import '../utils/app_globals.dart';
+import '../utils/notifications.dart';
 
 class SessionProvider with ChangeNotifier {
   SessionProvider({ApiService? api}) : api = api ?? ApiService() {
     _restoreFromCache();
   }
 
-  /// Показывает последние сохранённые сессии и приглашения до ответа сервера.
   void _restoreFromCache() {
     final cachedSessions = LocalStore.readList(StoreKeys.sessions);
     if (cachedSessions.isNotEmpty) {
@@ -39,8 +39,7 @@ class SessionProvider with ChangeNotifier {
   bool _invitesLoading = false;
   bool get invitesLoading => _invitesLoading;
 
-  int _unreadInvitesCount = 0;
-  int get unreadInvitesCount => _unreadInvitesCount;
+  int get unreadInvitesCount => _invites.length;
 
   Future<void> fetchMySessions() async {
     _loading = true;
@@ -50,10 +49,6 @@ class SessionProvider with ChangeNotifier {
       final raw = data.whereType<Map>().map(Map<String, dynamic>.from).toList();
       _sessions = raw.map(SessionModel.fromJson).toList();
 
-      // Сохраняем сырые данные сервера, а не результат разбора: модель
-      // содержит только часть полей, и при восстановлении из неё терялись бы
-      // участники и треки — ровно та ошибка, из-за которой экран сессии
-      // показывал нули.
       unawaited(LocalStore.saveList(StoreKeys.sessions, raw));
     } finally {
       _loading = false;
@@ -75,17 +70,10 @@ class SessionProvider with ChangeNotifier {
     }
   }
 
-  // ─── Сокет ───────────────────────────────────────────────────────────────
-
   SocketService? _socket;
 
   static const _events = ['session_invite', 'invite_response'];
 
-  /// Подписка на события сессий.
-  ///
-  /// Как и в FriendsProvider, прежний флаг _socketListening выставлялся один
-  /// раз навсегда: после смены аккаунта новый сокет оставался без
-  /// обработчиков, и приглашения в сессию переставали приходить вживую.
   void init(SocketService socketService) {
     if (identical(_socket, socketService)) return;
 
@@ -125,36 +113,28 @@ class SessionProvider with ChangeNotifier {
         'name': data['sessionName'] ?? 'Сессия',
         'hostId': data['hostId'],
       });
-      _unreadInvitesCount++;
       _showInviteNotification(data['sessionName'] as String? ?? 'Сессия');
       notifyListeners();
     }
 
-    // Догружаем полные данные приглашения (участники, имя хоста): вставленная
-    // выше заготовка нужна лишь для мгновенного отклика интерфейса.
     fetchInvites(refresh: true).ignore();
   }
 
-  void markInvitesAsRead() {
-    if (_unreadInvitesCount == 0) return;
-    _unreadInvitesCount = 0;
-    notifyListeners();
-  }
+  void markInvitesAsRead() {}
 
   void _showInviteNotification(String sessionName) {
-    scaffoldMessengerKey.currentState?.showSnackBar(
-      SnackBar(
-        content: Text('Приглашение в сессию «$sessionName»'),
-        duration: const Duration(seconds: 4),
-        action: SnackBarAction(
-          label: 'Открыть',
-          onPressed: () => navigatorKey.currentState?.pushNamed('/session/invites'),
-        ),
-      ),
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    showAppNotification(
+      context,
+      message: 'Приглашение в сессию «$sessionName»',
+      type: NotificationType.info,
+      actionLabel: 'Открыть',
+      onAction: () => navigatorKey.currentState?.pushNamed('/session/invites'),
     );
   }
 
-  // ─── Действия ────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> createSession(String name, String friendId) =>
       api.createSession(name, friendId);

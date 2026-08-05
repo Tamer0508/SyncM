@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../utils/local_store.dart';
 import '../services/socket_service.dart';
 import '../utils/app_globals.dart';
+import '../utils/notifications.dart';
 
 class FriendsProvider with ChangeNotifier {
   FriendsProvider({ApiService? api}) : api = api ?? ApiService() {
@@ -27,6 +28,7 @@ class FriendsProvider with ChangeNotifier {
   final ApiService api;
 
   void syncCookie(String cookie) => api.setCookie(cookie);
+
 
   List<Friend> _friends = [];
   List<Friend> get friends => List.unmodifiable(_friends);
@@ -103,10 +105,7 @@ class FriendsProvider with ChangeNotifier {
     return ok;
   }
 
-  // ─── Входящие заявки ─────────────────────────────────────────────────────
-
-  int _unreadFriendRequestsCount = 0;
-  int get unreadCount => _unreadFriendRequestsCount;
+  int get unreadCount => _friendRequests.length;
 
   List<Map<String, dynamic>> _friendRequests = [];
   List<Map<String, dynamic>> get incomingRequests => List.unmodifiable(_friendRequests);
@@ -174,28 +173,13 @@ class FriendsProvider with ChangeNotifier {
     return ok;
   }
 
-  void markAsRead() {
-    if (_unreadFriendRequestsCount == 0) return;
-    _unreadFriendRequestsCount = 0;
-    notifyListeners();
-  }
+  void markAsRead() {}
 
-  // ─── Сокет ───────────────────────────────────────────────────────────────
 
   SocketService? _socket;
 
-  // Названия событий вынесены в константы: их нужно и подписать, и отписать,
-  // а расхождение в строке приводило бы к «висящему» обработчику.
   static const _events = ['friend_request', 'friend_online', 'friend_offline'];
 
-  /// Подписывается на события присутствия и заявок.
-  ///
-  /// Раньше здесь стоял флаг _socketListening, который выставлялся один раз
-  /// навсегда, а сам сокет присваивался через `??=`. После выхода из аккаунта
-  /// и входа под другим пользователем создаётся НОВЫЙ сокет, но провайдер
-  /// живёт дальше — и подписки на него уже не навешивались: статусы друзей и
-  /// заявки в реальном времени переставали приходить до перезапуска
-  /// приложения.
   void init(SocketService socketService) {
     if (identical(_socket, socketService)) return;
 
@@ -235,8 +219,6 @@ class FriendsProvider with ChangeNotifier {
     final old = _friends[idx];
     DateTime? seenAt = old.lastSeenAt;
     if (!online && lastSeenAt != null) {
-      // Время от сервера в UTC; без toLocal() расчёт «был в сети N минут
-      // назад» уезжал на весь часовой пояс.
       seenAt = DateTime.tryParse(lastSeenAt)?.toLocal() ?? old.lastSeenAt;
     }
 
@@ -254,24 +236,23 @@ class FriendsProvider with ChangeNotifier {
 
   void _addNewRequest(Map<String, dynamic> data) {
     final id = data['id'];
-    // Событие может продублироваться при переподключении сокета — не
-    // показываем одну и ту же заявку дважды.
     if (id != null && _friendRequests.any((r) => r['id'] == id)) return;
 
     _friendRequests.insert(0, data);
-    _unreadFriendRequestsCount++;
     _showNotification(data['fromUserName'] as String? ?? 'пользователь');
     notifyListeners();
   }
 
   void _showNotification(String fromUserName) {
-    // Цвет и форма берутся из snackBarTheme — раньше здесь был жёстко
-    // прошитый Colors.green[700], который не менялся вместе с темой.
-    scaffoldMessengerKey.currentState?.showSnackBar(
-      SnackBar(
-        content: Text('Новая заявка в друзья от $fromUserName'),
-        duration: const Duration(seconds: 3),
-      ),
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    showAppNotification(
+      context,
+      message: 'Заявка в друзья от $fromUserName',
+      type: NotificationType.info,
+      actionLabel: 'Открыть',
+      onAction: () => navigatorKey.currentState?.pushNamed('/friends/requests'),
     );
   }
 

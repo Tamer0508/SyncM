@@ -739,6 +739,10 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      // Промежутки распределяет spaceEvenly. Отдельные SizedBox между
+      // кнопками убраны: вместе они давали суммарную ширину больше
+      // доступной, и ряд переполнялся на узком экране
+      // («RenderFlex overflowed on the right»).
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         // Перемешивание и повтор — второстепенные режимы: меньше размером и
@@ -756,7 +760,6 @@ class _Controls extends StatelessWidget {
           color: Colors.white,
           tooltip: 'Предыдущий трек',
         ),
-        const SizedBox(width: AppSpacing.lg),
         // Главная кнопка — крупная и залитая акцентным цветом обложки.
         // Раньше все три кнопки были одинаковыми иконками, и центральная
         // ничем не выделялась, хотя нажимают её чаще остальных.
@@ -791,7 +794,6 @@ class _Controls extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: AppSpacing.lg),
         IconButton(
           onPressed: onNext,
           icon: const Icon(Icons.skip_next_rounded, size: 40),

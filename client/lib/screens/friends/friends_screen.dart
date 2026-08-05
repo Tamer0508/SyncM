@@ -16,12 +16,6 @@ class FriendsScreen extends StatefulWidget {
 
   final bool embedded;
 
-  /// Как открыть поиск друзей.
-  ///
-  /// В широкой раскладке главный экран показывает поиск встроенным блоком,
-  /// сохраняя боковую панель и панель воспроизведения. Без этого обработчика
-  /// экран всегда открывал поиск отдельным маршрутом на весь экран — то есть
-  /// кнопка в пустом списке вела себя иначе, чем такая же кнопка в шапке.
   final VoidCallback? onFindFriends;
 
   @override
@@ -44,8 +38,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final prov = context.read<FriendsProvider>();
-      prov.markAsRead();
       prov.fetchFriends(refresh: true);
+      prov.fetchIncomingRequests(refresh: true);
     });
   }
 

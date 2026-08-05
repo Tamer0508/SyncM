@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
 import '../../theme.dart';
+import '../../utils/notifications.dart';
 
 class AvatarCropScreen extends StatefulWidget {
   const AvatarCropScreen({super.key, required this.imageBytes});
@@ -52,8 +53,10 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
     } catch (err) {
       if (!mounted) return;
       setState(() => _processing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось обработать изображение')),
+      showAppNotification(
+        context,
+        message: 'Не удалось обработать изображение',
+        type: NotificationType.error,
       );
     }
   }

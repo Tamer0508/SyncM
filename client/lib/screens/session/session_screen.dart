@@ -288,8 +288,7 @@ class _SessionScreenState extends State<SessionScreen> {
       }
     } catch (e) {
       if (mounted) {
-        showAppNotification(context,
-            message: 'Ошибка: $e', type: NotificationType.error);
+        showError(context, e);
       }
     }
   }
@@ -433,8 +432,6 @@ class _SessionScreenState extends State<SessionScreen> {
       await context.read<SessionProvider>().rateTrack(trackId, next);
     } catch (err) {
       if (!mounted) return;
-      // Возвращаем прежнее состояние: иначе интерфейс показывал бы оценку,
-      // которой на сервере нет.
       _applyRatingLocally(track, myUserId, previous);
       showError(context, err);
     }
@@ -449,7 +446,6 @@ class _SessionScreenState extends State<SessionScreen> {
     return null;
   }
 
-  /// Обновляет оценку в локальном состоянии, не дожидаясь ответа сервера.
   void _applyRatingLocally(Map<String, dynamic> track, String? myUserId, int? rating) {
     if (myUserId == null) return;
     setState(() {
@@ -664,8 +660,6 @@ class _SessionTrackTile extends StatelessWidget {
       onPlay: onPlay,
       showLike: false,
       showMore: false,
-      // Оценки вынесены в trailing вместо стандартного «сердечка»: здесь
-      // нужны две противоположные оценки, а не переключатель избранного.
       trailing: _RatingButtons(
         myRating: myRating,
         ratedByOther: _ratedByOther,

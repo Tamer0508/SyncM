@@ -6,6 +6,7 @@ import '../../providers/friends_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
 
 class FriendRequestsScreen extends StatefulWidget {
@@ -97,7 +98,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
         final isInitialLoad = prov.incomingLoading && prov.incomingRequests.isEmpty;
 
         if (isInitialLoad) {
-          return const Center(child: CircularProgressIndicator());
+          return const SingleChildScrollView(child: SkeletonList(itemCount: 4));
         }
 
         if (prov.incomingRequests.isEmpty) {
