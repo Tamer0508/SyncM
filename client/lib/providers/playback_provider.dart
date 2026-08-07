@@ -75,6 +75,39 @@ class PlaybackProvider extends ChangeNotifier {
   // Prevents automatic correction loops when we programmatically switch tracks
   bool _suppressAutoCorrection = false;
 
+  String? _pendingTrackUri;
+  DateTime? _pendingSince;
+
+  static const _pendingTrackTimeout = Duration(seconds: 6);
+
+  void _markPendingTrack(String? uri) {
+    _pendingTrackUri = uri;
+    _pendingSince = uri == null ? null : DateTime.now();
+
+    if (uri != null) {
+      _currentImageBytes = null;
+      _lastImageUri = null;
+      notifyListeners();
+    }
+  }
+
+  bool _shouldIgnoreSdkTrack(String incomingUri) {
+    final pending = _pendingTrackUri;
+    if (pending == null) return false;
+
+    if (incomingUri == pending) {
+      _markPendingTrack(null); // дождались — дальше доверяем SDK
+      return false;
+    }
+
+    final since = _pendingSince;
+    if (since != null && DateTime.now().difference(since) > _pendingTrackTimeout) {
+      _markPendingTrack(null);
+      return false;
+    }
+    return true;
+  }
+
   // Session queue playback
   List<Map<String, dynamic>> _sessionQueue = [];
   int _sessionQueueIndex = -1;
@@ -102,43 +135,6 @@ class PlaybackProvider extends ChangeNotifier {
   Map<String, dynamic>? get currentTrack => _currentTrack;
   bool get isPlaying => _isPlaying;
 
-  /// Открыт ли полноэкранный плеер.
-  ///
-  /// Нужен оболочке приложения: мини-плеер внизу — это способ вернуться к
-  /// текущему треку, и поверх уже открытого большого плеера он бессмыслен,
-  /// а на деле ещё и перекрывал его управление.
-  ///
-  /// Флаг живёт в провайдере, а не в состоянии оболочки, потому что
-  /// AppShell подключается через builder в MaterialApp и находится ВЫШЕ
-  /// Navigator — узнать оттуда, какой экран открыт, обычными средствами
-  /// нельзя.
-  bool _fullScreenPlayerOpen = false;
-  bool get isFullScreenPlayerOpen => _fullScreenPlayerOpen;
-
-  void setFullScreenPlayerOpen(bool value) {
-    if (_fullScreenPlayerOpen == value) return;
-    _fullScreenPlayerOpen = value;
-
-    // Страховка от зависшего флага.
-    //
-    // Флаг снимает экран плеера при закрытии. Если это по какой-то причине
-    // не произойдёт (исключение в dispose, аварийное закрытие маршрута),
-    // мини-плеер исчезнет НАВСЕГДА — состояние, из которого пользователь не
-    // выберется без перезапуска приложения. Поэтому поднятый флаг живёт не
-    // дольше получаса: экран плеера столько открытым не держат, а стоимость
-    // ошибочного сброса — лишь ненадолго показанная панель внизу.
-    _fullScreenGuardTimer?.cancel();
-    if (value) {
-      _fullScreenGuardTimer = Timer(const Duration(minutes: 30), () {
-        _fullScreenPlayerOpen = false;
-        notifyListeners();
-      });
-    }
-
-    notifyListeners();
-  }
-
-  Timer? _fullScreenGuardTimer;
   bool get isConnected => _isConnected;
   int get durationMs => _durationMs;
   // Фаза 4.3: в активной сессии во время воспроизведения позиция для UI
@@ -158,8 +154,16 @@ class PlaybackProvider extends ChangeNotifier {
         return pos < 0 ? 0 : pos;
       }
     }
+    if (_isPlaying && _positionAnchorAt != null) {
+      final elapsed = DateTime.now().difference(_positionAnchorAt!).inMilliseconds;
+      final pos = _positionMs + elapsed;
+      if (_durationMs > 0) return pos.clamp(0, _durationMs);
+      return pos;
+    }
+
     return _positionMs;
   }
+  DateTime? _positionAnchorAt;
   Uint8List? get currentImageBytes => _currentImageBytes;
 
   bool get shuffleActive => _shuffleActive;
@@ -234,6 +238,7 @@ class PlaybackProvider extends ChangeNotifier {
     // Сразу обновляем позицию/длительность чтобы _checkSessionTrackEnd
     // не сработал повторно на старых значениях предыдущего трека
     _positionMs = positionMs ?? 0;
+    _positionAnchorAt = DateTime.now();
     _durationMs = (track['durationMs'] as num?)?.toInt() ?? 0;
     notifyListeners();
 
@@ -287,6 +292,7 @@ class PlaybackProvider extends ChangeNotifier {
         _queueEnded = false;
         final track = Map<String, dynamic>.from(_sessionQueue[next]);
         _positionMs = 0;
+        _positionAnchorAt = DateTime.now();
         _durationMs = (track['durationMs'] as num?)?.toInt() ?? 0;
         notifyListeners();
 
@@ -374,6 +380,7 @@ class PlaybackProvider extends ChangeNotifier {
       } else if (_durationMs > 0) {
         // Вне сессии — прежнее локальное наращивание.
         _positionMs = (_positionMs + 500).clamp(0, _durationMs);
+        _positionAnchorAt = DateTime.now();
         notifyListeners();
       }
 
@@ -393,6 +400,7 @@ class PlaybackProvider extends ChangeNotifier {
           if (_sessionPaused) return;
           _isPlaying = state['is_playing'] ?? false;
           _positionMs = state['progress_ms'] ?? 0;
+          _positionAnchorAt = DateTime.now();
           _durationMs = state['item']?['duration_ms'] ?? 0;
           final track = state['item'];
           if (track != null) {
@@ -505,6 +513,7 @@ class PlaybackProvider extends ChangeNotifier {
             await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
           }
           _positionMs = positionMs;
+          _positionAnchorAt = DateTime.now();
           notifyListeners();
         } catch (e) {
           debugPrint('[Session Seek] Чистый seek не удался, полный ре-старт: $e');
@@ -571,6 +580,7 @@ class PlaybackProvider extends ChangeNotifier {
       if (_driftStrikes >= 2 && _isPlaying) {
         _driftStrikes = 0;
         _positionMs = expectedPos;
+        _positionAnchorAt = DateTime.now();
         notifyListeners();
         if (!_isWindows && !_isWeb && _isConnected) {
           // Мобильные
@@ -609,6 +619,7 @@ class PlaybackProvider extends ChangeNotifier {
       if (drift < 900) return;
 
       _positionMs = target;
+      _positionAnchorAt = DateTime.now();
       _setSyncAnchor(target, nowServer);
       notifyListeners();
       try {
@@ -694,6 +705,7 @@ class PlaybackProvider extends ChangeNotifier {
         await _playAtPosition(trackId, actualPos);
       } else if (state == 'paused') {
         _positionMs = positionMs;
+        _positionAnchorAt = DateTime.now();
         _isPlaying = false;
         _clearSyncAnchor();
         notifyListeners();
@@ -759,6 +771,7 @@ class PlaybackProvider extends ChangeNotifier {
       debugPrint('[Socket] Получена глобальная перемотка на: $pos мс');
       _isSeekingFromRemote = true;
       _positionMs = pos;
+      _positionAnchorAt = DateTime.now();
       notifyListeners();
 
       // ВАЖНО: Управляем плеером НАПРЯМУЮ, не вызывая метод кнопки seekTo(),
@@ -847,6 +860,7 @@ class PlaybackProvider extends ChangeNotifier {
     _sessionMode = true;
     _sessionQueueIndex = index;
     _positionMs = positionMs;
+    _positionAnchorAt = DateTime.now();
 
     final track = Map<String, dynamic>.from(_sessionQueue[index]);
     await playTrack(track, positionMs: positionMs, fromSession: true);
@@ -881,6 +895,7 @@ class PlaybackProvider extends ChangeNotifier {
       _isPlaying = !state.isPaused;
       _durationMs = state.track?.duration ?? 0;
       _positionMs = state.playbackPosition;
+      _positionAnchorAt = DateTime.now();
 
       // Запоминаем последнюю позицию/длительность ДО паузы. Многие плееры
       // (включая Spotify SDK) при естественном завершении трека шлют
@@ -895,9 +910,19 @@ class PlaybackProvider extends ChangeNotifier {
 
       if (state.track != null) {
         final trackUri = state.track!.uri;
+
+        if (_shouldIgnoreSdkTrack(trackUri)) return;
+
         final imageUriId = state.track!.imageUri.raw;
         final trackChanged = trackUri != _currentTrack?['uri'];
         final imageChanged = imageUriId != _lastImageUri;
+
+        _currentTrack = {
+          ...(trackChanged ? const <String, dynamic>{} : _currentTrack ?? {}),
+          'title': state.track!.name,
+          'artist': state.track!.artist.name,
+          'uri': trackUri,
+        };
 
         if (imageChanged) {
           _lastImageUri = imageUriId;
@@ -933,13 +958,6 @@ class PlaybackProvider extends ChangeNotifier {
             });
           }
         }
-
-        _currentTrack = {
-          ..._currentTrack ?? {},
-          'title': state.track!.name,
-          'artist': state.track!.artist.name,
-          'uri': trackUri,
-        };
 
         if (trackChanged && _currentSessionId != null && !_sessionMode) {
           _socketService?.emit('next_track', {
@@ -991,6 +1009,8 @@ class PlaybackProvider extends ChangeNotifier {
       {String? playlistId, int? positionMs, bool fromSession = false}) async {
     final uri = track['uri'] as String?;
     if (uri == null) return;
+
+    _markPendingTrack(uri);
 
     if (!fromSession) _sessionMode = false;
 
@@ -1187,6 +1207,7 @@ class PlaybackProvider extends ChangeNotifier {
     if (state == null) return;
     _isPlaying = state['is_playing'] ?? false;
     _positionMs = state['progress_ms'] ?? 0;
+    _positionAnchorAt = DateTime.now();
     _durationMs = state['item']?['duration_ms'] ?? 0;
     final track = state['item'];
     if (track != null) {
@@ -1269,6 +1290,7 @@ class PlaybackProvider extends ChangeNotifier {
       }
 
       _positionMs = 0;
+      _positionAnchorAt = DateTime.now();
       notifyListeners();
 
       if (_isWindows || _isWeb) {
@@ -1305,6 +1327,7 @@ class PlaybackProvider extends ChangeNotifier {
     }
 
     _positionMs = 0;
+    _positionAnchorAt = DateTime.now();
     notifyListeners();
 
     if (_isWindows || _isWeb) {
@@ -1412,6 +1435,7 @@ class PlaybackProvider extends ChangeNotifier {
 
   Future<void> seekTo(int positionMs) async {
     _positionMs = positionMs;
+    _positionAnchorAt = DateTime.now();
     notifyListeners();
 
     // ─── Фаза 5.3: перемотка в сессии — единая, через сервер ────────────────
@@ -1649,7 +1673,6 @@ class PlaybackProvider extends ChangeNotifier {
     _sessionUiTicker?.cancel();
     _sessionSeekingTimer?.cancel();
     _advanceResetTimer?.cancel();
-    _fullScreenGuardTimer?.cancel();
 
     // Снимаем подписки на события сессии.
     //

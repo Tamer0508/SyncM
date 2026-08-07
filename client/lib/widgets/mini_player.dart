@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -43,7 +44,7 @@ class MiniPlayer extends StatelessWidget {
     final pb = context.watch<PlaybackProvider>();
     final track = pb.currentTrack;
 
-    if (track == null || pb.isFullScreenPlayerOpen) return const SizedBox.shrink();
+    if (track == null) return const SizedBox.shrink();
 
     final colors = context.colors;
     final texts = context.texts;
@@ -218,18 +219,39 @@ class _Artwork extends StatelessWidget {
   }
 }
 
-class _MiniProgress extends StatelessWidget {
+class _MiniProgress extends StatefulWidget {
   const _MiniProgress({required this.colors});
 
   final ColorScheme colors;
 
   @override
-  Widget build(BuildContext context) {
-    final progress = context.select<PlaybackProvider, double>((pb) {
-      final duration = pb.durationMs;
-      if (duration <= 0) return 0;
-      return (pb.positionMs / duration).clamp(0.0, 1.0);
+  State<_MiniProgress> createState() => _MiniProgressState();
+}
+
+class _MiniProgressState extends State<_MiniProgress> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (mounted) setState(() {});
     });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+    final pb = context.read<PlaybackProvider>();
+    final duration = pb.durationMs;
+    final progress =
+        duration <= 0 ? 0.0 : (pb.positionMs / duration).clamp(0.0, 1.0);
 
     return SizedBox(
       height: 3,

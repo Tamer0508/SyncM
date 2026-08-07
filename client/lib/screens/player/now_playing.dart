@@ -171,22 +171,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   /// Номер текущего запроса палитры — для отбрасывания устаревших результатов.
   int _paletteRequest = 0;
 
-  /// Сохранённая ссылка на провайдер для безопасного использования в dispose.
-  PlaybackProvider? _playback;
 
   @override
   void initState() {
     super.initState();
     final pb = Provider.of<PlaybackProvider>(context, listen: false);
-    _playback = pb;
     _positionMs = pb.positionMs;
 
-    // Сообщаем оболочке, что открыт полноэкранный плеер: мини-плеер внизу
-    // должен уйти. Через postFrameCallback, потому что notifyListeners во
-    // время построения дерева вызывает исключение.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      pb.setFullScreenPlayerOpen(true);
-    });
     _startTimer();
 
     _colorAnimController = AnimationController(
@@ -209,11 +200,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   @override
   void dispose() {
     // Снимаем флаг: мини-плеер внизу должен вернуться после закрытия.
-    // Ссылка сохранена заранее: обращаться к Provider.of в dispose
-    // ненадёжно — дерево уже разбирается, и поиск провайдера может не
-    // удаться. Исключение при этом проглатывается, флаг остаётся поднятым,
-    // и мини-плеер не показывается больше никогда.
-    _playback?.setFullScreenPlayerOpen(false);
     _timer?.cancel();
     _colorAnimController.dispose();
     super.dispose();
@@ -438,8 +424,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         // часто совпадает — из-за этого пересчёт по длине пропускался и фон
         // застревал. Плюс привязываем к uri: даже если у двух треков обложка
         // побайтово идентична, смена uri всё равно инициирует пересчёт.
-        final int? imageSig =
-            imageBytes != null ? _imageSignature(imageBytes, currentUri) : null;
+        // Если байтов обложки нет, опираемся на ССЫЛКУ.
+        //
+        // Раньше сигнатура считалась только по байтам, а на Windows и в вебе
+        // обложка приходит ссылкой — байтов не бывает вовсе. Сигнатура
+        // оставалась пустой, пересчёт не запускался ни разу после первого, и
+        // фон навсегда застывал в цветах трека, включённого первым.
+        final imageUrlNow = pb.currentTrack?['imageUrl'] as String? ?? widget.artworkUrl;
+        final int? imageSig = imageBytes != null
+            ? _imageSignature(imageBytes, currentUri)
+            : (imageUrlNow != null ? Object.hash(imageUrlNow, currentUri) : null);
+
         if (imageSig != null && imageSig != _lastPaletteImageSig) {
           _lastPaletteImageSig = imageSig;
           final captUri = currentUri;
@@ -460,6 +455,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           body: Stack(
             fit: StackFit.expand,
             children: [
+              // Непрозрачная основа под свечением.
+              //
+              // У Scaffold здесь backgroundColor: Colors.transparent, а
+              // свечение рисуется полупрозрачными пятнами — без подложки
+              // сквозь экран просвечивал предыдущий, и выезд снизу выглядел
+              // как проявление из ниоткуда.
+              ColoredBox(color: context.colors.surface),
               _AnimatedGlowBackground(
                 dominantColor: _displayDominant,
                 vibrantColor: _displayVibrant,
