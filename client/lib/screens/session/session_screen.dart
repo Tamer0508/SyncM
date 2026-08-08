@@ -10,6 +10,7 @@ import '../player/now_playing.dart';
 import '../../services/socket_service.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
+import '../../widgets/mini_player.dart';
 import '../../widgets/tappable_avatar.dart';
 import '../../widgets/track_card.dart';
 
@@ -338,7 +339,7 @@ class _SessionScreenState extends State<SessionScreen> {
                 itemCount: tracks.length,
                 separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
                 itemBuilder: (context, i) {
-                  final track = Map<String, dynamic>.from(tracks[i]);
+                  final track = tracks[i].cast<String, dynamic>();
                   return _SessionTrackTile(
                     track: track,
                     index: i,
@@ -406,6 +407,7 @@ class _SessionScreenState extends State<SessionScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(sessionName), actions: actions),
       body: content,
+      bottomNavigationBar: const MiniPlayerDock(),
     );
   }
 

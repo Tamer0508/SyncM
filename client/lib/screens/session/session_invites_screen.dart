@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import '../../widgets/mini_player.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/session_provider.dart';
@@ -91,6 +92,7 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
     );
 
     return Scaffold(
+      bottomNavigationBar: const MiniPlayerDock(),
       appBar: AppBar(
         title: const Text('Приглашения'),
         actions: [

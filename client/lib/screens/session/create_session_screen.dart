@@ -8,6 +8,7 @@ import '../../providers/friends_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/tappable_avatar.dart';
+import '../../widgets/mini_player.dart';
 
 class CreateSessionScreen extends StatefulWidget {
   const CreateSessionScreen({
@@ -191,6 +192,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
               )
             : null,
       ),
+      bottomNavigationBar: const MiniPlayerDock(),
       body: SafeArea(child: body),
     );
   }

@@ -1,6 +1,7 @@
 ﻿import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import '../../widgets/mini_player.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
@@ -365,6 +366,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       return content; // возвращаем только список треков без Scaffold
     }
     return Scaffold(
+      bottomNavigationBar: const MiniPlayerDock(),
       backgroundColor: theme.colorScheme.surface,
       body: content,
     );

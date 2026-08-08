@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../widgets/mini_player.dart';
 import 'package:provider/provider.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -148,6 +149,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
     if (widget.embedded) return body;
 
     return Scaffold(
+      bottomNavigationBar: const MiniPlayerDock(),
       appBar: AppBar(title: const Text('Поиск друзей')),
       body: body,
     );

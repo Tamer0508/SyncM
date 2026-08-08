@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import '../../widgets/mini_player.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/friends_provider.dart';
@@ -134,6 +135,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     if (widget.embedded) return content;
 
     return Scaffold(
+      bottomNavigationBar: const MiniPlayerDock(),
       appBar: AppBar(
         title: const Text('Заявки в друзья'),
         actions: [

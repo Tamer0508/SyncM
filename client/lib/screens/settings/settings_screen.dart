@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/mini_player.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
@@ -24,6 +25,7 @@ class SettingsScreen extends StatelessWidget {
     if (embedded) return body;
 
     return Scaffold(
+      bottomNavigationBar: const MiniPlayerDock(),
       appBar: AppBar(title: const Text('Настройки')),
       body: body,
     );
