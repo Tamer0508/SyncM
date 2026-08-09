@@ -141,6 +141,10 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       SocketService().resyncNow();
+
+      if (mounted) {
+        context.read<PlaybackProvider>().refreshAfterResume();
+      }
     }
   }
 
@@ -154,7 +158,7 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (_, auth, __) {
-        if (auth.loading) {
+        if (auth.loading && !auth.isLoggedIn) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );

@@ -163,6 +163,7 @@ class PlaybackProvider extends ChangeNotifier {
 
     return _positionMs;
   }
+
   DateTime? _positionAnchorAt;
   Uint8List? get currentImageBytes => _currentImageBytes;
 
@@ -788,6 +789,21 @@ class PlaybackProvider extends ChangeNotifier {
         await Future.delayed(const Duration(milliseconds: 300));
         _isSeekingFromRemote = false;
       }
+    });
+
+    socketService.on('session_ended', (data) async {
+      debugPrint('[Session] сессия завершена хостом');
+      try {
+        if (_isWindows || _isWeb) {
+          await _apiService?.pausePlayback();
+        } else {
+          await SpotifySdk.pause();
+        }
+      } catch (err) {
+        debugPrint('[Session] не удалось остановить воспроизведение: $err');
+      }
+
+      stop();
     });
 
     socketService.on('tracks-added', (data) {
@@ -1469,6 +1485,37 @@ class PlaybackProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshAfterResume() async {
+    try {
+      if (_isWindows || _isWeb) {
+        _startPolling();
+        return;
+      }
+
+      if (!_isConnected) {
+        final connected = await connect();
+        if (!connected) return;
+      }
+      _subscribeToPlayerState();
+    } catch (err) {
+      debugPrint('[Playback] не удалось восстановиться после возврата: $err');
+    }
+  }
+
+  Future<void> stopAndClear() async {
+    try {
+      if (_isWindows || _isWeb) {
+        await _apiService?.pausePlayback();
+      } else {
+        await SpotifySdk.pause();
+      }
+    } catch (err) {
+      // Проигрыватель мог быть уже недоступен — состояние всё равно чистим.
+      debugPrint('[Playback] не удалось остановить воспроизведение: $err');
+    }
+    stop();
+  }
+
   void stop() {
     _pollingTimer?.cancel();
     _trackChangeTimer?.cancel();
@@ -1664,6 +1711,8 @@ class PlaybackProvider extends ChangeNotifier {
     'play',
     'seek',
     'tracks-added',
+
+    'session_ended',
   ];
 
   @override

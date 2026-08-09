@@ -177,6 +177,21 @@ class _SessionScreenState extends State<SessionScreen> {
 
   void _setupSessionSocketListeners(SocketService socket) {
     _sessionSocket = socket;
+
+    socket.on('session_ended', (data) {
+      if (!mounted) return;
+
+      final result = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+
+      if (widget.embedded && widget.onBack != null) {
+        widget.onBack!();
+        return;
+      }
+      Navigator.of(context).pushReplacementNamed(
+        '/session/results',
+        arguments: result,
+      );
+    });
     socket.on('session_presence', (data) {
       if (!mounted) return;
       final ids = (data is Map ? data['onlineUserIds'] : null);
@@ -279,6 +294,11 @@ class _SessionScreenState extends State<SessionScreen> {
     try {
       final result = await Provider.of<SessionProvider>(context, listen: false)
           .endSession(_session!['id']);
+
+      if (mounted) {
+        await context.read<PlaybackProvider>().stopAndClear();
+      }
+
       if (mounted) {
         if (widget.embedded && widget.onBack != null) {
           widget.onBack!();

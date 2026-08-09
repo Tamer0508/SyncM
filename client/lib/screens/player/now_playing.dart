@@ -171,6 +171,24 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   /// Номер текущего запроса палитры — для отбрасывания устаревших результатов.
   int _paletteRequest = 0;
 
+  double _dragOffset = 0;
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    final next = _dragOffset + details.delta.dy;
+    setState(() => _dragOffset = next < 0 ? 0 : next);
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final velocity = details.velocity.pixelsPerSecond.dy;
+    final height = MediaQuery.sizeOf(context).height;
+
+    if (_dragOffset > height * 0.25 || velocity > 900) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() => _dragOffset = 0);
+  }
+
 
   @override
   void initState() {
@@ -449,7 +467,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           });
         }
 
-        return Scaffold(
+        final screenHeight = MediaQuery.sizeOf(context).height;
+        final dragProgress = (_dragOffset / screenHeight).clamp(0.0, 1.0);
+
+        return GestureDetector(
+          onVerticalDragUpdate: _onDragUpdate,
+          onVerticalDragEnd: _onDragEnd,
+          child: Transform.translate(
+            offset: Offset(0, _dragOffset),
+            child: Opacity(
+              opacity: (1 - dragProgress * 1.2).clamp(0.4, 1.0),
+              child: Scaffold(
           backgroundColor: Colors.transparent,
           extendBodyBehindAppBar: true,
           body: Stack(
@@ -565,6 +593,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                 ),
               ),
             ],
+          ),
+              ),
+            ),
           ),
         );
       },
