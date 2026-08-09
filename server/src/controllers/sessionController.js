@@ -365,8 +365,11 @@ const endSession = asyncHandler(async (req, res) => {
     );
 
     await invalidateSessionsListForMembers(session.members);
+    
+    logger.info({ sessionId, size: io.sockets.adapter.rooms.get(sessionId)?.size }, 'EMIT session_ended');
 
     res.json({ message: 'Сессия завершена', mutualLikes });
+
   });
 });
 

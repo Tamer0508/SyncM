@@ -8,7 +8,9 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/track_card.dart';
 
 class PickPlaylistScreen extends StatefulWidget {
-  const PickPlaylistScreen({super.key});
+  const PickPlaylistScreen({super.key, this.sessionId});
+
+  final String? sessionId;
 
   @override
   State<PickPlaylistScreen> createState() => _PickPlaylistScreenState();
@@ -130,7 +132,9 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final sessionId = ModalRoute.of(context)?.settings.arguments as String?;
+    final sessionId =
+
+        widget.sessionId ?? ModalRoute.of(context)?.settings.arguments as String?;
     final inPlaylist = _selectedPlaylist != null;
     final selectedCount = _selectedTrackUris.length;
 

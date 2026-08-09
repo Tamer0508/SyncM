@@ -308,6 +308,7 @@ const setupSocket = (io) => {
         return socket.emit('error', { message: 'Нет доступа к сессии' });
       }
       socket.join(sessionId);
+      logger.info({ sessionId, uid, room: io.sockets.adapter.rooms.get(sessionId)?.size }, 'JOIN');
       socket.data.sessionId = sessionId;
       const dropKey = `${sessionId}:${uid}`;
       if (sessionDropTimers.has(dropKey)) {

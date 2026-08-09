@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/playback_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
 import '../../theme.dart';
@@ -307,10 +308,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(ctx).pop();
+
+              await context.read<PlaybackProvider>().stopAndClear();
+              if (!context.mounted) return;
+
               final auth = Provider.of<AuthProvider>(context, listen: false);
-              auth.logout();
+              await auth.logout();
+              if (!context.mounted) return;
               showAppNotification(context, message: 'Вы вышли из аккаунта', type: NotificationType.success);
               Navigator.of(context).pushReplacementNamed('/');
             },

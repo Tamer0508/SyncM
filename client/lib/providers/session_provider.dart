@@ -72,7 +72,12 @@ class SessionProvider with ChangeNotifier {
 
   SocketService? _socket;
 
-  static const _events = ['session_invite', 'invite_response'];
+  static const _events = [
+    'session_invite',
+    'invite_response',
+    'session_ended',
+    'user_joined',
+  ];
 
   void init(SocketService socketService) {
     if (identical(_socket, socketService)) return;
@@ -82,6 +87,26 @@ class SessionProvider with ChangeNotifier {
 
     socketService.on('session_invite', (data) {
       if (data is Map) _onSessionInvite(Map<String, dynamic>.from(data));
+    });
+
+    socketService.on('session_ended', (data) {
+      final result = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+      debugPrint('[Session] получено session_ended');
+
+      fetchMySessions().ignore();
+
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) return;
+
+      navigator.pushNamedAndRemoveUntil(
+        '/session/results',
+        (route) => route.settings.name == '/home' || route.isFirst,
+        arguments: result,
+      );
+    });
+
+    socketService.on('user_joined', (_) {
+      fetchMySessions().ignore();
     });
 
     socketService.on('invite_response', (data) {

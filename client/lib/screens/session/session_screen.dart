@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:provider/provider.dart';
+import 'package:syncm/screens/session/pick_playlist_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/session_provider.dart';
 import '../../providers/playback_provider.dart';
@@ -192,6 +193,10 @@ class _SessionScreenState extends State<SessionScreen> {
         arguments: result,
       );
     });
+    socket.on('user_joined', (_) {
+      if (mounted) _refreshSession();
+    });
+
     socket.on('session_presence', (data) {
       if (!mounted) return;
       final ids = (data is Map ? data['onlineUserIds'] : null);
@@ -435,7 +440,25 @@ class _SessionScreenState extends State<SessionScreen> {
     final sessionId = _session?['id'] as String?;
     if (sessionId == null) return;
 
-    final added = await Navigator.of(context).pushNamed('/playlist/pick', arguments: sessionId);
+    final isWide = MediaQuery.sizeOf(context).width >= 900;
+
+    final Object? added;
+    if (isWide) {
+      added = await showDialog<Object?>(
+        context: context,
+        builder: (_) => Dialog(
+          clipBehavior: Clip.antiAlias,
+          insetPadding: const EdgeInsets.all(AppSpacing.xl),
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.extraLarge),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720, maxHeight: 720),
+            child: PickPlaylistScreen(sessionId: sessionId),
+          ),
+        ),
+      );
+    } else {
+      added = await Navigator.of(context).pushNamed('/playlist/pick', arguments: sessionId);
+    }
     if (added == true && mounted) await _refreshSession();
   }
 

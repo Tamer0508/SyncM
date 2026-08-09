@@ -793,6 +793,7 @@ class PlaybackProvider extends ChangeNotifier {
 
     socketService.on('session_ended', (data) async {
       debugPrint('[Session] сессия завершена хостом');
+      debugPrint('[Session] провайдер: session_ended, глушим');
       try {
         if (_isWindows || _isWeb) {
           await _apiService?.pausePlayback();
