@@ -307,7 +307,6 @@ const rateTrack = asyncHandler(async (req, res) => {
       create: { trackId, userId, rating },
     });
 
-
     try {
       await addNotificationJob({
         type: 'track_rated',
@@ -364,13 +363,19 @@ const endSession = asyncHandler(async (req, res) => {
         track.ratings.every((r) => r.rating === 1)
     );
 
-    await invalidateSessionsListForMembers(session.members);
-    
     const io = getIo();
-    logger.info({ sessionId, size: io?.sockets?.adapter?.rooms?.get(sessionId)?.size }, 'EMIT session_ended');
+    if (io) {
+      io.to(sessionId).emit('session_ended', {
+        sessionId,
+        endedBy: userId,
+        mutualLikes,
+        timestamp: Date.now(),
+      });
+    }
+
+    await invalidateSessionsListForMembers(session.members);
 
     res.json({ message: 'Сессия завершена', mutualLikes });
-
   });
 });
 
@@ -404,6 +409,23 @@ const respondToInvite = asyncHandler(async (req, res) => {
         tracks: true,
       },
     });
+
+    if (accept) {
+      try {
+        const io = getIo();
+        if (io) {
+          const room = io.sockets.adapter.rooms.get(`user:${userId}`);
+          if (room) {
+            for (const socketId of room) {
+              io.sockets.sockets.get(socketId)?.join(sessionId);
+            }
+          }
+          io.to(sessionId).emit('user_joined', { userId, sessionId });
+        }
+      } catch (e) {
+        logger.error({ err: e, sessionId, userId }, 'Failed to join session room after accept');
+      }
+    }
 
     try {
       await notifyInviteResponse({

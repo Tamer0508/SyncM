@@ -253,6 +253,29 @@ const setupSocket = (io) => {
       logger.info({ socketId: socket.id, userId }, 'User connected');
       socket.data.userId = userId;
       socket.join(`user:${userId}`);
+      try {
+        const activeMemberships = await prisma.sessionMember.findMany({
+          where: {
+            userId,
+            status: 'accepted',
+            session: { isActive: true },
+          },
+          select: { sessionId: true },
+        });
+
+        for (const { sessionId } of activeMemberships) {
+          socket.join(sessionId);
+        }
+
+        if (activeMemberships.length > 0) {
+          logger.info(
+            { userId, sessions: activeMemberships.length },
+            'Auto-joined active session rooms'
+          );
+        }
+      } catch (err) {
+        logger.error({ err, userId }, 'Failed to auto-join session rooms');
+      }
 
       if (offlineTimers.has(userId)) {
         clearTimeout(offlineTimers.get(userId));
