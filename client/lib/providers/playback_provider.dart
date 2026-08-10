@@ -78,7 +78,7 @@ class PlaybackProvider extends ChangeNotifier {
   String? _pendingTrackUri;
   DateTime? _pendingSince;
 
-  static const _pendingTrackTimeout = Duration(seconds: 6);
+  static const _pendingTrackTimeout = Duration(milliseconds: 1500);
 
   void _markPendingTrack(String? uri) {
     _pendingTrackUri = uri;
@@ -92,6 +92,8 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   bool _shouldIgnoreSdkTrack(String incomingUri) {
+    if (_sessionMode) return false;
+
     final pending = _pendingTrackUri;
     if (pending == null) return false;
 

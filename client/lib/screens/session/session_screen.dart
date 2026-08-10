@@ -307,10 +307,10 @@ class _SessionScreenState extends State<SessionScreen> {
       if (mounted) {
         if (widget.embedded && widget.onBack != null) {
           widget.onBack!();
-        } else {
-          Navigator.of(context)
-              .pushReplacementNamed('/session/results', arguments: result);
         }
+
+        final args = result ?? const <String, dynamic>{};
+        Navigator.of(context).pushNamed('/session/results', arguments: args);
       }
     } catch (e) {
       if (mounted) {

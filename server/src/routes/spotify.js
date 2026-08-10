@@ -95,7 +95,16 @@ router.get('/playlists', rateLimitMiddleware(30, 60), asyncHandler(async (req, r
   try {
     const playlists = await getOrSet(`spotify:user-playlists:${userId}`, 'list', CACHE_TTL.userPlaylists, async () => {
       const spotifyUser = await requireSpotifyUser(userId);
-      const data = await spotifyGet(spotifyUser, 'https://api.spotify.com/v1/me/playlists?limit=20');
+      const all = [];
+      let nextUrl = 'https://api.spotify.com/v1/me/playlists?limit=50';
+
+      while (nextUrl && all.length < 500) {
+        const page = await spotifyGet(spotifyUser, nextUrl);
+        all.push(...(page.items || []));
+        nextUrl = page.next;
+      }
+
+      const data = { items: all };
 
       return data.items.map((p) => ({
         id: p.id,
@@ -125,10 +134,17 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
   try {
     const tracks = await getOrSet(`spotify:playlist-tracks:${playlistId}`, 'items', CACHE_TTL.playlistTracks, async () => {
       const spotifyUser = await requireSpotifyUser(userId);
-      const data = await spotifyGet(
-        spotifyUser,
-        `https://api.spotify.com/v1/playlists/${encodeURIComponent(playlistId)}/items?limit=50`
-      );
+      const collected = [];
+      let nextUrl =
+        `https://api.spotify.com/v1/playlists/${encodeURIComponent(playlistId)}/items?limit=50`;
+
+      while (nextUrl && collected.length < 1000) {
+        const page = await spotifyGet(spotifyUser, nextUrl);
+        collected.push(...(page.items || []));
+        nextUrl = page.next;
+      }
+
+      const data = { items: collected };
 
       return (data.items || [])
         .map((item) => extractTrack(item))
