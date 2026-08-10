@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../providers/session_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -34,6 +35,11 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
   Friend? _selectedFriend;
   bool _creating = false;
 
+  /// Показывать ошибку названия только после первой попытки ввода.
+  ///
+  /// Раньше «Название не может быть пустым» появлялось сразу при открытии
+  /// экрана — форма встречала пользователя ошибкой ещё до того, как он
+  /// что-либо сделал.
   bool _nameTouched = false;
 
   @override
@@ -84,6 +90,16 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
       if (widget.onSessionCreated != null) {
         widget.onSessionCreated!(session);
       } else {
+        // На широком экране просим показать сессию встроенной, а не
+        // открываем маршрутом: иначе она занимала бы весь экран, закрывая
+        // боковую панель и панель воспроизведения. При повторном заходе с
+        // главной та же сессия показывалась встроенной — из-за этого одна и
+        // та же сессия выглядела по-разному в зависимости от пути входа.
+        if (MediaQuery.sizeOf(context).width >= 900) {
+          context.read<SessionProvider>().requestOpenSession(session);
+          Navigator.of(context).maybePop();
+          return;
+        }
         Navigator.of(context).pushReplacementNamed('/session', arguments: session);
       }
     } catch (err) {
@@ -129,6 +145,9 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
           ],
           decoration: InputDecoration(
             labelText: 'Название сессии',
+            // Счётчик показывается только у длинных названий: постоянное
+            // «0/100» под пустым полем ничего не сообщает, но создаёт
+            // ощущение ограничения.
             counterText: _name.length > _maxNameLength - 20 ? null : '',
             errorText: _nameError,
           ),
@@ -169,6 +188,9 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
               : const Text('Создать сессию'),
         ),
 
+        // Подсказка о том, чего не хватает, вместо постоянного текста ошибки
+        // под списком друзей. Она появляется, только когда название уже
+        // введено — иначе сбивала бы с толку на пустой форме.
         if (_nameValid && _selectedFriend == null) ...[
           const SizedBox(height: AppSpacing.sm),
           Text(
@@ -228,6 +250,8 @@ class _NoFriendsHint extends StatelessWidget {
             style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpacing.md),
+          // Раньше здесь было просто «Нет друзей» без выхода из ситуации:
+          // пользователь упирался в тупик и должен был сам догадаться, куда идти.
           FilledButton.tonalIcon(
             onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
             icon: const Icon(Icons.person_add_rounded),
@@ -296,6 +320,8 @@ class _FriendSelectTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    // Статус присутствия важен именно здесь: звать в сессию
+                    // того, кто не в сети, обычно бессмысленно.
                     if (friend.showsPresence && friend.isOnline) ...[
                       const SizedBox(height: 2),
                       Text(

@@ -3,33 +3,60 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 
 class SessionResultsScreen extends StatelessWidget {
-  const SessionResultsScreen({super.key});
+  const SessionResultsScreen({
+    super.key,
+    this.mutualLikes,
+    this.embedded = false,
+    this.onClose,
+  });
+
+  /// Совпавшие треки.
+  ///
+  /// Обычно приходят аргументом маршрута, но на широком экране этот экран
+  /// показывается диалогом поверх главного — там маршрута нет, и данные
+  /// передаются напрямую.
+  final List<Map>? mutualLikes;
+
+  /// Во встроенном виде экран занимает только центральную часть, а панели
+  /// остаются на месте — уводить на главную не нужно, достаточно вернуться.
+  final bool embedded;
+
+  /// Как закрыть встроенный вид. Задаёт главный экран.
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    final mutualLikes =
-        (args?['mutualLikes'] as List?)?.whereType<Map>().toList() ?? const <Map>[];
-    final hasResults = mutualLikes.isNotEmpty;
+    // whereType вместо приведения всего списка: один некорректный элемент от
+    // сервера не должен ронять весь экран результатов.
+    final tracks = mutualLikes ??
+        (args?['mutualLikes'] as List?)?.whereType<Map>().toList() ??
+        const <Map>[];
+    final hasResults = tracks.isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Итоги сессии')),
+      // Во встроенном виде своя шапка не нужна: экран занимает лишь
+      // центральную часть, а над ней уже есть шапка главного экрана.
+      appBar: embedded ? null : AppBar(title: const Text('Итоги сессии')),
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: hasResults
-                  ? _ResultsList(tracks: mutualLikes)
+                  ? _ResultsList(tracks: tracks)
                   : const _NoMatchesView(),
             ),
             Padding(
               padding: const EdgeInsets.all(AppSpacing.md),
               child: FilledButton(
-                onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(
-                  '/home',
-                  (_) => false,
-                ),
-                child: const Text('На главную'),
+                onPressed: () {
+                  if (embedded) {
+                    onClose?.call();
+                    return;
+                  }
+                  Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+                },
+                child: Text(embedded ? 'Готово' : 'На главную'),
               ),
             ),
           ],
@@ -56,6 +83,9 @@ class _ResultsList extends StatelessWidget {
         AppSpacing.md,
         AppSpacing.sm,
       ),
+      // +1 — заголовок в самом списке, а не отдельной карточкой сверху.
+      // Раньше он занимал постоянное место на экране, оставляя списку
+      // меньше половины высоты; теперь уезжает при прокрутке.
       itemCount: tracks.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, i) {
@@ -176,7 +206,7 @@ class _NoMatchesView extends StatelessWidget {
             Text('Совпадений нет', style: texts.titleLarge, textAlign: TextAlign.center),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'В этот раз вкусы разошлись. Попробуйте ещё одну сессию - '
+              'В этот раз вкусы разошлись. Попробуйте ещё одну сессию — '
               'с другой подборкой результат может быть иным.',
               textAlign: TextAlign.center,
               style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),

@@ -8,8 +8,10 @@ import '../../providers/session_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../utils/notifications.dart';
 import '../player/now_playing.dart';
+import 'session_results_screen.dart';
 import '../../services/socket_service.dart';
 import '../../theme.dart';
+import '../../utils/app_globals.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/mini_player.dart';
 import '../../widgets/tappable_avatar.dart';
@@ -20,8 +22,19 @@ class SessionScreen extends StatefulWidget {
   final Map<String, dynamic>? sessionData;
   final VoidCallback? onBack;
 
-  const SessionScreen(
-      {super.key, this.embedded = false, this.sessionData, this.onBack});
+  /// Сессия завершена — главный экран покажет итоги в центральной части.
+  ///
+  /// Во встроенном режиме переход отдельным маршрутом закрывал бы боковые
+  /// панели, поэтому решение о показе принимает тот, кто нас встроил.
+  final void Function(Map<String, dynamic> results)? onSessionEnded;
+
+  const SessionScreen({
+    super.key,
+    this.embedded = false,
+    this.sessionData,
+    this.onBack,
+    this.onSessionEnded,
+  });
 
   @override
   State<SessionScreen> createState() => _SessionScreenState();
@@ -305,11 +318,28 @@ class _SessionScreenState extends State<SessionScreen> {
       }
 
       if (mounted) {
+        // Итоги показываем ВСЕГДА, в том числе во встроенном режиме.
+        //
+        // Раньше на широком экране хост просто закрывал панель через onBack
+        // и на экран результатов не попадал вовсе: совпавшие треки, ради
+        // которых сессия и затевалась, он не видел.
+        //
+        // Порядок важен: сначала закрываем встроенную панель, иначе после
+        // возврата с результатов пользователь снова окажется в закрытой
+        // сессии.
+        final args = result ?? const <String, dynamic>{};
+
         if (widget.embedded && widget.onBack != null) {
-          widget.onBack!();
+          // Итоги показывает тот, кто нас встроил, — в центральной части,
+          // с сохранением боковых панелей. Отдельный маршрут закрывал бы их.
+          if (widget.onSessionEnded != null) {
+            widget.onSessionEnded!(args);
+          } else {
+            widget.onBack!();
+          }
+          return;
         }
 
-        final args = result ?? const <String, dynamic>{};
         Navigator.of(context).pushNamed('/session/results', arguments: args);
       }
     } catch (e) {

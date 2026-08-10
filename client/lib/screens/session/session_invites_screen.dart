@@ -50,8 +50,21 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
 
       final session = result['session'] as Map<String, dynamic>?;
       if (session != null) {
+        // На широком экране просим показать сессию встроенной, а не
+        // открываем маршрутом: иначе она занимала бы весь экран, закрывая
+        // боковую панель и панель воспроизведения. При повторном заходе с
+        // главной та же сессия показывалась встроенной — из-за этого одна и
+        // та же сессия выглядела по-разному в зависимости от пути входа.
+        if (MediaQuery.sizeOf(context).width >= 900) {
+          context.read<SessionProvider>().requestOpenSession(session);
+          Navigator.of(context).maybePop();
+          return;
+        }
         Navigator.of(context).pushReplacementNamed('/session', arguments: session);
       } else {
+        // Сессия принята, но данных для перехода нет — сообщаем об этом
+        // вместо молчания: раньше экран просто оставался на месте, и было
+        // непонятно, сработало ли нажатие.
         showSuccess(context, 'Вы присоединились к сессии');
       }
     } catch (err) {
@@ -75,6 +88,10 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
         }
 
         if (prov.invites.isEmpty) {
+          // Пустое состояние внутри прокручиваемой области: иначе жест
+          // обновления по нему не срабатывает. Прежний расчёт высоты через
+          // MediaQuery минус kToolbarHeight давал переполнение на невысоких
+          // экранах с открытой клавиатурой.
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: const [SizedBox(height: 80), _EmptyInvitesView()],
@@ -92,6 +109,10 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
     );
 
     return Scaffold(
+      // Панель воспроизведения на каждом экране: раньше она была только
+      // на вкладках главного экрана и пропадала, стоило открыть настройки,
+      // поиск друзей или сессию. Сама панель схлопывается в ноль, когда
+      // трека нет, поэтому здесь ничего проверять не нужно.
       bottomNavigationBar: const MiniPlayerDock(),
       appBar: AppBar(
         title: const Text('Приглашения'),
@@ -292,6 +313,8 @@ class _InviteCard extends StatelessWidget {
                           width: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
+                            // Цвет из палитры, а не белый: на светлой теме
+                            // белый индикатор на кнопке почти не виден.
                             color: colors.onPrimary,
                           ),
                         )

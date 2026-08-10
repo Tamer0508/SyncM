@@ -31,6 +31,46 @@ class SessionProvider with ChangeNotifier {
   List<SessionModel> get sessions => List.unmodifiable(_sessions);
 
   List<Map<String, dynamic>> _invites = [];
+
+  /// Итоги только что завершённой сессии, которые ещё не показаны.
+  ///
+  /// Заполняется, когда сессию закрыл кто-то другой, а мы на широком экране:
+  /// показать их должен главный экран в своей центральной части. Он же
+  /// вызывает consumeEndedResults, чтобы итоги не всплыли повторно при
+  /// следующей перерисовке.
+  Map<String, dynamic>? _endedResults;
+  Map<String, dynamic>? get endedResults => _endedResults;
+
+  /// Сессия, которую просят открыть.
+  ///
+  /// Переход к сессии происходит из нескольких мест: создание, принятие
+  /// приглашения, список активных сессий. Каждое из них раньше открывало её
+  /// маршрутом напрямую — и на широком экране это закрывало боковую панель и
+  /// панель воспроизведения, хотя при повторном заходе с главной та же
+  /// сессия показывалась встроенной. Отсюда и расхождение: одна и та же
+  /// сессия выглядела по-разному в зависимости от того, как в неё попали.
+  ///
+  /// Теперь экраны не решают сами, а просят показать сессию. Как показать —
+  /// встроенно или маршрутом — определяет тот, кто это умеет.
+  Map<String, dynamic>? _openSessionRequest;
+  Map<String, dynamic>? get openSessionRequest => _openSessionRequest;
+
+  void requestOpenSession(Map<String, dynamic> session) {
+    _openSessionRequest = session;
+    notifyListeners();
+  }
+
+  void consumeOpenSession() {
+    _openSessionRequest = null;
+    // Без оповещения: значение забирают во время построения дерева.
+  }
+
+  void consumeEndedResults() {
+    if (_endedResults == null) return;
+    _endedResults = null;
+    // Без оповещения: поле забирают во время построения, а notifyListeners
+    // оттуда вызывать нельзя — это приводит к исключению.
+  }
   List<Map<String, dynamic>> get invites => List.unmodifiable(_invites);
 
   bool _loading = false;
@@ -89,22 +129,52 @@ class SessionProvider with ChangeNotifier {
       if (data is Map) _onSessionInvite(Map<String, dynamic>.from(data));
     });
 
+    // Завершение сессии обрабатываем ЗДЕСЬ, а не только на экране сессии.
+    //
+    // Провайдер живёт всё время работы приложения, а экран — нет: он может
+    // быть пересоздан при смене раскладки, открыт во встроенном виде без
+    // обработчика возврата или вообще закрыт. Подписка на уровне экрана
+    // оказывалась ненадёжной, и участники оставались в закрытой сессии.
+    //
+    // Переход делаем через глобальный ключ навигатора: у провайдера своего
+    // BuildContext нет.
     socketService.on('session_ended', (data) {
       final result = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
-      debugPrint('[Session] получено session_ended');
 
+      // Список активных сессий изменился.
       fetchMySessions().ignore();
 
-      final navigator = navigatorKey.currentState;
-      if (navigator == null) return;
+      final ctx = navigatorKey.currentContext;
+      if (ctx == null) return;
 
-      navigator.pushNamedAndRemoveUntil(
+      // На широком экране итоги показывает главный экран в центральной
+      // части — так же, как встроенную сессию. Отдельный маршрут закрыл бы
+      // боковую панель и панель воспроизведения, и итоги выглядели бы
+      // чужеродно рядом с остальными экранами.
+      //
+      // Провайдеру нужно лишь сообщить о них: он выставляет поле, а главный
+      // экран, подписанный на провайдер, покажет его сам.
+      if (MediaQuery.sizeOf(ctx).width >= 900) {
+        _endedResults = result;
+        notifyListeners();
+        return;
+      }
+
+      // На узком экране панелей нет — переходим маршрутом.
+      //
+      // pushNamedAndRemoveUntil до главного: экран сессии мог быть открыт не
+      // напрямую, а поверх других (выбор плейлиста, полноэкранный плеер), и
+      // простой pop оставил бы человека на промежуточном экране закрытой
+      // сессии.
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/session/results',
         (route) => route.settings.name == '/home' || route.isFirst,
         arguments: result,
       );
     });
 
+    // Кто-то присоединился к сессии — обновляем список, чтобы состав
+    // участников не приходилось обновлять вручную.
     socketService.on('user_joined', (_) {
       fetchMySessions().ignore();
     });
