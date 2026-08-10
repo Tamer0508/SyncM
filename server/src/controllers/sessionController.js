@@ -139,7 +139,24 @@ const createSession = asyncHandler(async (req, res) => {
       return newSession;
     });
 
-    // Уведомление
+    try {
+      const io = getIo();
+      if (io) {
+        const hostSockets = io.sockets.adapter.rooms.get(`user:${userId}`);
+        if (hostSockets) {
+          for (const socketId of hostSockets) {
+            io.sockets.sockets.get(socketId)?.join(session.id);
+          }
+        }
+        logger.info(
+          { sessionId: session.id, hostId: userId, size: io.sockets.adapter.rooms.get(session.id)?.size ?? 0 },
+          'Host joined session room'
+        );
+      }
+    } catch (e) {
+      logger.error({ err: e, sessionId: session.id }, 'Failed to join host to session room');
+    }
+
     try {
       await notifySessionInvite({
         toUserId: friendId,

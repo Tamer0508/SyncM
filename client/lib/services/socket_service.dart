@@ -235,7 +235,14 @@ class SocketService {
       'randomizationFactor': 0.5,
     });
 
+    debugPrint('[Socket] подключаемся к $baseUrl, длинаТокена=${token.length}');
+
+    _socket!.onConnectError((err) => debugPrint('[Socket] ОШИБКА подключения: $err'));
+    _socket!.onError((err) => debugPrint('[Socket] ошибка: $err'));
+    _socket!.onDisconnect((reason) => debugPrint('[Socket] отключён: $reason'));
+
     _socket!.onConnect((_) async {
+      debugPrint('[Socket] ПОДКЛЮЧЁН');
 
       // Фаза 6: после ЛЮБОГО подключения заново измеряем offset часов.
       // Ускоренная процедура сама по себе быстрая (несколько ping/pong).
