@@ -382,6 +382,8 @@ const endSession = asyncHandler(async (req, res) => {
         track.ratings.every((r) => r.rating === 1)
     );
 
+    await invalidateSessionsListForMembers(session.members);
+
     const io = getIo();
     if (io) {
       io.to(sessionId).emit('session_ended', {
@@ -391,8 +393,6 @@ const endSession = asyncHandler(async (req, res) => {
         timestamp: Date.now(),
       });
     }
-
-    await invalidateSessionsListForMembers(session.members);
 
     res.json({ message: 'Сессия завершена', mutualLikes });
   });

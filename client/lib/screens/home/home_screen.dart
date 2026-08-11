@@ -536,7 +536,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
   Widget _buildDesktopHeader() {
     final auth = context.read<AuthProvider>();
     final themeProvider = context.watch<ThemeProvider>();
@@ -635,7 +634,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!isDesktop && _currentIndex > 2) _currentIndex = 0;
       final unreadCount = Provider.of<FriendsProvider>(context).unreadCount;
 
-
       final pendingSession = context.watch<SessionProvider>().openSessionRequest;
       if (pendingSession != null && isDesktop) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -720,10 +718,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               ? SessionScreen(
                                   embedded: true,
                                   sessionData: _activeSession!,
-                                  onSessionEnded: (results) => setState(() {
-                                        _activeSession = null;
-                                        _sessionResults = results;
-                                      }),
+                                  onSessionEnded: (results) {
+                                    setState(() {
+                                      _activeSession = null;
+                                      _sessionResults = results;
+                                    });
+                                    context
+                                        .read<SessionProvider>()
+                                        .fetchMySessions()
+                                        .ignore();
+                                  },
                                   onBack: () =>
                                       setState(() => _activeSession = null))
                               : _creatingSession
