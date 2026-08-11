@@ -10,7 +10,11 @@ import '../../widgets/app_icon_button.dart';
 import '../../widgets/skeleton.dart';
 
 class SessionInvitesScreen extends StatefulWidget {
-  const SessionInvitesScreen({super.key});
+  const SessionInvitesScreen({super.key, this.embedded = false, this.onBack});
+
+  final bool embedded;
+
+  final VoidCallback? onBack;
 
   @override
   State<SessionInvitesScreen> createState() => _SessionInvitesScreenState();
@@ -107,6 +111,50 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
         );
       },
     );
+
+    if (widget.embedded) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.sm,
+              0,
+            ),
+            child: Row(
+              children: [
+                if (widget.onBack != null)
+                  IconButton(
+                    onPressed: widget.onBack,
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    tooltip: 'Назад',
+                  ),
+                Expanded(
+                  child: Text('Приглашения', style: context.texts.titleLarge),
+                ),
+                AppIconButton(
+                  icon: Icons.refresh_rounded,
+                  tooltip: 'Обновить',
+                  onPressed: () =>
+                      context.read<SessionProvider>().fetchInvites(refresh: true),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: enablePullToRefresh
+                ? RefreshIndicator(
+                    onRefresh: () => context
+                        .read<SessionProvider>()
+                        .fetchInvites(refresh: true),
+                    child: body,
+                  )
+                : body,
+          ),
+        ],
+      );
+    }
 
     return Scaffold(
       // Панель воспроизведения на каждом экране: раньше она была только

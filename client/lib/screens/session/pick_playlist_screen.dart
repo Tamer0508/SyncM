@@ -96,18 +96,22 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
     setState(() => _adding = true);
     try {
       final api = context.read<AuthProvider>().api;
-      await api.addTracks(
-        sessionId,
-        toAdd
-            .map<Map<String, dynamic>>((t) => {
-                  'spotifyUri': t['uri'],
-                  'trackName': t['name'],
-                  'artistName': t['artist'],
-                  'imageUrl': t['imageUrl'],
-                  'durationMs': t['durationMs'],
-                })
-            .toList(),
-      );
+      final payload = toAdd
+          .map<Map<String, dynamic>>((t) => {
+                'spotifyUri': t['uri'],
+                'trackName': t['name'],
+                'artistName': t['artist'],
+                'imageUrl': t['imageUrl'],
+                'durationMs': t['durationMs'],
+              })
+          .toList();
+
+      const chunkSize = 100;
+      for (var i = 0; i < payload.length; i += chunkSize) {
+        final end = (i + chunkSize < payload.length) ? i + chunkSize : payload.length;
+        await api.addTracks(sessionId, payload.sublist(i, end));
+        if (!mounted) return;
+      }
 
       if (!mounted) return;
       showSuccess(context, 'Добавлено ${toAdd.length} ${_plural(toAdd.length)}');
@@ -152,15 +156,18 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
           if (inPlaylist && _tracks.isNotEmpty)
             TextButton(
               onPressed: () => setState(() {
-                if (selectedCount == _tracks.length) {
+                if (selectedCount > 0) {
                   _selectedTrackUris.clear();
                 } else {
                   _selectedTrackUris
                     ..clear()
-                    ..addAll(_tracks.map((t) => t['uri'] as String));
+                    ..addAll(_tracks
+                        .map((t) => t['uri'])
+                        .whereType<String>()
+                        .where((uri) => uri.isNotEmpty));
                 }
               }),
-              child: Text(selectedCount == _tracks.length ? 'Снять всё' : 'Выбрать всё'),
+              child: Text(selectedCount > 0 ? 'Снять ($selectedCount)' : 'Выбрать всё'),
             ),
         ],
       ),

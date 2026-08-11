@@ -68,7 +68,9 @@ const addTracksBodySchema = z.object({
       imageUrl: httpUrlSchema.optional().nullable(),
       durationMs: z.number().int().positive().optional().nullable(),
     })
-  ).min(1, 'Необходимо передать хотя бы один трек').max(100, 'Слишком много треков за раз'),
+  )
+    .min(1, 'Необходимо передать хотя бы один трек')
+    .max(200, 'Слишком много треков в одном запросе'),
 });
 
 const rateTrackBodySchema = z.object({
