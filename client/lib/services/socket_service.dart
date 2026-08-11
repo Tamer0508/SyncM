@@ -235,7 +235,6 @@ class SocketService {
       'randomizationFactor': 0.5,
     });
 
-    debugPrint('[Socket] подключаемся к $baseUrl, длинаТокена=${token.length}');
 
     _socket!.onConnectError((err) => debugPrint('[Socket] ОШИБКА подключения: $err'));
     _socket!.onError((err) => debugPrint('[Socket] ошибка: $err'));

@@ -125,14 +125,11 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
     if (_socketInitialized) return;
 
     final token = auth.cookie ?? '';
-    debugPrint('[SocketGate] user=${auth.user?.id} длинаТокена=${token.length}');
 
     if (auth.user?.id == null) {
-      debugPrint('[SocketGate] пользователь ещё не загружен — ждём');
       return;
     }
     if (!kIsWeb && token.isEmpty) {
-      debugPrint('[SocketGate] ТОКЕНА НЕТ — сокет не создаётся');
       return;
     }
 
