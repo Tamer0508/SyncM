@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../../widgets/mini_player.dart';
 import 'package:provider/provider.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -9,6 +8,7 @@ import '../../models/friend.dart';
 import '../../providers/friends_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
+import '../../widgets/screen_chrome.dart';
 import '../../widgets/tappable_avatar.dart';
 
 class SearchUsersScreen extends StatefulWidget {
@@ -146,12 +146,14 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       ],
     );
 
-    if (widget.embedded) return body;
-
-    return Scaffold(
-      bottomNavigationBar: const MiniPlayerDock(),
-      appBar: AppBar(title: const Text('Поиск друзей')),
-      body: body,
+    return ScreenChrome(
+      embedded: widget.embedded,
+      header: ScreenHeader(
+        title: 'Поиск друзей',
+        onBack: widget.onBack ??
+            (widget.embedded ? null : () => Navigator.of(context).pop()),
+      ),
+      child: body,
     );
   }
 
@@ -285,6 +287,9 @@ class _ActionButton extends StatelessWidget {
       );
     }
 
+    // Статусы показываем иконкой с подписью: без текста «в друзьях» и
+    // «ждёт ответа» неразличимы, а одна иконка галочки читалась бы как
+    // кнопка подтверждения.
     Widget label(String text, {IconData? icon, Color? color}) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
@@ -315,6 +320,10 @@ class _ActionButton extends StatelessWidget {
         return label('Ждёт ответа', icon: Icons.mark_email_unread_rounded);
       case FriendshipStatus.none:
       case FriendshipStatus.sent:
+        // Круглая кнопка вместо надписи «Добавить»: текстовая занимала
+        // заметную часть строки и перетягивала внимание с имени
+        // пользователя, ради которого список и открывают. Смысл иконки
+        // раскрывает всплывающая подсказка и озвучка для чтения с экрана.
         return IconButton.filledTonal(
           onPressed: onSend,
           icon: const Icon(Icons.person_add_alt_1_rounded),

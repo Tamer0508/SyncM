@@ -1,7 +1,6 @@
-import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import '../../widgets/mini_player.dart';
+import '../../widgets/screen_chrome.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
@@ -9,6 +8,7 @@ import '../../theme.dart';
 import '../../providers/playback_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/session_foreground_service.dart';
+import '../../services/spotify_link_service.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/tappable_avatar.dart';
@@ -16,18 +16,22 @@ import 'avatar_crop_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   final bool embedded;
-  const SettingsScreen({super.key, this.embedded = false});
+  const SettingsScreen({super.key, this.embedded = false, this.onBack});
+
+  /// Как вернуться из встроенного вида.
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
     final body = _SettingsBody();
 
-    if (embedded) return body;
-
-    return Scaffold(
-      bottomNavigationBar: const MiniPlayerDock(),
-      appBar: AppBar(title: const Text('Настройки')),
-      body: body,
+    return ScreenChrome(
+      embedded: embedded,
+      header: ScreenHeader(
+        title: 'Настройки',
+        onBack: onBack ?? (embedded ? null : () => Navigator.of(context).pop()),
+      ),
+      child: body,
     );
   }
 }
@@ -133,9 +137,30 @@ class _SettingsBodyState extends State<_SettingsBody> {
               showSuccess(context, 'Имя обновлено');
             } catch (err) {
               if (!mounted) return;
+              // showError вместо безликого «Ошибка»: теперь видно, что
+              // именно не так — сеть, права или занятое имя.
               showError(context, err);
             }
           },
+        ),
+
+        _SettingsSection(
+          title: 'Сервисы',
+          child: _SettingsCard(
+            children: [
+              _SpotifyTile(
+                connected: auth.user?.spotifyConnected == true,
+                onTap: () {
+                  final connected = auth.user?.spotifyConnected == true;
+                  if (connected) {
+                    disconnectSpotify(context);
+                  } else {
+                    connectSpotify(context);
+                  }
+                },
+              ),
+            ],
+          ),
         ),
 
         const _SettingsSection(
@@ -145,6 +170,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
 
         _SettingsSection(
           title: 'Приватность',
+          // Переключатели собраны в одну карточку с разделителями вместо
+          // отдельных плиток на фоне экрана: так видно, что это один
+          // связанный набор настроек, а не три независимых действия.
           child: _SettingsCard(
             children: [
               _PrivacySwitchTile(
@@ -211,8 +239,56 @@ class _SettingsBodyState extends State<_SettingsBody> {
             ],
           ),
         ),
+
+        _SettingsSection(
+          title: 'Аккаунт',
+          child: _SettingsCard(
+            children: [
+              _DangerTile(
+                icon: Icons.logout_rounded,
+                title: 'Выйти из аккаунта',
+                onTap: () => _confirmLogout(context),
+              ),
+            ],
+          ),
+        ),
       ],
     );
+  }
+
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.logout_rounded, color: ctx.colors.error),
+        title: const Text('Выйти из аккаунта?'),
+        content: const Text('Придётся войти заново, чтобы вернуться.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: ctx.colors.error,
+              foregroundColor: ctx.colors.onError,
+            ),
+            child: const Text('Выйти'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    await context.read<PlaybackProvider>().stopAndClear();
+    if (!mounted) return;
+
+    await context.read<AuthProvider>().logout();
+    if (!mounted) return;
+
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
   }
 
   Future<void> _updatePrivacy(Map<String, bool> patch) async {
@@ -329,6 +405,10 @@ class _AvatarBlock extends StatelessWidget {
       children: [
         Stack(
           children: [
+            // Нажатие на сам аватар разворачивает его на весь экран, а
+            // изменить фотографию можно кнопкой в углу. Раньше нажатие в
+            // любое место сразу открывало выбор файла, и посмотреть свою
+            // аватарку целиком было невозможно.
             TappableAvatar(
               imageUrl: avatarUrl,
               radius: 60,
@@ -401,6 +481,8 @@ class _ThemeSelector extends StatelessWidget {
       onSelectionChanged: (selected) => themeProvider.setThemeMode(selected.first),
       showSelectedIcon: false,
       style: SegmentedButton.styleFrom(
+        // Форма из темы: раньше здесь был свой radius 12, не совпадавший с
+        // остальными элементами экрана.
         shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
         visualDensity: VisualDensity.comfortable,
       ),
@@ -418,6 +500,10 @@ class _AudioLatencyTile extends StatelessWidget {
     final pb = context.watch<PlaybackProvider>();
     final latency = pb.audioLatencyMs;
 
+    // Собственные отступы обязательны: плитка лежит внутри карточки со
+    // скруглёнными углами и обрезкой содержимого. Без них иконка упиралась в
+    // край и срезалась закруглением — раньше плитка стояла прямо на фоне
+    // экрана и жила на отступах списка.
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
@@ -451,6 +537,9 @@ class _AudioLatencyTile extends StatelessWidget {
             label: '$latency мс',
             onChanged: (v) => pb.setAudioLatency(v.round()),
           ),
+          // Кнопка сброса всегда занимает своё место, просто становится
+          // неактивной: иначе при первом же движении ползунка она появлялась
+          // и сдвигала содержимое карточки вниз.
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
@@ -627,6 +716,58 @@ class _PrivacySwitchTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
         ),
       ),
+    );
+  }
+}
+
+/// Строка подключённого сервиса.
+class _SpotifyTile extends StatelessWidget {
+  const _SpotifyTile({required this.connected, required this.onTap});
+
+  final bool connected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final spotify = context.roles.spotify;
+
+    return ListTile(
+      onTap: onTap,
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: spotify.withValues(alpha: 0.16),
+          borderRadius: AppRadius.small,
+        ),
+        child: Icon(Icons.music_note_rounded, size: 20, color: spotify),
+      ),
+      title: const Text('Spotify'),
+      subtitle: Text(connected ? 'Подключён' : 'Не подключён'),
+      trailing: Text(
+        connected ? 'Отключить' : 'Подключить',
+        style: context.texts.labelMedium?.copyWith(color: colors.onSurfaceVariant),
+      ),
+    );
+  }
+}
+
+class _DangerTile extends StatelessWidget {
+  const _DangerTile({required this.icon, required this.title, required this.onTap});
+
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final error = context.colors.error;
+
+    return ListTile(
+      onTap: onTap,
+      leading: Icon(icon, color: error),
+      title: Text(title, style: TextStyle(color: error)),
     );
   }
 }

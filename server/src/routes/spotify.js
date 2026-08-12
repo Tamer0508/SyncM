@@ -419,6 +419,7 @@ router.post('/disconnect', rateLimitMiddleware(10, 60), asyncHandler(async (req,
       incrementVersion(`spotify:user-playlists:${userId}`),
       incrementVersion(`spotify:devices:${userId}`),
       incrementVersion(`db:user-playlists-db:${userId}`),
+      incrementVersion(`db:user-profile:${userId}`),
     ]);
 
     res.json({ message: 'Spotify успешно отключен' });

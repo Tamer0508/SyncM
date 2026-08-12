@@ -12,7 +12,10 @@ class TappableAvatar extends StatelessWidget {
     this.fallbackIcon = Icons.person_rounded,
     this.showRing = false,
     this.title,
+    this.onTapOverride,
   });
+
+  final VoidCallback? onTapOverride;
 
   final String? imageUrl;
   final double radius;
@@ -104,6 +107,9 @@ class TappableAvatar extends StatelessWidget {
       );
     }
 
+    if (onTapOverride != null) {
+      return GestureDetector(onTap: onTapOverride, child: avatar);
+    }
     if (!_hasImage) return avatar;
 
     return GestureDetector(

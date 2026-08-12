@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:syncm/screens/playlist/playlist_tracks_screen.dart';
 import 'package:syncm/screens/settings/settings_screen.dart';
 import 'package:syncm/screens/session/create_session_screen.dart';
+import 'package:syncm/screens/profile/profile_screen.dart';
 import 'package:syncm/screens/session/session_invites_screen.dart';
 import 'package:syncm/screens/session/session_results_screen.dart';
 import 'package:syncm/screens/session/session_screen.dart';
@@ -14,9 +15,8 @@ import 'package:syncm/services/prefetch_service.dart';
 import 'package:syncm/services/socket_service.dart';
 import '../../services/api_service.dart';
 import '../../widgets/playlist_card.dart';
-import '../../widgets/scrollable_playlist_row.dart';
 import '../../widgets/skeleton.dart';
-import '../../widgets/interactive_card.dart';
+import '../../widgets/tappable_avatar.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../theme.dart';
 import '../../widgets/animated_notification_button.dart';
@@ -30,7 +30,6 @@ import '../../providers/playback_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../friends/friends_screen.dart';
-import '../profile/profile_screen.dart';
 
 
 class HomeScreen extends StatefulWidget {
@@ -59,10 +58,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _sessionResults = null;
 
     _showingInvites = false;
+    _viewingProfile = null;
+    _showingOwnProfile = false;
+    _showingSettings = false;
     _selectedPlaylist = null;
   }
 
-  /// Открывает наложенный экран, погасив предыдущий.
   void _openOverlay(VoidCallback apply) {
     setState(() {
       _clearOverlays();
@@ -74,6 +75,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _sessionResults;
 
   bool _showingInvites = false;
+
+  Map<String, dynamic>? _viewingProfile;
+
+  bool _showingOwnProfile = false;
+  bool _showingSettings = false;
   String? _activeFriendView; // 'search' или 'requests'
 
 
@@ -95,6 +101,23 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) _prefetch.warmUpAvatars(context, friendsProv.friends);
       });
     });
+  }
+
+  bool get _hasOverlay =>
+      _showingSettings ||
+      _showingOwnProfile ||
+      _viewingProfile != null ||
+      _showingInvites ||
+      _activeFriendView != null ||
+      _activeSession != null ||
+      _creatingSession;
+
+  void _openOwnProfile(bool isDesktop) {
+    if (isDesktop) {
+      _openOverlay(() => _showingOwnProfile = true);
+      return;
+    }
+    Navigator.of(context).pushNamed('/profile');
   }
 
   void _openInvites(bool isDesktop) {
@@ -160,130 +183,71 @@ class _HomeScreenState extends State<HomeScreen> {
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS);
 
+    void startSession() {
+      if (isDesktop) {
+        _openOverlay(() => _creatingSession = true);
+      } else {
+        Navigator.of(context).pushNamed('/session/create');
+      }
+    }
+
     final child = ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
-        AppSpacing.md,
+        AppSpacing.sm,
         AppSpacing.md,
         AppSpacing.xl,
       ),
       children: [
-        _WelcomeCard(
-          onCreateSession: () {
-            if (isDesktop) {
-              _openOverlay(() => _creatingSession = true);
-            } else {
-              Navigator.of(context).pushNamed('/session/create');
-            }
-          },
-          onFindFriends: () {
-            if (isDesktop) {
-              _openOverlay(() => _activeFriendView = 'search');
-            } else {
-              Navigator.of(context).pushNamed('/friends/search');
-            }
-          },
-        ),
-
-        _SectionHeader(
-          title: 'Плейлисты',
-          action: AppIconButton(
-            icon: Icons.add_box_outlined,
-            onPressed: _createCustomPlaylist,
-            tooltip: 'Создать плейлист',
-          ),
-        ),
-        SizedBox(
-          height: 208,
-          child: DefaultTabController(
-            length: 2,
-            child: Column(
-              children: [
-                const TabBar(
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  tabs: [Tab(text: 'Мои'), Tab(text: 'Spotify')],
-                ),
-                Expanded(
-                  child: TabBarView(
-                    children: [
-                      _buildPlaylistsTab(true),
-                      _buildPlaylistsTab(false),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
         Consumer<SessionProvider>(
           builder: (context, prov, _) {
-            if (prov.invites.isEmpty) return const SizedBox.shrink();
+            final invites = prov.invites;
+            final sessions = prov.sessions;
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _SectionHeader(
-                  title: 'Приглашения',
-                  badgeCount: prov.invites.length,
-                  action: TextButton(
-                    onPressed: () => _openInvites(isDesktop),
-                    child: const Text('Все'),
-                  ),
-                ),
-                ...prov.invites.take(3).map((invite) {
-                  final hostName = prov.hostNameForInvite(invite) ?? 'Друг';
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                    child: _HomeTile(
-                      icon: Icons.mail_outline_rounded,
-                      title: invite['name'] as String? ?? 'Сессия',
-                      subtitle: 'Приглашение от $hostName',
-                      onTap: () => _openInvites(isDesktop),
+                if (invites.isNotEmpty) ...[
+                  _SectionHeader(
+                    title: 'Вас зовут',
+                    badgeCount: invites.length,
+                    action: TextButton(
+                      onPressed: () => _openInvites(isDesktop),
+                      child: const Text('Все'),
                     ),
-                  );
-                }),
-              ],
-            );
-          },
-        ),
-
-        Consumer<SessionProvider>(
-          builder: (context, prov, _) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _SectionHeader(
-                  title: 'Активные сессии',
-                  action: TextButton(
-                    onPressed: prov.loading ? null : prov.fetchMySessions,
-                    child: const Text('Обновить'),
                   ),
-                ),
-                if (prov.loading && prov.sessions.isEmpty)
-                  const SkeletonList(
-                    itemCount: 2,
-                    avatarRadius: 22,
-                    padding: EdgeInsets.zero,
-                  )
-                else if (prov.sessions.isEmpty)
-                  _EmptySessionsCard(
-                    onCreate: () {
-                      if (isDesktop) {
-                        _openOverlay(() => _creatingSession = true);
-                      } else {
-                        Navigator.of(context).pushNamed('/session/create');
-                      }
-                    },
-                  )
-                else
-                  ...prov.sessions.map(
+                  ...invites.take(2).map((invite) {
+                    final hostName = prov.hostNameForInvite(invite) ?? 'Друг';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                      child: _HomeTile(
+                        icon: Icons.mail_outline_rounded,
+                        title: invite['name'] as String? ?? 'Сессия',
+                        subtitle: 'От $hostName',
+                        onTap: () => _openInvites(isDesktop),
+                      ),
+                    );
+                  }),
+                ],
+
+                if (prov.loading && sessions.isEmpty)
+                  const SkeletonList(itemCount: 1, avatarRadius: 22, padding: EdgeInsets.zero)
+                else if (sessions.isEmpty)
+                  _StartSessionCard(onStart: startSession)
+                else ...[
+                  _SectionHeader(
+                    title: 'Сейчас слушаете',
+                    action: TextButton(
+                      onPressed: prov.loading ? null : prov.fetchMySessions,
+                      child: const Text('Обновить'),
+                    ),
+                  ),
+                  ...sessions.map(
                     (session) => Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                       child: _HomeTile(
-                        icon: Icons.headphones_rounded,
+                        icon: Icons.graphic_eq_rounded,
                         title: session.name,
                         subtitle: 'Нажмите, чтобы открыть',
                         highlighted: true,
@@ -291,6 +255,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: AppSpacing.sm),
+                  OutlinedButton.icon(
+                    onPressed: startSession,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Ещё одна сессия'),
+                  ),
+                ],
               ],
             );
           },
@@ -304,12 +275,34 @@ class _HomeScreenState extends State<HomeScreen> {
       onRefresh: () async {
         final sessions = context.read<SessionProvider>();
         await Future.wait([
-          _loadAllPlaylists(),
           sessions.fetchMySessions(),
           sessions.fetchInvites(refresh: true),
         ]);
       },
       child: child,
+    );
+  }
+
+  Widget _buildMusicTab() {
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [Tab(text: 'Мои'), Tab(text: 'Spotify')],
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildPlaylistsTab(true),
+                _buildPlaylistsTab(false),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -343,17 +336,25 @@ class _HomeScreenState extends State<HomeScreen> {
               label: Text(isCustom ? 'Создать' : 'Подключить Spotify'),
               onPressed: () => isCustom
                   ? _createCustomPlaylist()
-                  : Navigator.of(context).pushNamed('/profile'),
+                  : _openOwnProfile(isDesktop),
             ),
           ],
         ),
       );
     }
-    return ScrollablePlaylistRow(
+    return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.sm,
+          AppSpacing.sm,
+          AppSpacing.sm,
+          AppSpacing.xl,
+        ),
+        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
         itemCount: playlists.length,
         itemBuilder: (_, i) {
           final p = playlists[i];
           return PlaylistCard(
+            dense: true,
             name: p['name'] ?? '',
             description: p['description'] ?? '',
             imageUrl: p['imageUrl'],
@@ -536,6 +537,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
   Widget _buildDesktopHeader() {
     final auth = context.read<AuthProvider>();
     final themeProvider = context.watch<ThemeProvider>();
@@ -571,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    const tabTitles = ['Главная', 'Друзья', 'Профиль', 'Настройки'];
+    final tabTitles = kHomeDestinations.map((d) => d.label).toList();
 
     return _DesktopHeaderShell(
       title: _selectedPlaylist != null
@@ -582,7 +584,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ? () => setState(() => _selectedPlaylist = null)
           : null,
       actions: [
-        if (_currentIndex == 1) ...[
+        if (_currentIndex == 2) ...[
           AppIconButton(
             icon: Icons.person_add_alt_1_rounded,
             onPressed: () => _openOverlay(() => _activeFriendView = 'search'),
@@ -597,16 +599,41 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () => _openOverlay(() => _activeFriendView = 'requests'),
             ),
           ),
-        ] else if (_currentIndex == 0)
+        ] else if (_currentIndex == 0) ...[
+          AppIconButton(
+            icon: Icons.refresh_rounded,
+            onPressed: () {
+              final sessions = context.read<SessionProvider>();
+              sessions.fetchMySessions();
+              sessions.fetchInvites(refresh: true);
+            },
+            tooltip: 'Обновить',
+          ),
           AppIconButton(
             icon: Icons.add_rounded,
             onPressed: () => _openOverlay(() => _creatingSession = true),
             tooltip: 'Создать сессию',
           ),
+        ],
         AppIconButton(
           icon: themeProvider.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
           onPressed: themeProvider.toggleTheme,
           tooltip: themeProvider.isDark ? 'Светлая тема' : 'Тёмная тема',
+        ),
+
+        Padding(
+          padding: const EdgeInsets.only(left: AppSpacing.xs, right: AppSpacing.sm),
+          child: Builder(
+            builder: (context) {
+              final user = context.watch<AuthProvider>().user;
+              return TappableAvatar(
+                imageUrl: user?.effectiveAvatarUrl,
+                radius: 16,
+                title: user?.displayName,
+                onTapOverride: () => _openOwnProfile(true),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -631,7 +658,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     return LayoutBuilder(builder: (context, constraints) {
       final isDesktop = constraints.maxWidth >= 900;
-      if (!isDesktop && _currentIndex > 2) _currentIndex = 0;
+      // Вкладок теперь три в обеих раскладках — подрезать индекс не нужно.
       final unreadCount = Provider.of<FriendsProvider>(context).unreadCount;
 
       final pendingSession = context.watch<SessionProvider>().openSessionRequest;
@@ -651,19 +678,18 @@ class _HomeScreenState extends State<HomeScreen> {
           _openOverlay(() => _sessionResults = pendingResults);
         });
       }
-      final tabsMobile = [
+      final tabs = [
         _buildHomeTab(),
-        FriendsScreen(embedded: true),
-        ProfileScreen(embedded: true)
-      ];
-      final tabsDesktop = [
-        _buildHomeTab(),
+        _buildMusicTab(),
         FriendsScreen(
           embedded: true,
-          onFindFriends: () => _openOverlay(() => _activeFriendView = 'search'),
+          onFindFriends: isDesktop
+              ? () => _openOverlay(() => _activeFriendView = 'search')
+              : null,
+          onOpenProfile: isDesktop
+              ? (args) => _openOverlay(() => _viewingProfile = args)
+              : null,
         ),
-        ProfileScreen(embedded: true),
-        const SettingsScreen(embedded: true)
       ];
       void selectTab(int index) => setState(() {
             _clearOverlays();
@@ -686,7 +712,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Row(children: [
                   Expanded(
                       child: Column(children: [
-                    _buildDesktopHeader(),
+                    if (!_hasOverlay) _buildDesktopHeader(),
                     Expanded(
                       child: _activeFriendView != null // ← новая проверка
                           ? (_activeFriendView == 'search'
@@ -698,6 +724,27 @@ class _HomeScreenState extends State<HomeScreen> {
                                   embedded: true,
                                   onBack: () =>
                                       setState(() => _activeFriendView = null)))
+                          : _showingSettings
+                              ? SettingsScreen(
+                                  embedded: true,
+                                  onBack: () =>
+                                      setState(() => _showingSettings = false),
+                                )
+                          : _showingOwnProfile
+                              ? ProfileScreen(
+                                  embedded: true,
+                                  onOpenSettings: () => _openOverlay(
+                                      () => _showingSettings = true),
+                                  onBack: () => setState(
+                                      () => _showingOwnProfile = false),
+                                )
+                          : _viewingProfile != null
+                              ? ProfileScreen(
+                                  embedded: true,
+                                  overrideArgs: _viewingProfile,
+                                  onBack: () =>
+                                      setState(() => _viewingProfile = null),
+                                )
                           : _showingInvites
                               ? SessionInvitesScreen(
                                   embedded: true,
@@ -723,6 +770,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       _activeSession = null;
                                       _sessionResults = results;
                                     });
+
                                     context
                                         .read<SessionProvider>()
                                         .fetchMySessions()
@@ -733,6 +781,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               : _creatingSession
                                   ? CreateSessionScreen(
                                       embedded: true,
+                                      onCancel: () => setState(
+                                          () => _creatingSession = false),
                                       onSessionCreated: (session) =>
                                           setState(() {
                                             _creatingSession = false;
@@ -756,7 +806,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   maxWidth: 1100),
                                               child: IndexedStack(
                                                 index: _currentIndex,
-                                                children: tabsDesktop,
+                                                children: tabs,
                                               ))),
                     ),
                   ])),
@@ -764,9 +814,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ])),
               ])
             : SafeArea(
-                child: IndexedStack(
-                  index: _currentIndex,
-                  children: tabsMobile,
+                child: Column(
+                  children: [
+                    _MobileHeader(
+                      title: kHomeDestinations[_currentIndex].label,
+                      onProfile: () =>
+                          Navigator.of(context).pushNamed('/profile'),
+                    ),
+                    Expanded(child: _tabsStack(tabs)),
+                  ],
                 ),
               ),
         bottomNavigationBar: isDesktop
@@ -785,19 +841,66 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     });
   }
+
+  Widget _tabsStack(List<Widget> tabs) {
+    return IndexedStack(index: _currentIndex, children: tabs);
+  }
+}
+
+class _MobileHeader extends StatelessWidget {
+  const _MobileHeader({required this.title, required this.onProfile});
+
+  final String title;
+  final VoidCallback onProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.xs,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: context.texts.headlineSmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            onPressed: onProfile,
+            tooltip: 'Профиль',
+            icon: TappableAvatar(
+              imageUrl: user?.effectiveAvatarUrl,
+              radius: 16,
+              title: user?.displayName,
+              onTapOverride: onProfile,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 
-class _WelcomeCard extends StatelessWidget {
-  const _WelcomeCard({required this.onCreateSession, required this.onFindFriends});
+class _StartSessionCard extends StatelessWidget {
+  const _StartSessionCard({required this.onStart});
 
-  final VoidCallback onCreateSession;
-  final VoidCallback onFindFriends;
+  final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final texts = context.texts;
+    final roles = context.roles;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -808,26 +911,60 @@ class _WelcomeCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Добро пожаловать', style: texts.headlineSmall),
-          const SizedBox(height: AppSpacing.sm),
+          SizedBox(
+            height: 56,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Transform.translate(
+                  offset: const Offset(-16, 0),
+                  child: _Dot(color: roles.mine),
+                ),
+                Transform.translate(
+                  offset: const Offset(16, 0),
+                  child: _Dot(color: roles.theirs),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
           Text(
-            'Создайте сессию и слушайте музыку одновременно с друзьями — '
+            'Слушайте вместе',
+            textAlign: TextAlign.center,
+            style: texts.titleLarge,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Позовите друга — музыка пойдёт у вас одновременно, '
             'где бы вы ни были.',
+            textAlign: TextAlign.center,
             style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpacing.lg),
           FilledButton.icon(
-            onPressed: onCreateSession,
+            onPressed: onStart,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Новая сессия'),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          OutlinedButton.icon(
-            onPressed: onFindFriends,
-            icon: const Icon(Icons.person_search_rounded),
-            label: const Text('Найти друзей'),
+            label: const Text('Начать сессию'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: 0.9),
       ),
     );
   }
@@ -947,44 +1084,6 @@ class _HomeTile extends StatelessWidget {
   }
 }
 
-class _EmptySessionsCard extends StatelessWidget {
-  const _EmptySessionsCard({required this.onCreate});
-
-  final VoidCallback onCreate;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        borderRadius: AppRadius.large,
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.headphones_outlined, size: 44, color: colors.onSurfaceVariant),
-          const SizedBox(height: AppSpacing.sm + 4),
-          Text('Пока нет сессий', style: texts.titleSmall, textAlign: TextAlign.center),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'Создайте сессию и пригласите друга — музыка будет играть у вас одновременно.',
-            textAlign: TextAlign.center,
-            style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          FilledButton.tonalIcon(
-            onPressed: onCreate,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Создать сессию'),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 
 /// Единая оболочка шапки широкой раскладки.

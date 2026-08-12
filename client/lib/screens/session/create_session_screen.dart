@@ -8,8 +8,8 @@ import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
+import '../../widgets/screen_chrome.dart';
 import '../../widgets/tappable_avatar.dart';
-import '../../widgets/mini_player.dart';
 
 class CreateSessionScreen extends StatefulWidget {
   const CreateSessionScreen({
@@ -87,14 +87,11 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
         return;
       }
 
+      context.read<SessionProvider>().fetchMySessions().ignore();
+
       if (widget.onSessionCreated != null) {
         widget.onSessionCreated!(session);
       } else {
-        // На широком экране просим показать сессию встроенной, а не
-        // открываем маршрутом: иначе она занимала бы весь экран, закрывая
-        // боковую панель и панель воспроизведения. При повторном заходе с
-        // главной та же сессия показывалась встроенной — из-за этого одна и
-        // та же сессия выглядела по-разному в зависимости от пути входа.
         if (MediaQuery.sizeOf(context).width >= 900) {
           context.read<SessionProvider>().requestOpenSession(session);
           Navigator.of(context).maybePop();
@@ -124,15 +121,11 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
         AppSpacing.xl,
       ),
       children: [
-        if (!widget.embedded) ...[
-          Text('Новая сессия', style: texts.headlineMedium),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'Пригласите друга и слушайте музыку одновременно.',
-            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-        ],
+        Text(
+          'Пригласите друга и слушайте музыку одновременно.',
+          style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+        ),
+        const SizedBox(height: AppSpacing.lg),
 
         TextField(
           controller: _nameController,
@@ -202,20 +195,14 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
       ],
     );
 
-    if (widget.embedded) return body;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Создать сессию'),
-        leading: widget.onCancel != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: widget.onCancel,
-              )
-            : null,
+    return ScreenChrome(
+      embedded: widget.embedded,
+      header: ScreenHeader(
+        title: 'Новая сессия',
+        onBack: widget.onCancel ??
+            (widget.embedded ? null : () => Navigator.of(context).pop()),
       ),
-      bottomNavigationBar: const MiniPlayerDock(),
-      body: SafeArea(child: body),
+      child: body,
     );
   }
 }

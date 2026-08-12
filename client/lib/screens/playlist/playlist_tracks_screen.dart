@@ -9,7 +9,6 @@ import '../../services/api_service.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
-import '../../widgets/app_icon_button.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/track_card.dart';
 import '../player/now_playing.dart';
@@ -363,7 +362,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     );
 
     if (widget.embedded) {
-      return content; // возвращаем только список треков без Scaffold
+      return content; // только список: шапку рисует главный экран
     }
     return Scaffold(
       bottomNavigationBar: const MiniPlayerDock(),

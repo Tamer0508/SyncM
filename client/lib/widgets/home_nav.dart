@@ -18,30 +18,24 @@ class HomeDestination {
 
 const List<HomeDestination> kHomeDestinations = [
   HomeDestination(
-    icon: Icons.home_outlined,
-    selectedIcon: Icons.home_rounded,
-    label: 'Главная',
+    icon: Icons.radio_outlined,
+    selectedIcon: Icons.radio_rounded,
+    label: 'Сейчас',
+  ),
+  HomeDestination(
+    icon: Icons.library_music_outlined,
+    selectedIcon: Icons.library_music_rounded,
+    label: 'Музыка',
   ),
   HomeDestination(
     icon: Icons.people_outline_rounded,
     selectedIcon: Icons.people_rounded,
     label: 'Друзья',
   ),
-  HomeDestination(
-    icon: Icons.person_outline_rounded,
-    selectedIcon: Icons.person_rounded,
-    label: 'Профиль',
-  ),
-  HomeDestination(
-    icon: Icons.settings_outlined,
-    selectedIcon: Icons.settings_rounded,
-    label: 'Настройки',
-    desktopOnly: true,
-  ),
 ];
 
 List<HomeDestination> homeDestinationsFor({required bool isDesktop}) =>
-    isDesktop ? kHomeDestinations : kHomeDestinations.where((d) => !d.desktopOnly).toList();
+    kHomeDestinations;
 
 class HomeBottomNav extends StatelessWidget {
   const HomeBottomNav({
@@ -75,7 +69,7 @@ class HomeBottomNav extends StatelessWidget {
   }
 
   Widget _maybeBadge(BuildContext context, Widget icon, int index) {
-    if (index != 1 || unreadFriendRequests <= 0) return icon;
+    if (index != 2 || unreadFriendRequests <= 0) return icon;
     return Badge.count(
       count: unreadFriendRequests,
       backgroundColor: context.colors.error,
@@ -176,7 +170,7 @@ class _HomeNavigationRailState extends State<HomeNavigationRail> {
   }
 
   Widget _maybeBadge(BuildContext context, Widget icon, int index) {
-    if (index != 1 || widget.unreadFriendRequests <= 0) return icon;
+    if (index != 2 || widget.unreadFriendRequests <= 0) return icon;
     return Badge.count(
       count: widget.unreadFriendRequests,
       backgroundColor: context.colors.error,

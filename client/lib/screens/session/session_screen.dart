@@ -1,6 +1,6 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import 'package:syncm/screens/session/pick_playlist_screen.dart';
 import '../../providers/auth_provider.dart';
@@ -8,12 +8,10 @@ import '../../providers/session_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../utils/notifications.dart';
 import '../player/now_playing.dart';
-import 'session_results_screen.dart';
 import '../../services/socket_service.dart';
 import '../../theme.dart';
-import '../../utils/app_globals.dart';
 import '../../utils/error_utils.dart';
-import '../../widgets/mini_player.dart';
+import '../../widgets/screen_chrome.dart';
 import '../../widgets/tappable_avatar.dart';
 import '../../widgets/track_card.dart';
 
@@ -352,7 +350,6 @@ class _SessionScreenState extends State<SessionScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final texts = context.texts;
     final auth = context.watch<AuthProvider>();
     final myUserId = auth.user?.id;
 
@@ -424,45 +421,15 @@ class _SessionScreenState extends State<SessionScreen> {
         ),
     ];
 
-    if (widget.embedded) {
-      return Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
-              AppSpacing.sm,
-              AppSpacing.sm,
-              0,
-            ),
-            child: Row(
-              children: [
-                if (widget.onBack != null)
-                  IconButton(
-                    onPressed: widget.onBack,
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    tooltip: 'Назад',
-                  ),
-                Expanded(
-                  child: Text(
-                    sessionName,
-                    style: texts.titleLarge,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                ...actions,
-              ],
-            ),
-          ),
-          Expanded(child: content),
-        ],
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: Text(sessionName), actions: actions),
-      body: content,
-      bottomNavigationBar: const MiniPlayerDock(),
+    return ScreenChrome(
+      embedded: widget.embedded,
+      header: ScreenHeader(
+        title: sessionName,
+        onBack: widget.onBack ??
+            (widget.embedded ? null : () => Navigator.of(context).pop()),
+        actions: actions,
+      ),
+      child: content,
     );
   }
 

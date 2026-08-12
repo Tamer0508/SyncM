@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
@@ -247,12 +246,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   });
 }
 
-  String _formatMs(int ms) {
-    final d = Duration(milliseconds: ms);
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
 
   // Устойчивая сигнатура обложки: комбинирует uri трека и хеш содержимого
   // картинки (по сэмплам байтов — быстро, без полного прохода по мегабайтам).
@@ -381,7 +374,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
 
     return Consumer<PlaybackProvider>(
       builder: (ctx, pb, _) {

@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
-import '../../widgets/mini_player.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/friends_provider.dart';
@@ -8,6 +7,7 @@ import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../widgets/skeleton.dart';
+import '../../widgets/screen_chrome.dart';
 import '../../widgets/tappable_avatar.dart';
 
 class FriendRequestsScreen extends StatefulWidget {
@@ -103,6 +103,10 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
         }
 
         if (prov.incomingRequests.isEmpty) {
+          // ListView, а не Center: пустое состояние тоже должно тянуться вниз,
+          // иначе жест обновления на нём не срабатывает. Раньше для этого
+          // задавалась высота через MediaQuery минус kToolbarHeight — расчёт
+          // ломался во встроенном режиме, где панели сверху нет вовсе.
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: const [
@@ -132,12 +136,12 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
           )
         : body;
 
-    if (widget.embedded) return content;
-
-    return Scaffold(
-      bottomNavigationBar: const MiniPlayerDock(),
-      appBar: AppBar(
-        title: const Text('Заявки в друзья'),
+    return ScreenChrome(
+      embedded: widget.embedded,
+      header: ScreenHeader(
+        title: 'Заявки в друзья',
+        onBack: widget.onBack ??
+            (widget.embedded ? null : () => Navigator.of(context).pop()),
         actions: [
           AppIconButton(
             icon: Icons.refresh_rounded,
@@ -147,7 +151,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
           ),
         ],
       ),
-      body: content,
+      child: content,
     );
   }
 }
@@ -316,6 +320,10 @@ class _RequestCard extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Отклонение — второстепенное действие, поэтому контурная
+                // иконка, а принятие выделено заливкой. Раньше обе кнопки
+                // выглядели одинаково, и различить их можно было только по
+                // цвету, что плохо работает при дальтонизме.
                 IconButton(
                   onPressed: onDecline,
                   icon: const Icon(Icons.close_rounded),

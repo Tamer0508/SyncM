@@ -1,19 +1,22 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
-import '../../widgets/mini_player.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/session_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/screen_chrome.dart';
 import '../../widgets/skeleton.dart';
 
 class SessionInvitesScreen extends StatefulWidget {
   const SessionInvitesScreen({super.key, this.embedded = false, this.onBack});
 
+  /// Встроенный режим: экран занимает лишь центральную часть главного,
+  /// поэтому своя шапка не нужна — над ним уже есть шапка главного экрана.
   final bool embedded;
 
+  /// Как вернуться из встроенного вида.
   final VoidCallback? onBack;
 
   @override
@@ -81,9 +84,6 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final enablePullToRefresh = !kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.android ||
-            defaultTargetPlatform == TargetPlatform.iOS);
 
     final body = Consumer<SessionProvider>(
       builder: (context, prov, _) {
@@ -112,72 +112,22 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
       },
     );
 
-    if (widget.embedded) {
-      return Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
-              AppSpacing.sm,
-              AppSpacing.sm,
-              0,
-            ),
-            child: Row(
-              children: [
-                if (widget.onBack != null)
-                  IconButton(
-                    onPressed: widget.onBack,
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    tooltip: 'Назад',
-                  ),
-                Expanded(
-                  child: Text('Приглашения', style: context.texts.titleLarge),
-                ),
-                AppIconButton(
-                  icon: Icons.refresh_rounded,
-                  tooltip: 'Обновить',
-                  onPressed: () =>
-                      context.read<SessionProvider>().fetchInvites(refresh: true),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: enablePullToRefresh
-                ? RefreshIndicator(
-                    onRefresh: () => context
-                        .read<SessionProvider>()
-                        .fetchInvites(refresh: true),
-                    child: body,
-                  )
-                : body,
-          ),
-        ],
-      );
-    }
-
-    return Scaffold(
-      // Панель воспроизведения на каждом экране: раньше она была только
-      // на вкладках главного экрана и пропадала, стоило открыть настройки,
-      // поиск друзей или сессию. Сама панель схлопывается в ноль, когда
-      // трека нет, поэтому здесь ничего проверять не нужно.
-      bottomNavigationBar: const MiniPlayerDock(),
-      appBar: AppBar(
-        title: const Text('Приглашения'),
+    return ScreenChrome(
+      embedded: widget.embedded,
+      header: ScreenHeader(
+        title: 'Приглашения',
+        onBack: widget.onBack ??
+            (widget.embedded ? null : () => Navigator.of(context).pop()),
         actions: [
           AppIconButton(
             icon: Icons.refresh_rounded,
             tooltip: 'Обновить',
-            onPressed: () => context.read<SessionProvider>().fetchInvites(refresh: true),
+            onPressed: () =>
+                context.read<SessionProvider>().fetchInvites(refresh: true),
           ),
         ],
       ),
-      body: enablePullToRefresh
-          ? RefreshIndicator(
-              onRefresh: () => context.read<SessionProvider>().fetchInvites(refresh: true),
-              child: body,
-            )
-          : body,
+      child: body,
     );
   }
 }

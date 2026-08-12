@@ -1,14 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as io;
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
   factory SocketService() => _instance;
   SocketService._internal();
 
-  IO.Socket? _socket;
+  io.Socket? _socket;
   String? _token;
   String? _baseUrl;
 
@@ -221,7 +221,7 @@ class SocketService {
     _token = token;
     _socket?.disconnect();
     
-    _socket = IO.io(baseUrl, <String, dynamic>{
+    _socket = io.io(baseUrl, <String, dynamic>{
       // Только websocket. polling на Railway (за прокси, без sticky sessions)
       // не завершает хендшейк и даёт timeout — раньше всё работало именно на
       // чистом websocket, возвращаем его.
@@ -235,6 +235,7 @@ class SocketService {
       'randomizationFactor': 0.5,
     });
 
+    debugPrint('[Socket] подключаемся к $baseUrl, длинаТокена=${token.length}');
 
     _socket!.onConnectError((err) => debugPrint('[Socket] ОШИБКА подключения: $err'));
     _socket!.onError((err) => debugPrint('[Socket] ошибка: $err'));

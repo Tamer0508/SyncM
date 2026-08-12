@@ -12,7 +12,10 @@ class PlaylistCard extends StatelessWidget {
     this.imageUrl,
     this.onTap,
     this.width = 150,
+    this.dense = false,
   });
+
+  final bool dense;
 
   final String name;
   final String description;
@@ -22,6 +25,7 @@ class PlaylistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (dense) return _buildDense(context);
     final colors = context.colors;
     final texts = context.texts;
     final hasImage = imageUrl != null && imageUrl!.isNotEmpty;
@@ -76,6 +80,71 @@ class PlaylistCard extends StatelessWidget {
                   ],
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDense(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+    final hasImage = imageUrl != null && imageUrl!.isNotEmpty;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: AppRadius.medium,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: ClipRRect(
+                  borderRadius: AppRadius.small,
+                  child: hasImage
+                      ? CachedNetworkImage(
+                          imageUrl: imageUrl!,
+                          fit: BoxFit.cover,
+                          placeholder: (_, _) => _Placeholder(colors: colors),
+                          errorWidget: (_, _, _) => _Placeholder(colors: colors),
+                        )
+                      : _Placeholder(colors: colors),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: texts.titleSmall,
+                    ),
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
             ],
           ),
         ),

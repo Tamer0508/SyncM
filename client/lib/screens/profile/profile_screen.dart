@@ -1,24 +1,36 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
-import '../../providers/theme_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/spotify_link_service.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/screen_chrome.dart';
 import '../../widgets/tappable_avatar.dart';
 import 'spotify_webview_screen.dart'
     if (dart.library.html) 'spotify_webview_stub.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool embedded;
-  const ProfileScreen({super.key, this.embedded = false});
+  const ProfileScreen({
+    super.key,
+    this.embedded = false,
+    this.overrideArgs,
+    this.onBack,
+    this.onOpenSettings,
+  });
+
+  final VoidCallback? onOpenSettings;
+
+  final Map<String, dynamic>? overrideArgs;
+
+  /// Как вернуться из встроенного вида.
+  final VoidCallback? onBack;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -28,14 +40,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _displayId;
   Map<String, dynamic>? _profileData;
   bool _loading = false;
-  HttpServer? _oauthServer;
-
-  @override
-  void dispose() {
-    _oauthServer?.close(force: true);
-    _oauthServer = null;
-    super.dispose();
-  }
+  // Локальный сервер авторизации переехал в spotify_link_service вместе с
+  // самой логикой подключения. Закрывать его здесь было неверно: авторизация
+  // в браузере могла ещё идти, а уход с экрана обрывал приём возврата.
 
   @override
   void didChangeDependencies() {
@@ -44,7 +51,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _determineTargetUser() {
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args = widget.overrideArgs ??
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final auth = Provider.of<AuthProvider>(context, listen: false);
     String? targetId;
     if (args != null && args['friendId'] != null) {
@@ -84,7 +92,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final theme = Theme.of(context);
-    final isMobile = MediaQuery.of(context).size.width < 900;
 
     final displayName = isOwnProfile
         ? (auth.user?.displayName ?? 'Пользователь')
@@ -110,227 +117,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
               friendsCount: friendsCount,
               mutualCount: mutualCount,
               profileData: _profileData,
-              onConnectSpotify: () => _connectSpotify(context),
-              onDisconnectSpotify: () => _disconnectSpotify(context),
-              onLogout: () => _logout(context),
+              onConnectSpotify: () => connectSpotify(context),
+              onDisconnectSpotify: () => disconnectSpotify(context),
             ),
           );
 
-    if (widget.embedded && isMobile && isOwnProfile) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Профиль'),
-          actions: [
-            AppIconButton(
-              icon: Icons.dark_mode,
-              onPressed: () => Provider.of<ThemeProvider>(context, listen: false).toggleTheme(),
-              tooltip: 'Тема',
-            ),
-            AppIconButton(
-              icon: Icons.settings,
-              onPressed: () => Navigator.of(context).pushNamed('/settings'),
-              tooltip: 'Настройки',
-            ),
-          ],
-        ),
-        body: body,
-      );
-    }
-
-    if (widget.embedded) return body;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isOwnProfile ? 'Профиль' : displayName),
-        leading: AppIconButton(
-          icon: Icons.arrow_back,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+    return ScreenChrome(
+      embedded: widget.embedded,
+      header: ScreenHeader(
+        title: isOwnProfile ? 'Профиль' : displayName,
+        onBack: widget.onBack ??
+            (widget.embedded ? null : () => Navigator.of(context).pop()),
+        actions: isOwnProfile
+            ? [
+                AppIconButton(
+                  icon: Icons.settings_outlined,
+                  onPressed: widget.onOpenSettings ??
+                      () => Navigator.of(context).pushNamed('/settings'),
+                  tooltip: 'Настройки',
+                ),
+              ]
+            : const [],
       ),
-      body: body,
+      child: body,
     );
   }
 
-
-  void _connectSpotify(BuildContext context) async {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final api = auth.api;
-
-    if (kIsWeb) {
-      final state =
-          await api.createSpotifyLinkIntent(returnTo: Uri.base.origin);
-      final webUrl = '${api.baseUrl}/auth/login?state=$state';
-      redirectToUrl(webUrl);
-      return;
-    }
-
-    if (defaultTargetPlatform == TargetPlatform.windows) {
-      HttpServer? server;
-      try {
-        if (_oauthServer != null) {
-          try { await _oauthServer!.close(force: true); } catch (_) {}
-          _oauthServer = null;
-        }
-
-        final completer = Completer<Map<String, dynamic>?>();
-        server = await HttpServer.bind(
-          InternetAddress.loopbackIPv4, 8282, shared: true,
-        );
-        _oauthServer = server;
-
-        final state = await api.createSpotifyLinkIntent(
-            returnTo: 'http://localhost:8282/callback');
-        final authUrl = Uri.parse('${api.baseUrl}/auth/login?state=$state');
-        await launchUrl(authUrl, mode: LaunchMode.externalApplication);
-        server.listen((request) async {
-          final uri = request.requestedUri;
-          final response = request.response;
-          response.headers.set('Content-Type', 'text/html; charset=utf-8');
-          response.write('<html><body><h2>Spotify connected! You can close this tab.</h2></body></html>');
-          await response.close();
-          await server!.close(force: true);
-          _oauthServer = null;
-          if (!completer.isCompleted) {
-            completer.complete({
-              'token': uri.queryParameters['token'],
-              'cookie': uri.queryParameters['cookie'],
-            });
-          }
-        });
-        final result = await completer.future.timeout(
-          const Duration(minutes: 2),
-          onTimeout: () async {
-            try { await server?.close(force: true); } catch (_) {}
-            _oauthServer = null;
-            return null;
-          },
-        );
-        if (result != null) {
-          final token = result['token'] as String?;
-          final cookie = result['cookie'] as String?;
-          if (token != null && token.isNotEmpty) {
-            auth.setCookie(token);
-          } else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
-          await auth.fetchMe();
-          if (context.mounted) {
-            showAppNotification(context, message: 'Spotify успешно подключён!', type: NotificationType.success);
-          }
-        }
-      } catch (e) {
-        // Гарантированно освобождаем порт при любой ошибке.
-        try { await server?.close(force: true); } catch (_) {}
-        _oauthServer = null;
-        final msg = e.toString().contains('bind') || e.toString().contains('port')
-            ? 'Не удалось начать подключение: предыдущая попытка ещё не завершилась. Подождите несколько секунд и попробуйте снова.'
-            : 'Ошибка подключения: $e';
-        if (context.mounted) showAppNotification(context, message: msg, type: NotificationType.error);
-      }
-      return;
-    }
-
-    // Android/iOS
-    final state =
-        await api.createSpotifyLinkIntent(returnTo: 'myapp://callback');
-    final authUrl = '${api.baseUrl}/auth/login?state=$state';
-    final result = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(builder: (_) => buildSpotifyWebView(authUrl)),
-    );
-    if (result != null) {
-      final token = result['token'] as String?;
-      final cookie = result['cookie'] as String?;
-      if (token != null && token.isNotEmpty) {
-        auth.setCookie(token);
-      } else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
-      await auth.fetchMe();
-      if (context.mounted) {
-        showAppNotification(context, message: 'Spotify успешно подключён!', type: NotificationType.success);
-      }
-    }
-  }
-
-  void _disconnectSpotify(BuildContext context) {
-    final theme = Theme.of(context);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Row(
-          children: [
-            Icon(Icons.link_off, color: theme.colorScheme.error),
-            const SizedBox(width: 12),
-            Text('Отключить Spotify', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          ],
-        ),
-        content: const Text('Вы уверены, что хотите отключить Spotify аккаунт?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              try {
-                final api = Provider.of<AuthProvider>(context, listen: false).api;
-                await api.disconnectSpotify();
-                final auth = Provider.of<AuthProvider>(context, listen: false);
-                await auth.fetchMe();
-                if (context.mounted) {
-                  showAppNotification(context, message: 'Spotify отключен', type: NotificationType.success);
-                }
-              } catch (e) {
-                if (context.mounted) showError(context, e);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.colorScheme.error,
-              foregroundColor: theme.colorScheme.onError,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Отключить'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _logout(BuildContext context) {
-    final theme = Theme.of(context);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Row(
-          children: [
-            Icon(Icons.logout, color: theme.colorScheme.error),
-            const SizedBox(width: 12),
-            Text('Выход из аккаунта', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          ],
-        ),
-        content: const Text('Вы уверены, что хотите выйти из аккаунта?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-
-              await context.read<PlaybackProvider>().stopAndClear();
-              if (!context.mounted) return;
-
-              final auth = Provider.of<AuthProvider>(context, listen: false);
-              await auth.logout();
-              if (!context.mounted) return;
-              showAppNotification(context, message: 'Вы вышли из аккаунта', type: NotificationType.success);
-              Navigator.of(context).pushReplacementNamed('/');
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.colorScheme.error,
-              foregroundColor: theme.colorScheme.onError,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Выйти'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 
@@ -345,9 +157,10 @@ class _ProfileContent extends StatelessWidget {
   final Map<String, dynamic>? profileData;
   final VoidCallback onConnectSpotify;
   final VoidCallback onDisconnectSpotify;
-  final VoidCallback onLogout;
 
   const _ProfileContent({
+    // key нужен: место вызова передаёт ValueKey(_displayId), чтобы
+    // AnimatedSwitcher распознавал смену профиля и проигрывал переход.
     super.key,
     required this.theme,
     required this.isOwnProfile,
@@ -359,11 +172,13 @@ class _ProfileContent extends StatelessWidget {
     required this.profileData,
     required this.onConnectSpotify,
     required this.onDisconnectSpotify,
-    required this.onLogout,
   });
 
   @override
   Widget build(BuildContext context) {
+    // watch, а не listen: false — раньше при подключении или отключении
+    // Spotify карточка не перерисовывалась до перехода на другой экран,
+    // потому что провайдер не был подписан.
     final auth = context.watch<AuthProvider>();
     final spotifyConnected = auth.user?.spotifyConnected == true;
     final colors = context.colors;
@@ -386,6 +201,9 @@ class _ProfileContent extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.lg),
 
+        // Счётчики вынесены из списка «ключ — значение» в отдельные плитки:
+        // число друзей — это то, на что смотрят в профиле в первую очередь,
+        // а строкой в таблице оно теряется среди прочих полей.
         Row(
           children: [
             Expanded(
@@ -410,20 +228,10 @@ class _ProfileContent extends StatelessWidget {
 
         if (isOwnProfile) ...[
           const SizedBox(height: AppSpacing.lg),
-          _SpotifyCard(
+          _StatusRow(
             connected: spotifyConnected,
             onConnect: onConnectSpotify,
             onDisconnect: onDisconnectSpotify,
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          OutlinedButton.icon(
-            onPressed: onLogout,
-            icon: const Icon(Icons.logout_rounded),
-            label: const Text('Выйти из аккаунта'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: colors.error,
-              side: BorderSide(color: colors.error.withValues(alpha: 0.5)),
-            ),
           ),
         ],
 
@@ -463,6 +271,9 @@ class _ProfileHeader extends StatelessWidget {
 
     return Column(
       children: [
+        // Нажатие разворачивает аватар на весь экран с плавным переходом.
+        // Кольцо вокруг отделяет фотографию от фона, если её края по цвету
+        // совпадают с поверхностью.
         TappableAvatar(
           imageUrl: avatarUrl,
           radius: 52,
@@ -532,8 +343,8 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-class _SpotifyCard extends StatelessWidget {
-  const _SpotifyCard({
+class _StatusRow extends StatelessWidget {
+  const _StatusRow({
     required this.connected,
     required this.onConnect,
     required this.onDisconnect,
@@ -547,77 +358,42 @@ class _SpotifyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final texts = context.texts;
-    final spotify = context.brand.spotify;
+    final spotify = context.roles.spotify;
 
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        borderRadius: AppRadius.large,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Material(
+      color: colors.surfaceContainerLow,
+      borderRadius: AppRadius.medium,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: connected ? onDisconnect : onConnect,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm + 4,
+          ),
+          child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: spotify.withValues(alpha: 0.15),
-                  borderRadius: AppRadius.small,
-                ),
-                child: Icon(Icons.music_note_rounded, color: spotify),
+              Icon(
+                connected ? Icons.check_circle_rounded : Icons.link_rounded,
+                size: 20,
+                color: connected ? spotify : colors.onSurfaceVariant,
               ),
-              const SizedBox(width: AppSpacing.md),
+              const SizedBox(width: AppSpacing.sm + 4),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Spotify', style: texts.titleMedium),
-                    const SizedBox(height: 2),
-                    Text(
-                      connected ? 'Аккаунт подключён' : 'Не подключён',
-                      style: texts.bodySmall?.copyWith(
-                        color: connected ? spotify : colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  connected ? 'Spotify подключён' : 'Подключить Spotify',
+                  style: texts.bodyMedium,
                 ),
               ),
+              Text(
+                connected ? 'Отключить' : '',
+                style: texts.labelMedium?.copyWith(color: colors.onSurfaceVariant),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Icon(Icons.chevron_right_rounded, size: 20, color: colors.onSurfaceVariant),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            connected
-                ? 'Плейлисты и воспроизведение доступны.'
-                : 'Подключите Spotify, чтобы слушать музыку вместе с друзьями.',
-            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          if (connected)
-            OutlinedButton.icon(
-              onPressed: onDisconnect,
-              icon: const Icon(Icons.link_off_rounded),
-              label: const Text('Отключить'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: colors.error,
-                side: BorderSide(color: colors.error.withValues(alpha: 0.5)),
-              ),
-            )
-          else
-            FilledButton.icon(
-              onPressed: onConnect,
-              icon: const Icon(Icons.link_rounded),
-              label: const Text('Подключить Spotify'),
-              style: FilledButton.styleFrom(
-                backgroundColor: spotify,
-                // Тёмный текст на зелёном Spotify: белый на нём не проходит
-                // по контрасту и читается хуже.
-                foregroundColor: const Color(0xFF07240F),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }

@@ -12,11 +12,18 @@ import '../../widgets/friend_tile.dart';
 import '../../widgets/skeleton.dart';
 
 class FriendsScreen extends StatefulWidget {
-  const FriendsScreen({super.key, this.embedded = false, this.onFindFriends});
+  const FriendsScreen({
+    super.key,
+    this.embedded = false,
+    this.onFindFriends,
+    this.onOpenProfile,
+  });
 
   final bool embedded;
 
   final VoidCallback? onFindFriends;
+
+  final void Function(Map<String, dynamic> args)? onOpenProfile;
 
   @override
   State<FriendsScreen> createState() => _FriendsScreenState();
@@ -90,10 +97,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   void _openProfile(Friend friend) {
-    Navigator.of(context).pushNamed(
-      '/profile',
-      arguments: {'name': friend.name, 'friendId': friend.id},
-    );
+    final args = {'name': friend.name, 'friendId': friend.id};
+
+    final custom = widget.onOpenProfile;
+    if (custom != null) {
+      custom(args);
+      return;
+    }
+    Navigator.of(context).pushNamed('/profile', arguments: args);
   }
 
   @override
@@ -150,7 +161,18 @@ class _FriendsScreenState extends State<FriendsScreen> {
       const SizedBox(width: AppSpacing.xs),
     ];
 
-    if (widget.embedded && !isCompact) return body;
+    if (widget.embedded) {
+      if (!isCompact) return body;
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.xs),
+            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions),
+          ),
+          Expanded(child: body),
+        ],
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Друзья'), actions: actions),
