@@ -105,6 +105,15 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> forgetLocalSession() async {
+    _user = null;
+    _token = null;
+    api.setCookie('');
+    await clearAuthToken();
+    await LocalStore.clearAll();
+    notifyListeners();
+  }
+
   Future<void> logout() async {
     try {
       await api.logout();

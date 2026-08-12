@@ -19,6 +19,7 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../theme.dart';
+import '../../utils/local_store.dart';
 import '../../widgets/animated_notification_button.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/home_nav.dart';
@@ -31,6 +32,7 @@ import '../../providers/theme_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../friends/friends_screen.dart';
 
+// ---------- HomeScreen ----------
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -51,6 +53,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _creatingSession = false;
 
+  /// Сбрасывает ВСЕ наложенные экраны широкой раскладки.
+  ///
+  /// Раньше эти состояния были независимы и могли быть подняты одновременно,
+  /// а что показать — решал фиксированный порядок проверок. Отсюда три
+  /// разных проявления одной ошибки:
+  ///   • переключение вкладок в боковой панели не работало, пока открыто
+  ///     создание сессии: selectTab сбрасывал остальные состояния, но не
+  ///     _creatingSession, и наложенный экран продолжал перекрывать вкладку;
+  ///   • «Найти друзей» поверх открытого создания сессии показывал друзей,
+  ///     а создание сессии оставалось «под ним» и всплывало при закрытии;
+  ///   • обратный порядок вовсе не срабатывал, потому что проверка друзей
+  ///     стоит выше по списку.
+  ///
+  /// Теперь любой переход сначала гасит всё, и одновременно поднятых
+  /// состояний просто не бывает.
   void _clearOverlays() {
     _creatingSession = false;
     _activeFriendView = null;
@@ -64,6 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectedPlaylist = null;
   }
 
+  /// Открывает наложенный экран, погасив предыдущий.
   void _openOverlay(VoidCallback apply) {
     setState(() {
       _clearOverlays();
@@ -72,12 +90,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
   Map<String, dynamic>? _activeSession;
 
+  /// Итоги завершённой сессии, показанные в центральной части.
+  ///
+  /// Отдельным маршрутом они закрывали боковую панель и панель
+  /// воспроизведения и выглядели чужеродно рядом с остальными экранами,
+  /// которые меняют только середину.
   Map<String, dynamic>? _sessionResults;
 
+  /// Открыт ли список приглашений в центральной части.
   bool _showingInvites = false;
 
+  /// Профиль друга, открытый в центральной части.
   Map<String, dynamic>? _viewingProfile;
 
+  /// Свой профиль и настройки в центральной части.
+  ///
+  /// На широкой раскладке ни один экран не должен открываться маршрутом:
+  /// это закрывает боковую панель и панель воспроизведения. Всё, что
+  /// показывается на десктопе, проходит через эти состояния.
   bool _showingOwnProfile = false;
   bool _showingSettings = false;
   String? _activeFriendView; // 'search' или 'requests'
@@ -97,12 +127,42 @@ class _HomeScreenState extends State<HomeScreen> {
       friendsProv.init(socket);
       sessionProv.init(socket);
 
+      // Прогрев всех разделов сразу, а не по мере открытия вкладок.
+      //
+      // Вместе с IndexedStack это и даёт ощущение мгновенности: к моменту,
+      // когда человек переключится на «Друзья», список уже загружен, вкладка
+      // построена и просто становится видимой.
+      // Прогрев можно отключить в настройках: на медленной сети он
+      // занимает канал в момент запуска, а кому-то важнее, чтобы приложение
+      // не ходило в сеть без явного действия.
+      if (LocalStore.readBool(StoreKeys.prefetchOnStart, defaultValue: true)) {
       _prefetch.warmUp(friends: friendsProv, sessions: sessionProv).then((_) {
         if (mounted) _prefetch.warmUpAvatars(context, friendsProv.friends);
       });
+      }
     });
   }
 
+  /// Открывает приглашения: встроенно на широком экране, маршрутом на узком.
+  ///
+  /// Раньше везде стоял переход маршрутом, и на компьютере список занимал
+  /// весь экран, закрывая боковую панель и панель воспроизведения — в
+  /// отличие от остальных разделов, которые меняют только середину.
+  /// Свой профиль: встроенно на широком экране, маршрутом на узком.
+  /// Открыт ли поверх вкладки какой-нибудь экран.
+  ///
+  /// Наложенные экраны приносят собственную шапку с заголовком и кнопкой
+  /// возврата. Шапка вкладки при этом продолжала рисоваться выше — и над
+  /// «Профилем» висело «Друзья». Заодно там оставались кнопки вкладки,
+  /// не относящиеся к открытому экрану.
+  /// Экраны, которые приносят СВОЮ шапку (через ScreenChrome).
+  ///
+  /// Только они прячут шапку вкладки. Остальные наложенные экраны своей
+  /// шапки не имеют и полагаются на десктопную — спрятать её означало бы
+  /// оставить их без заголовка и без кнопки возврата.
+  ///
+  /// Не входят сюда: плейлист (у него раскрывающаяся шапка с обложкой,
+  /// встроенная в список) и итоги сессии — их заголовок рисует шапка вкладки.
   bool get _hasOverlay =>
       _showingSettings ||
       _showingOwnProfile ||
@@ -139,6 +199,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (session == null || !mounted) return;
     final data = Map<String, dynamic>.from(session);
 
+    // На узком экране — обычный переход, на широком — встроенный блок.
+    //
+    // Наложенные экраны (_activeSession и прочие) отрисовываются ТОЛЬКО в
+    // широкой раскладке. На телефоне состояние выставлялось, но показать его
+    // было негде: нажатие на активную сессию визуально срабатывало, а экран
+    // не открывался вовсе.
     if (MediaQuery.sizeOf(context).width < 900) {
       await Navigator.of(context).pushNamed('/session', arguments: data);
       return;
@@ -146,6 +212,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _openOverlay(() => _activeSession = data);
   } catch (e) {
+    // showError вместо текста исключения: пользователю показывались
+    // служебные строки вида «ApiException: ... (500) [Prisma...]».
     if (mounted) showError(context, e);
   }
 }
@@ -162,6 +230,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final custom = await api.getMyPlaylists();
       if (mounted) setState(() => _customPlaylists = custom);
     } catch (e) {
+      // showError сам молчит про 429 и внутренние сбои, поэтому проверку
+      // suppressUiNotification повторять здесь не нужно.
       if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _loadingCustom = false);
@@ -170,6 +240,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final spotify = await api.getPlaylists();
       if (mounted) setState(() => _spotifyPlaylists = spotify);
     } catch (e) {
+      // Отсутствие подключения к Spotify — не ошибка: раздел просто
+      // покажет предложение подключить аккаунт, ругаться на это незачем.
       final notConnected = e is ApiException && e.statusCode == 409;
       if (mounted && !notConnected) showError(context, e);
     } finally {
@@ -177,6 +249,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Вкладка «Сейчас» — что происходит прямо сейчас.
+  ///
+  /// Раньше это была свалка: приветствие, лента плейлистов, приглашения и
+  /// только потом активные сессии — то есть то, ради чего приложение и
+  /// существует, лежало третьим блоком ниже сгиба. Плейлисты переехали в
+  /// свою вкладку, а здесь осталось только текущее состояние.
   Widget _buildHomeTab() {
     final isDesktop = MediaQuery.sizeOf(context).width >= 900;
     final enablePullToRefresh = !kIsWeb &&
@@ -208,6 +286,8 @@ class _HomeScreenState extends State<HomeScreen> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Приглашения первыми: это единственное здесь, что требует
+                // ответа прямо сейчас, и ждать его не должно ничто другое.
                 if (invites.isNotEmpty) ...[
                   _SectionHeader(
                     title: 'Вас зовут',
@@ -283,6 +363,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Вкладка «Музыка» — плейлисты, свои и из Spotify.
+  ///
+  /// Раньше лента плейлистов жила на главной высотой в 208 точек: карточки
+  /// обрезались, названия не помещались, а прокручивать её приходилось вбок
+  /// внутри вертикального списка. Собственная вкладка снимает это
+  /// ограничение — плейлисты показываются сеткой во всю высоту.
   Widget _buildMusicTab() {
     return DefaultTabController(
       length: 2,
@@ -331,6 +417,9 @@ class _HomeScreenState extends State<HomeScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.sm + 4),
+            // tonal вместо elevated: это подсказка внутри раздела, а не
+            // главное действие экрана, и залитая кнопка перетягивала бы
+            // внимание с приветственной карточки выше.
             FilledButton.tonalIcon(
               icon: Icon(isCustom ? Icons.add_rounded : Icons.link_rounded),
               label: Text(isCustom ? 'Создать' : 'Подключить Spotify'),
@@ -342,6 +431,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+    // Список, а не сетка.
+    //
+    // Крупные карточки хороши для витрины, но плейлисты — рабочий
+    // инструмент: их открывают, чтобы добраться до треков. В списке на экран
+    // помещается вчетверо больше позиций, названия видны целиком, а не в
+    // две строки с обрезкой, и глаз идёт по одной колонке вместо зигзага.
+    // Так устроены библиотеки в Spotify и Apple Music — по этой же причине.
     return ListView.separated(
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.sm,
@@ -414,6 +510,12 @@ class _HomeScreenState extends State<HomeScreen> {
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
             return AlertDialog(
+              // Форма, цвета и шрифты берутся из dialogTheme.
+              //
+              // Раньше здесь вручную задавались радиус 24, радиусы рамок
+              // поля, цвета границ в трёх состояниях и цвета кнопки — всё
+              // это дублировало значения из темы и при смене палитры
+              // расходилось с остальным интерфейсом.
               icon: const Icon(Icons.playlist_add_rounded),
               title: const Text('Новый плейлист'),
               content: TextField(
@@ -446,6 +548,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: const Text('Отмена'),
                 ),
                 FilledButton(
+                  // Отключённое состояние оформляет сама тема: прежний код
+                  // вручную подбирал цвета фона и текста для неактивной
+                  // кнопки, и они не совпадали с остальными кнопками.
                   onPressed: valid
                       ? () => Navigator.of(ctx).pop(nameController.text.trim())
                       : null,
@@ -478,6 +583,8 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Заголовок «Панель» убран: слово ничего не сообщает, а место
+          // занимало. Содержимое и так говорит само за себя.
           FilledButton.icon(
             onPressed: () => _openOverlay(() => _creatingSession = true),
             icon: const Icon(Icons.add_rounded),
@@ -491,6 +598,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
           Expanded(
+            // select вместо Consumer: панель перестраивается только при
+            // появлении или исчезновении трека, а не на каждый тик позиции
+            // воспроизведения.
             child: Builder(
               builder: (context) {
                 final hasTrack = context.select<PlaybackProvider, bool>(
@@ -538,6 +648,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Шапка широкой раскладки.
+  ///
+  /// Раньше здесь было четыре почти одинаковых блока — по одному на каждый
+  /// режим (поиск друзей, сессия, создание сессии, обычный). Все четыре
+  /// повторяли отступы, цвет фона и границу, и любое изменение оформления
+  /// требовалось вносить в каждый. Теперь режимы задают только заголовок,
+  /// кнопку возврата и действия справа, а сама оболочка одна.
   Widget _buildDesktopHeader() {
     final auth = context.read<AuthProvider>();
     final themeProvider = context.watch<ThemeProvider>();
@@ -573,6 +690,12 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    // Названия берём из того же списка, что и навигация.
+    //
+    // Здесь был свой массив из четырёх строк, оставшийся от прежней
+    // структуры. После перехода на три вкладки он разошёлся с навигацией:
+    // в «Музыке» сверху писалось «Друзья», а во «Друзьях» — «Профиль»,
+    // и туда же попадали чужие кнопки в шапке.
     final tabTitles = kHomeDestinations.map((d) => d.label).toList();
 
     return _DesktopHeaderShell(
@@ -584,12 +707,17 @@ class _HomeScreenState extends State<HomeScreen> {
           ? () => setState(() => _selectedPlaylist = null)
           : null,
       actions: [
+        // Кнопки друзей на своей вкладке: её индекс сменился с 1 на 2,
+        // когда профиль ушёл из навигации.
         if (_currentIndex == 2) ...[
           AppIconButton(
             icon: Icons.person_add_alt_1_rounded,
             onPressed: () => _openOverlay(() => _activeFriendView = 'search'),
             tooltip: 'Поиск друзей',
           ),
+          // Счётчик заявок с той же анимацией, что и на узком экране:
+          // раньше здесь была обычная иконка без числа, и о новых заявках
+          // на десктопе узнать было неоткуда.
           Consumer<FriendsProvider>(
             builder: (context, prov, _) => AnimatedNotificationButton(
               icon: Icons.mail_outline_rounded,
@@ -600,6 +728,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ] else if (_currentIndex == 0) ...[
+          // Обновление списка: на десктопе жеста «потянуть вниз» нет, и
+          // единственным способом увидеть изменения была перезагрузка
+          // страницы.
           AppIconButton(
             icon: Icons.refresh_rounded,
             onPressed: () {
@@ -621,6 +752,11 @@ class _HomeScreenState extends State<HomeScreen> {
           tooltip: themeProvider.isDark ? 'Светлая тема' : 'Тёмная тема',
         ),
 
+        // Аватар — вход в профиль и настройки.
+        //
+        // На узком экране он появился в шапке, а на широком его не было
+        // вовсе: профиль ушёл из навигации, и попасть в него стало неоткуда.
+        // Настройки при этом отрезало полностью — они открываются из профиля.
         Padding(
           padding: const EdgeInsets.only(left: AppSpacing.xs, right: AppSpacing.sm),
           child: Builder(
@@ -649,6 +785,8 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _activeSession = null);
     } catch (err) {
       if (!mounted) return;
+      // showError вместо 'Ошибка: $e': текст исключения пользователю
+      // ничего не объясняет.
       showError(context, err);
     }
   }
@@ -661,6 +799,16 @@ class _HomeScreenState extends State<HomeScreen> {
       // Вкладок теперь три в обеих раскладках — подрезать индекс не нужно.
       final unreadCount = Provider.of<FriendsProvider>(context).unreadCount;
 
+      // Сессию закрыл кто-то другой — провайдер положил итоги сюда.
+      //
+      // Забираем их в своё состояние и сразу помечаем как показанные, иначе
+      // при следующей перерисовке они всплывут снова, перекрыв то, что
+      // пользователь успел открыть.
+      //
+      // Через postFrameCallback, потому что менять состояние во время
+      // построения дерева нельзя.
+
+      // Кто-то попросил открыть сессию — показываем её встроенной.
       final pendingSession = context.watch<SessionProvider>().openSessionRequest;
       if (pendingSession != null && isDesktop) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -678,11 +826,27 @@ class _HomeScreenState extends State<HomeScreen> {
           _openOverlay(() => _sessionResults = pendingResults);
         });
       }
+      // Один список вкладок на обе раскладки.
+      //
+      // Раньше их было два, и различались они не только составом: на
+      // десктопе была лишняя вкладка настроек. Приходилось следить за
+      // совпадением индексов, а расхождение молча открывало не тот экран.
+      //
+      // Профиль из вкладок убран — он открывается аватаром в шапке.
       final tabs = [
         _buildHomeTab(),
         _buildMusicTab(),
         FriendsScreen(
           embedded: true,
+          // Обработчик только для широкой раскладки.
+          //
+          // Он открывает поиск встроенным блоком, а тот отрисовывается лишь
+          // на десктопе. Когда список вкладок стал общим, обработчик начал
+          // передаваться и на телефон — нажатие срабатывало, состояние
+          // менялось, но показать его было негде: кнопка выглядела нерабочей.
+          //
+          // На узком экране обработчика нет, и экран сам открывает поиск
+          // отдельным маршрутом, как и должно быть без боковых панелей.
           onFindFriends: isDesktop
               ? () => _openOverlay(() => _activeFriendView = 'search')
               : null,
@@ -691,6 +855,9 @@ class _HomeScreenState extends State<HomeScreen> {
               : null,
         ),
       ];
+      // Смена вкладки гасит все наложенные экраны, включая создание сессии:
+      // без этого нажатие на вкладку в боковой панели визуально ничего не
+      // делало, а переход происходил только после закрытия наложенного окна.
       void selectTab(int index) => setState(() {
             _clearOverlays();
             _currentIndex = index;
@@ -771,6 +938,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                       _sessionResults = results;
                                     });
 
+                                    // Перечитываем список активных сессий.
+                                    //
+                                    // Глобальный обработчик тоже его
+                                    // обновляет, но срабатывает по событию
+                                    // сокета — а хост завершение
+                                    // инициировал сам и мог опередить
+                                    // событие. В итоге на главном экране
+                                    // оставалась карточка только что
+                                    // закрытой сессии.
                                     context
                                         .read<SessionProvider>()
                                         .fetchMySessions()
@@ -781,6 +957,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               : _creatingSession
                                   ? CreateSessionScreen(
                                       embedded: true,
+                                      // onCancel не передавался — и кнопки
+                                      // возврата в шапке не было вовсе:
+                                      // из создания сессии нельзя было выйти,
+                                      // не создав её.
                                       onCancel: () => setState(
                                           () => _creatingSession = false),
                                       onSessionCreated: (session) =>
@@ -816,6 +996,12 @@ class _HomeScreenState extends State<HomeScreen> {
             : SafeArea(
                 child: Column(
                   children: [
+                    // Шапка с аватаром — единственный вход в профиль.
+                    //
+                    // Профиль убран из нижней навигации: открывают его редко,
+                    // а место там — самый дорогой ресурс интерфейса. Аватар
+                    // в углу и заметен, и не отнимает вкладку; так устроены
+                    // Spotify и YouTube Music.
                     _MobileHeader(
                       title: kHomeDestinations[_currentIndex].label,
                       onProfile: () =>
@@ -843,10 +1029,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _tabsStack(List<Widget> tabs) {
+    // IndexedStack вместо AnimatedSwitcher.
+                //
+                // Переключение вкладок теперь мгновенное и без затухания.
+                // Прежний вариант проигрывал 280 мс перекрёстного
+                // растворения: на стыке оба экрана были полупрозрачными, и
+                // переход читался как задержка, хотя данные уже готовы.
+                //
+                // Важнее другое: AnimatedSwitcher уничтожал старую вкладку и
+                // строил новую с нуля. Позиция прокрутки, введённый текст,
+                // раскрытые списки — всё терялось, а провайдеры заново
+                // запрашивали данные. IndexedStack держит все вкладки
+                // построенными и лишь меняет видимую, поэтому возврат на
+                // вкладку возвращает её ровно в том виде, в каком её
+                // оставили.
     return IndexedStack(index: _currentIndex, children: tabs);
   }
 }
 
+/// Шапка мобильной раскладки: название раздела и аватар профиля.
 class _MobileHeader extends StatelessWidget {
   const _MobileHeader({required this.title, required this.onProfile});
 
@@ -881,6 +1082,8 @@ class _MobileHeader extends StatelessWidget {
               imageUrl: user?.effectiveAvatarUrl,
               radius: 16,
               title: user?.displayName,
+              // Открытие профиля важнее просмотра аватара: нажатие должно
+              // вести в профиль, а не разворачивать картинку.
               onTapOverride: onProfile,
             ),
           ),
@@ -891,6 +1094,7 @@ class _MobileHeader extends StatelessWidget {
 }
 
 
+/// Приветственная карточка с двумя основными действиями.
 class _StartSessionCard extends StatelessWidget {
   const _StartSessionCard({required this.onStart});
 
@@ -911,6 +1115,10 @@ class _StartSessionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Два круга, соприкасающиеся краями, — весь смысл приложения одной
+          // картинкой: двое слушают одно. Тёплый круг «мой», холодный —
+          // собеседника; те же цвета закреплены за ролями по всему
+          // приложению, так что этот знак учит их читать.
           SizedBox(
             height: 56,
             child: Stack(
@@ -970,6 +1178,7 @@ class _Dot extends StatelessWidget {
   }
 }
 
+/// Заголовок раздела с необязательным счётчиком и действием справа.
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title, this.action, this.badgeCount});
 
@@ -1012,6 +1221,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+/// Строка списка на главном экране: приглашение или активная сессия.
 class _HomeTile extends StatelessWidget {
   const _HomeTile({
     required this.icon,
@@ -1111,6 +1321,8 @@ class _DesktopHeaderShell extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: colors.surface,
+        // Граница из палитры вместо dividerColor с прозрачностью 6%: та
+        // была почти невидима на тёмной теме, и шапка сливалась с контентом.
         border: Border(bottom: BorderSide(color: colors.outlineVariant)),
       ),
       child: Row(

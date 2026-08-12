@@ -12,7 +12,10 @@ class SocketService {
   String? _token;
   String? _baseUrl;
 
-  int _masterOffset = 0; 
+  int _masterOffset = 0;
+
+  int get masterOffsetMs => _masterOffset;
+
   int _lastCalculatedRtt = 100; // Храним последний RTT для отправки на бэк
   bool _isSyncing = false;
   Timer? _heartbeatTimer;

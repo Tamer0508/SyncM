@@ -10,7 +10,8 @@ const { z } = require('zod');
 
 const { getOrSet, incrementVersion, set: redisSet, get: redisGet, del: redisDel } = require('../infrastructure/redis');
 const { encryptAccessToken, encryptRefreshToken } = require('../infrastructure/spotify/auth');
-const { issueAuthToken, revokeAuthToken } = require('../infrastructure/authTokens');
+const { issueAuthToken, revokeAuthToken, revokeAllUserTokens } = require('../infrastructure/authTokens');
+const { getIo } = require('../socket');
 const logger = require('../infrastructure/logger');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -21,6 +22,13 @@ const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
 
 const AVATARS_DIR = path.resolve(__dirname, '../../uploads/avatars');
+
+const invalidateSessionsListForMembers = (members) =>
+  Promise.all(
+    (members || [])
+      .filter((m) => m.status === 'accepted')
+      .map((m) => incrementVersion(`db:sessions-list:${m.userId}`))
+  );
 const PENDING_AUTH_TTL_SECONDS = 5 * 60;
 
 const APP_SCHEMES = ['myapp://', 'syncm://'];
@@ -740,6 +748,61 @@ async function safeDeleteOldAvatar(oldAvatarUrl, currentFilename) {
   }
 }
 
+
+const deleteAccount = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, customAvatarUrl: true },
+  });
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+  const hostedSessions = await prisma.session.findMany({
+    where: { hostId: userId, isActive: true },
+    include: { members: { select: { userId: true, status: true } } },
+  });
+
+  const io = getIo();
+  for (const session of hostedSessions) {
+    try {
+      io?.to(session.id).emit('session_ended', {
+        sessionId: session.id,
+        endedBy: userId,
+        reason: 'host_deleted',
+        mutualLikes: [],
+        timestamp: Date.now(),
+      });
+      await invalidateSessionsListForMembers(session.members);
+    } catch (err) {
+      logger.error({ err, sessionId: session.id }, 'Не удалось уведомить о закрытии сессии');
+    }
+  }
+
+  if (user.customAvatarUrl) {
+    try {
+      const fileName = path.basename(user.customAvatarUrl);
+      const resolved = path.resolve(AVATARS_DIR, fileName);
+      if (resolved.startsWith(AVATARS_DIR)) {
+        await fs.promises.unlink(resolved).catch(() => {});
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'Не удалось удалить файл аватара');
+    }
+  }
+
+  await prisma.user.delete({ where: { id: userId } });
+
+  await revokeAllUserTokens(userId);
+  if (req.session) {
+    await new Promise((resolve) => req.session.destroy(resolve));
+    res.clearCookie('connect.sid');
+  }
+
+  logger.info({ userId, closedSessions: hostedSessions.length }, 'Аккаунт удалён');
+  res.json({ message: 'Аккаунт удалён' });
+});
+
 module.exports = {
   login,
   callback,
@@ -754,4 +817,6 @@ module.exports = {
   googleWebCallback,
   checkPendingAuth,
   uploadAvatar,
+
+  deleteAccount,
 };

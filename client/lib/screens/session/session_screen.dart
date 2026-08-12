@@ -10,6 +10,7 @@ import '../../utils/notifications.dart';
 import '../player/now_playing.dart';
 import '../../services/socket_service.dart';
 import '../../theme.dart';
+import '../../utils/local_store.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/screen_chrome.dart';
 import '../../widgets/tappable_avatar.dart';
@@ -276,6 +277,16 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   Future<void> _endSession() async {
+    // Подтверждение можно отключить в настройках.
+    //
+    // Завершение необратимо и затрагивает второго участника, поэтому по
+    // умолчанию спрашиваем. Но тем, кто закрывает сессии часто, лишний шаг
+    // мешает — и это их выбор, а не наш.
+    if (!LocalStore.readBool(StoreKeys.confirmEndSession, defaultValue: true)) {
+      await _doEndSession();
+      return;
+    }
+
     final theme = Theme.of(context);
     final confirm = await showDialog<bool>(
         context: context,
@@ -306,6 +317,15 @@ class _SessionScreenState extends State<SessionScreen> {
               ],
             ));
     if (confirm != true || !mounted) return;
+
+    await _doEndSession();
+  }
+
+  /// Собственно завершение — без подтверждения.
+  ///
+  /// Выделено отдельно, чтобы вызываться и после диалога, и напрямую, когда
+  /// подтверждение отключено в настройках.
+  Future<void> _doEndSession() async {
 
     try {
       final result = await Provider.of<SessionProvider>(context, listen: false)

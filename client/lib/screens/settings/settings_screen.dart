@@ -4,7 +4,13 @@ import '../../widgets/screen_chrome.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide Config;
+import '../../services/socket_service.dart';
 import '../../theme.dart';
+import '../../widgets/settings_widgets.dart';
+import '../../utils/local_store.dart';
+import '../../config.dart';
+import '../../models/user.dart';
 import '../../providers/playback_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/session_foreground_service.dart';
@@ -43,6 +49,9 @@ class _SettingsBody extends StatefulWidget {
 
 class _SettingsBodyState extends State<_SettingsBody> {
   bool _isUploading = false;
+
+  String? _openSectionTitle;
+  List<Widget>? _openSectionChildren;
 
   Future<void> _pickAndUploadAvatar() async {
     final result = await FilePicker.platform.pickFiles(
@@ -111,12 +120,45 @@ class _SettingsBodyState extends State<_SettingsBody> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final theme = context.watch<ThemeProvider>();
     final user = auth.user;
+    final isDesktop = MediaQuery.sizeOf(context).width >= 900;
+
+    String themeName() => switch (theme.themeMode) {
+          ThemeMode.light => 'Светлая',
+          ThemeMode.dark => 'Тёмная',
+          _ => 'Как в системе',
+        };
+
+    void openSection(String title, List<Widget> children) {
+      if (isDesktop) {
+        setState(() {
+          _openSectionTitle = title;
+          _openSectionChildren = children;
+        });
+        return;
+      }
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => SettingsSectionScreen(title: title, children: children),
+      ));
+    }
+
+    if (_openSectionChildren != null) {
+      return SettingsSectionScreen(
+        embedded: true,
+        title: _openSectionTitle ?? 'Настройки',
+        onBack: () => setState(() {
+          _openSectionTitle = null;
+          _openSectionChildren = null;
+        }),
+        children: _openSectionChildren!,
+      );
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
-        AppSpacing.lg,
+        AppSpacing.sm,
         AppSpacing.md,
         AppSpacing.xl,
       ),
@@ -127,133 +169,419 @@ class _SettingsBodyState extends State<_SettingsBody> {
           isUploading: _isUploading,
           onEdit: _isUploading ? null : _pickAndUploadAvatar,
         ),
-        const SizedBox(height: AppSpacing.md),
-        _NameEditor(
-          currentName: user?.displayName ?? '',
-          onSaved: (newName) async {
-            try {
-              await auth.updateProfile(username: newName.trim());
-              if (!mounted) return;
-              showSuccess(context, 'Имя обновлено');
-            } catch (err) {
-              if (!mounted) return;
-              // showError вместо безликого «Ошибка»: теперь видно, что
-              // именно не так — сеть, права или занятое имя.
-              showError(context, err);
-            }
-          },
-        ),
+        const SizedBox(height: AppSpacing.lg),
 
-        _SettingsSection(
-          title: 'Сервисы',
-          child: _SettingsCard(
-            children: [
-              _SpotifyTile(
-                connected: auth.user?.spotifyConnected == true,
-                onTap: () {
-                  final connected = auth.user?.spotifyConnected == true;
-                  if (connected) {
-                    disconnectSpotify(context);
-                  } else {
-                    connectSpotify(context);
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-
-        const _SettingsSection(
-          title: 'Оформление',
-          child: _ThemeSelector(),
-        ),
-
-        _SettingsSection(
-          title: 'Приватность',
-          // Переключатели собраны в одну карточку с разделителями вместо
-          // отдельных плиток на фоне экрана: так видно, что это один
-          // связанный набор настроек, а не три независимых действия.
-          child: _SettingsCard(
-            children: [
-              _PrivacySwitchTile(
-                icon: Icons.people_outline_rounded,
-                title: 'Скрыть количество друзей',
-                subtitle: 'Никто не увидит количество ваших друзей и общих друзей',
-                value: user?.isFriendsHidden ?? false,
-                onChanged: (val) => _updatePrivacy({'isFriendsHidden': val}),
-              ),
-              const Divider(height: 1, indent: 56),
-              _PrivacySwitchTile(
-                icon: Icons.timeline_rounded,
-                title: 'Скрыть активность',
-                subtitle: 'Ваша активность в сессиях не будет видна другим',
-                value: user?.isActivityHidden ?? false,
-                onChanged: (val) => _updatePrivacy({'isActivityHidden': val}),
-              ),
-              const Divider(height: 1, indent: 56),
-              _PrivacySwitchTile(
-                icon: Icons.visibility_off_rounded,
-                title: 'Скрыть онлайн-статус',
-                subtitle: 'Друзья не увидят, когда вы в сети',
-                value: user?.isOnlineHidden ?? false,
-                onChanged: (val) => _updatePrivacy({'isOnlineHidden': val}),
-              ),
-            ],
-          ),
-        ),
-
-        const _SettingsSection(
-          title: 'Синхронизация звука',
-          description:
-              'Если в сессии звук на этом устройстве отстаёт от других '
-              '(например, через Bluetooth-наушники), сдвиньте задержку вперёд, '
-              'пока музыка не совпадёт.',
-          child: _SettingsCard(children: [_AudioLatencyTile()]),
-        ),
-
-        _SettingsSection(
-          title: 'Фоновое воспроизведение',
-          description:
-              'Чтобы синхронизация не прерывалась при погашенном экране, '
-              'разрешите приложению работать в фоне без ограничений батареи.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: _requestBackgroundPermissions,
-                icon: const Icon(Icons.battery_saver_rounded),
-                label: const Text('Разрешить работу в фоне'),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              OutlinedButton.icon(
-                onPressed: _openAutostartSettings,
-                icon: const Icon(Icons.settings_applications_outlined),
-                label: const Text('Настроить автозапуск'),
-              ),
-              const SizedBox(height: AppSpacing.sm + 4),
-              _Hint(
-                'На Xiaomi и Redmi включите «Автозапуск», а в разделе батареи '
-                'выберите «Нет ограничений» — иначе система закроет приложение '
-                'при выключенном экране.',
-              ),
-            ],
-          ),
-        ),
-
-        _SettingsSection(
+        SettingsSectionTile(
+          icon: Icons.person_outline_rounded,
           title: 'Аккаунт',
-          child: _SettingsCard(
-            children: [
-              _DangerTile(
-                icon: Icons.logout_rounded,
-                title: 'Выйти из аккаунта',
-                onTap: () => _confirmLogout(context),
-              ),
-            ],
+          summary: '${user?.displayName ?? 'Имя'} • '
+              '${user?.spotifyConnected == true ? 'Spotify подключён' : 'Spotify не подключён'}',
+          onTap: () => openSection('Аккаунт', _accountSection(context, auth)),
+        ),
+        SettingsSectionTile(
+          icon: Icons.palette_outlined,
+          title: 'Оформление',
+          summary: themeName(),
+          onTap: () => openSection('Оформление', _appearanceSection(context)),
+        ),
+        SettingsSectionTile(
+          icon: Icons.play_circle_outline_rounded,
+          title: 'Воспроизведение',
+          summary: 'Задержка звука • Фоновый режим',
+          onTap: () => openSection('Воспроизведение', _playbackSection(context)),
+        ),
+        SettingsSectionTile(
+          icon: Icons.headphones_outlined,
+          title: 'Сессии',
+          summary: 'Кто может звать • Приглашения',
+          onTap: () => openSection('Сессии', _sessionsSection(context, auth)),
+        ),
+        SettingsSectionTile(
+          icon: Icons.lock_outline_rounded,
+          title: 'Приватность',
+          summary: _privacySummary(user),
+          onTap: () => openSection('Приватность', _privacySection(context, auth)),
+        ),
+        SettingsSectionTile(
+          icon: Icons.storage_outlined,
+          title: 'Данные',
+          summary: 'Кэш • Удаление аккаунта',
+          onTap: () => openSection('Данные', _dataSection(context)),
+        ),
+        SettingsSectionTile(
+          icon: Icons.info_outline_rounded,
+          title: 'О приложении',
+          summary: 'Версия • Соединение',
+          onTap: () => openSection('О приложении', _aboutSection(context)),
+        ),
+
+        const SizedBox(height: AppSpacing.lg),
+        Center(
+          child: OutlinedButton(
+            onPressed: () => _confirmLogout(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: context.colors.error,
+              side: BorderSide(color: context.colors.error.withValues(alpha: 0.4)),
+              minimumSize: const Size(200, 48),
+            ),
+            child: const Text('Выйти'),
           ),
         ),
       ],
     );
+  }
+
+  /// Краткая сводка приватности для подписи раздела.
+  String _privacySummary(User? user) {
+    final hidden = [
+      if (user?.isFriendsHidden == true) 'друзья',
+      if (user?.isActivityHidden == true) 'активность',
+      if (user?.isOnlineHidden == true) 'статус',
+    ];
+    if (hidden.isEmpty) return 'Ничего не скрыто';
+    return 'Скрыто: ${hidden.join(', ')}';
+  }
+
+
+  List<Widget> _accountSection(BuildContext context, AuthProvider auth) {
+    final connected = auth.user?.spotifyConnected == true;
+    return [
+      SettingsGroup(
+        children: [
+          _NameEditor(
+            currentName: auth.user?.displayName ?? '',
+            onSaved: (newName) async {
+              try {
+                await auth.updateProfile(username: newName.trim());
+                if (!mounted) return;
+                showSuccess(context, 'Имя обновлено');
+              } catch (err) {
+                if (!mounted) return;
+                showError(context, err);
+              }
+            },
+          ),
+        ],
+      ),
+      SettingsGroup(
+        title: 'Подключённые сервисы',
+        children: [
+          SettingsAction(
+            icon: Icons.music_note_rounded,
+            title: 'Spotify',
+            subtitle: connected ? 'Подключён' : 'Не подключён',
+            trailing: Text(
+              connected ? 'Отключить' : 'Подключить',
+              style: context.texts.labelMedium
+                  ?.copyWith(color: context.colors.onSurfaceVariant),
+            ),
+            onTap: () =>
+                connected ? disconnectSpotify(context) : connectSpotify(context),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<Widget> _appearanceSection(BuildContext context) {
+    return const [
+      SettingsGroup(
+        title: 'Тема',
+        children: [_ThemeSelectorTile()],
+      ),
+    ];
+  }
+
+  List<Widget> _playbackSection(BuildContext context) {
+    return [
+      const SettingsGroup(
+        title: 'Синхронизация звука',
+        children: [_AudioLatencyTile()],
+      ),
+      SettingsGroup(
+        title: 'Фоновый режим',
+        children: [
+          SettingsAction(
+            icon: Icons.battery_saver_rounded,
+            title: 'Разрешить работу в фоне',
+            subtitle: 'Чтобы синхронизация не прерывалась при погашенном экране',
+            onTap: _requestBackgroundPermissions,
+          ),
+          SettingsAction(
+            icon: Icons.settings_applications_outlined,
+            title: 'Настроить автозапуск',
+            subtitle: 'На Xiaomi и Redmi без этого система закрывает приложение',
+            onTap: _openAutostartSettings,
+          ),
+        ],
+      ),
+      SettingsGroup(
+        title: 'Поведение плеера',
+        children: [
+          SettingsSwitch(
+            icon: Icons.open_in_full_rounded,
+            title: 'Открывать плеер при запуске',
+            subtitle: 'Полноэкранный плеер появится сразу после нажатия на трек',
+            value: LocalStore.readBool(StoreKeys.autoOpenPlayer, defaultValue: true),
+            onChanged: (v) => _setFlag(StoreKeys.autoOpenPlayer, v),
+          ),
+          SettingsSwitch(
+            icon: Icons.screen_lock_portrait_rounded,
+            title: 'Не гасить экран в сессии',
+            subtitle: 'Пока идёт совместное прослушивание, экран остаётся включённым',
+            value: LocalStore.readBool(StoreKeys.keepScreenOn, defaultValue: true),
+            onChanged: (v) => _setFlag(StoreKeys.keepScreenOn, v),
+          ),
+        ],
+      ),
+      SettingsGroup(
+        title: 'Качество звука',
+        children: [
+          SettingsAction(
+            icon: Icons.graphic_eq_rounded,
+            title: 'Настройки Spotify',
+            subtitle: 'Качество, кроссфейд и громкость задаются в приложении Spotify',
+            onTap: () => showAppNotification(
+              context,
+              message: 'Откройте Spotify → Настройки → Качество звука',
+              type: NotificationType.info,
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<Widget> _sessionsSection(BuildContext context, AuthProvider auth) {
+    return [
+      SettingsGroup(
+        title: 'Приглашения',
+        children: [
+          SettingsSwitch(
+            icon: Icons.notifications_active_outlined,
+            title: 'Показывать уведомление',
+            subtitle: 'Всплывающая карточка, когда друг зовёт в сессию',
+            value: LocalStore.readBool(StoreKeys.inviteNotifications, defaultValue: true),
+            onChanged: (v) => _setFlag(StoreKeys.inviteNotifications, v),
+          ),
+        ],
+      ),
+      SettingsGroup(
+        title: 'Завершение',
+        children: [
+          SettingsSwitch(
+            icon: Icons.help_outline_rounded,
+            title: 'Спрашивать перед завершением',
+            subtitle: 'Подтверждение, чтобы не закрыть сессию случайно',
+            value: LocalStore.readBool(StoreKeys.confirmEndSession, defaultValue: true),
+            onChanged: (v) => _setFlag(StoreKeys.confirmEndSession, v),
+          ),
+        ],
+      ),
+      SettingsGroup(
+        title: 'Кто может звать',
+        children: [
+          SettingsAction(
+            icon: Icons.people_outline_rounded,
+            title: 'Только друзья',
+            subtitle: 'Пригласить в сессию может только тот, кто у вас в друзьях',
+            trailing: Icon(Icons.lock_outline_rounded,
+                size: 18, color: context.colors.onSurfaceVariant),
+            onTap: _noop,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<Widget> _privacySection(BuildContext context, AuthProvider auth) {
+    final user = auth.user;
+    return [
+      SettingsGroup(
+        children: [
+          SettingsSwitch(
+            icon: Icons.people_outline_rounded,
+            title: 'Скрыть количество друзей',
+            subtitle: 'Никто не увидит количество ваших друзей и общих друзей',
+            value: user?.isFriendsHidden ?? false,
+            onChanged: (v) => _updatePrivacy({'isFriendsHidden': v}),
+          ),
+          SettingsSwitch(
+            icon: Icons.timeline_rounded,
+            title: 'Скрыть активность',
+            subtitle: 'Ваша активность в сессиях не будет видна другим',
+            value: user?.isActivityHidden ?? false,
+            onChanged: (v) => _updatePrivacy({'isActivityHidden': v}),
+          ),
+          SettingsSwitch(
+            icon: Icons.visibility_off_rounded,
+            title: 'Скрыть онлайн-статус',
+            subtitle: 'Друзья не увидят, когда вы в сети',
+            value: user?.isOnlineHidden ?? false,
+            onChanged: (v) => _updatePrivacy({'isOnlineHidden': v}),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<Widget> _dataSection(BuildContext context) {
+    return [
+      SettingsGroup(
+        title: 'Хранилище',
+        children: [
+          SettingsSwitch(
+            icon: Icons.bolt_outlined,
+            title: 'Загружать данные при запуске',
+            subtitle: 'Списки друзей и сессий готовы к моменту открытия вкладки',
+            value: LocalStore.readBool(StoreKeys.prefetchOnStart, defaultValue: true),
+            onChanged: (v) => _setFlag(StoreKeys.prefetchOnStart, v),
+          ),
+          SettingsAction(
+            icon: Icons.cleaning_services_outlined,
+            title: 'Очистить кэш',
+            subtitle: 'Сохранённые списки друзей и сессий',
+            onTap: () async {
+              await LocalStore.clearAll();
+              if (!mounted) return;
+              showSuccess(context, 'Кэш очищен');
+            },
+          ),
+          SettingsAction(
+            icon: Icons.image_not_supported_outlined,
+            title: 'Очистить кэш изображений',
+            subtitle: 'Аватары и обложки будут загружены заново',
+            onTap: () async {
+              PaintingBinding.instance.imageCache.clear();
+              PaintingBinding.instance.imageCache.clearLiveImages();
+              await DefaultCacheManager().emptyCache();
+              if (!mounted) return;
+              showSuccess(context, 'Кэш изображений очищен');
+            },
+          ),
+        ],
+      ),
+      SettingsGroup(
+        title: 'Аккаунт',
+        children: [
+          SettingsAction(
+            icon: Icons.delete_outline_rounded,
+            title: 'Удалить аккаунт',
+            subtitle: 'Безвозвратно удалит профиль, друзей и историю сессий',
+            danger: true,
+            onTap: () => _confirmDeleteAccount(context),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<Widget> _aboutSection(BuildContext context) {
+    final connected = context.read<AuthProvider>().user != null;
+
+    return [
+      SettingsGroup(
+        children: [
+          const SettingsAction(
+            icon: Icons.graphic_eq_rounded,
+            title: 'SyncM',
+            subtitle: 'Слушайте музыку вместе, где бы вы ни были',
+            onTap: _noop,
+          ),
+        ],
+      ),
+      SettingsGroup(
+        title: 'Соединение',
+        children: [
+          SettingsAction(
+            icon: Icons.cloud_outlined,
+            title: 'Сервер',
+            subtitle: Config.baseUrl,
+            trailing: Icon(
+              connected ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+              size: 18,
+              color: connected ? context.roles.online : context.colors.error,
+            ),
+            onTap: _noop,
+          ),
+          SettingsAction(
+            icon: Icons.sync_rounded,
+            title: 'Синхронизация часов',
+            subtitle: _clockSyncSummary(),
+            onTap: () {
+              SocketService().resyncNow();
+              showAppNotification(
+                context,
+                message: 'Часы синхронизируются заново',
+                type: NotificationType.info,
+              );
+            },
+          ),
+        ],
+      ),
+    ];
+  }
+
+  String _clockSyncSummary() {
+    final socket = SocketService();
+    final offset = socket.masterOffsetMs;
+    if (offset == 0) return 'Ещё не измерено — нажмите, чтобы обновить';
+    final sign = offset > 0 ? '+' : '';
+    return 'Расхождение с сервером: $sign$offset мс';
+  }
+
+  Future<void> _setFlag(String key, bool value) async {
+    await LocalStore.saveBool(key, value);
+    if (mounted) setState(() {});
+  }
+
+  static void _noop() {}
+
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.warning_amber_rounded, color: ctx.colors.error),
+        title: const Text('Удалить аккаунт?'),
+        content: const Text(
+          'Профиль, друзья и история сессий будут удалены безвозвратно. '
+          'Это действие нельзя отменить.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: ctx.colors.error,
+              foregroundColor: ctx.colors.onError,
+            ),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await context.read<PlaybackProvider>().stopAndClear();
+      if (!mounted) return;
+
+      final auth = context.read<AuthProvider>();
+      await auth.api.deleteAccount();
+      if (!mounted) return;
+
+      await auth.forgetLocalSession();
+      if (!mounted) return;
+
+      Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
+    }
   }
 
   Future<void> _confirmLogout(BuildContext context) async {
@@ -321,68 +649,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 }
 
-class _SettingsSection extends StatelessWidget {
-  const _SettingsSection({
-    required this.title,
-    required this.child,
-    this.description,
-  });
 
-  final String title;
-  final String? description;
-  final Widget child;
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.xl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(title, style: context.texts.titleLarge),
-          if (description != null) ...[
-            const SizedBox(height: AppSpacing.xs),
-            _Hint(description!),
-          ],
-          const SizedBox(height: AppSpacing.md),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsCard extends StatelessWidget {
-  const _SettingsCard({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: context.colors.surfaceContainerLow,
-        borderRadius: AppRadius.large,
-      ),
-      child: Column(children: children),
-    );
-  }
-}
-
-class _Hint extends StatelessWidget {
-  const _Hint(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: context.texts.bodySmall?.copyWith(color: context.colors.onSurfaceVariant),
-    );
-  }
-}
 
 class _AvatarBlock extends StatelessWidget {
   const _AvatarBlock({
@@ -452,43 +720,45 @@ class _AvatarBlock extends StatelessWidget {
   }
 }
 
-class _ThemeSelector extends StatelessWidget {
-  const _ThemeSelector();
+class _ThemeSelectorTile extends StatelessWidget {
+  const _ThemeSelectorTile();
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = context.watch<ThemeProvider>();
+    final theme = context.watch<ThemeProvider>();
 
-    return SegmentedButton<ThemeMode>(
-      segments: const [
-        ButtonSegment(
-          value: ThemeMode.system,
-          label: Text('Система'),
-          icon: Icon(Icons.settings_brightness_rounded),
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: SegmentedButton<ThemeMode>(
+        segments: const [
+          ButtonSegment(
+            value: ThemeMode.system,
+            label: Text('Система'),
+            icon: Icon(Icons.settings_brightness_rounded),
+          ),
+          ButtonSegment(
+            value: ThemeMode.light,
+            label: Text('Светлая'),
+            icon: Icon(Icons.light_mode_rounded),
+          ),
+          ButtonSegment(
+            value: ThemeMode.dark,
+            label: Text('Тёмная'),
+            icon: Icon(Icons.dark_mode_rounded),
+          ),
+        ],
+        selected: {theme.themeMode},
+        onSelectionChanged: (selected) => theme.setThemeMode(selected.first),
+        showSelectedIcon: false,
+        style: SegmentedButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
+          visualDensity: VisualDensity.comfortable,
         ),
-        ButtonSegment(
-          value: ThemeMode.light,
-          label: Text('Светлая'),
-          icon: Icon(Icons.light_mode_rounded),
-        ),
-        ButtonSegment(
-          value: ThemeMode.dark,
-          label: Text('Тёмная'),
-          icon: Icon(Icons.dark_mode_rounded),
-        ),
-      ],
-      selected: {themeProvider.themeMode},
-      onSelectionChanged: (selected) => themeProvider.setThemeMode(selected.first),
-      showSelectedIcon: false,
-      style: SegmentedButton.styleFrom(
-        // Форма из темы: раньше здесь был свой radius 12, не совпадавший с
-        // остальными элементами экрана.
-        shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
-        visualDensity: VisualDensity.comfortable,
       ),
     );
   }
 }
+
 
 class _AudioLatencyTile extends StatelessWidget {
   const _AudioLatencyTile();
@@ -680,94 +950,6 @@ class _NameEditorState extends State<_NameEditor> {
                 ),
               ),
             ),
-    );
-  }
-}
-
-class _PrivacySwitchTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _PrivacySwitchTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: SwitchListTile(
-        secondary: Icon(icon, color: theme.colorScheme.primary),
-        title: Text(title),
-        subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
-        value: value,
-        onChanged: onChanged,
-        activeThumbColor: theme.colorScheme.primary,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    );
-  }
-}
-
-/// Строка подключённого сервиса.
-class _SpotifyTile extends StatelessWidget {
-  const _SpotifyTile({required this.connected, required this.onTap});
-
-  final bool connected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final spotify = context.roles.spotify;
-
-    return ListTile(
-      onTap: onTap,
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: spotify.withValues(alpha: 0.16),
-          borderRadius: AppRadius.small,
-        ),
-        child: Icon(Icons.music_note_rounded, size: 20, color: spotify),
-      ),
-      title: const Text('Spotify'),
-      subtitle: Text(connected ? 'Подключён' : 'Не подключён'),
-      trailing: Text(
-        connected ? 'Отключить' : 'Подключить',
-        style: context.texts.labelMedium?.copyWith(color: colors.onSurfaceVariant),
-      ),
-    );
-  }
-}
-
-class _DangerTile extends StatelessWidget {
-  const _DangerTile({required this.icon, required this.title, required this.onTap});
-
-  final IconData icon;
-  final String title;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final error = context.colors.error;
-
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(icon, color: error),
-      title: Text(title, style: TextStyle(color: error)),
     );
   }
 }

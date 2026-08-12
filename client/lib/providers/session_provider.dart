@@ -218,6 +218,10 @@ class SessionProvider with ChangeNotifier {
   void markInvitesAsRead() {}
 
   void _showInviteNotification(String sessionName) {
+    if (!LocalStore.readBool(StoreKeys.inviteNotifications, defaultValue: true)) {
+      return;
+    }
+
     final context = navigatorKey.currentContext;
     if (context == null) return;
 

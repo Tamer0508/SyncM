@@ -117,6 +117,23 @@ class ApiService {
     return res.body.isNotEmpty ? res.body : 'Неизвестная ошибка';
   }
 
+  Future<void> deleteAccount() async {
+    final res = await http
+        .delete(_uri('/auth/account'), headers: _headers)
+        .timeout(timeout);
+
+    if (res.statusCode != 200) {
+      throw ApiException(
+        'Не удалось удалить аккаунт',
+        res.statusCode,
+        _extractError(res),
+      );
+    }
+
+    _cookie = null;
+    _idempotencyKeys.clear();
+  }
+
   Future<void> logout() async {
     try {
       await http.get(_uri('/auth/logout'), headers: _headers).timeout(timeout);
