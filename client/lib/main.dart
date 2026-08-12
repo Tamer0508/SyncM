@@ -6,6 +6,7 @@ import 'providers/auth_provider.dart';
 import 'providers/friends_provider.dart';
 import 'providers/session_provider.dart';
 import 'providers/playback_provider.dart';
+import 'providers/appearance_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/socket_service.dart';
 import 'services/api_service.dart';
@@ -65,17 +66,38 @@ class MyApp extends StatelessWidget {
           },
         ),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => AppearanceProvider()),
         Provider<SocketService>.value(value: SocketService()),
       ],
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, _) => MaterialApp(
+      child: Consumer2<ThemeProvider, AppearanceProvider>(
+        builder: (context, themeProvider, appearance, _) => MaterialApp(
           title: 'SyncM',
-          theme: AppTheme.light,
-          darkTheme: AppTheme.dark,
+          theme: AppTheme.build(
+            brightness: Brightness.light,
+            accent: appearance.accent,
+            compact: appearance.compact,
+            reduceMotion: appearance.reduceMotion,
+          ),
+          darkTheme: AppTheme.build(
+            brightness: Brightness.dark,
+            accent: appearance.accent,
+            compact: appearance.compact,
+            reduceMotion: appearance.reduceMotion,
+          ),
           themeMode: themeProvider.themeMode,
           navigatorKey: navigatorKey,
           scaffoldMessengerKey: scaffoldMessengerKey,
-          builder: (context, child) => AppShell(child: child ?? const SizedBox.shrink()),
+          builder: (context, child) {
+            final media = MediaQuery.of(context);
+            return MediaQuery(
+              data: media.copyWith(
+                textScaler: TextScaler.linear(
+                  media.textScaler.scale(appearance.textScale),
+                ).clamp(minScaleFactor: 0.8, maxScaleFactor: 1.6),
+              ),
+              child: AppShell(child: child ?? const SizedBox.shrink()),
+            );
+          },
           home: const _AuthGate(),
           onGenerateRoute: generateRoute,
         ),

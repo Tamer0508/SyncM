@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import '../../widgets/screen_chrome.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../providers/appearance_provider.dart';
 import '../../providers/auth_provider.dart';
+// hide Config: пакет экспортирует свой класс с таким же именем, и он
+// сталкивается с нашим config.dart. Скрываем чужой, а не прячем свой за
+// префиксом — Config.baseUrl используется по всему приложению без него.
 import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide Config;
 import '../../services/socket_service.dart';
 import '../../theme.dart';
@@ -50,8 +54,21 @@ class _SettingsBody extends StatefulWidget {
 class _SettingsBodyState extends State<_SettingsBody> {
   bool _isUploading = false;
 
+  /// Открытый раздел настроек.
+  ///
+  /// На широкой раскладке раздел показывается ВНУТРИ настроек, а не
+  /// отдельным маршрутом: маршрут закрыл бы боковую панель и панель
+  /// воспроизведения, как и любой полноэкранный переход на десктопе.
   String? _openSectionTitle;
-  List<Widget>? _openSectionChildren;
+
+  /// Как построить содержимое раздела.
+  ///
+  /// Именно функция, а не готовый список виджетов. Со списком раздел
+  /// собирался один раз при открытии и больше не менялся: переключатели
+  /// внутри читают провайдеры, но снимок уже сделан — нажатие меняло
+  /// значение в хранилище, а на экране оставалось прежнее до перезагрузки.
+  /// Функция вызывается при каждой перерисовке и всегда даёт свежие данные.
+  List<Widget> Function(BuildContext context)? _openSectionBuilder;
 
   Future<void> _pickAndUploadAvatar() async {
     final result = await FilePicker.platform.pickFiles(
@@ -86,8 +103,13 @@ class _SettingsBodyState extends State<_SettingsBody> {
       return;
     }
 
+    // Проверка mounted после await: пока открыт системный выбор файла,
+    // экран мог быть закрыт, и обращение к context привело бы к ошибке.
     if (!mounted) return;
 
+    // Кадрирование перед загрузкой. Аватар везде показывается кругом, поэтому
+    // некруглое изображение всё равно обрезалось бы — но по центру и без
+    // участия пользователя, который не понял бы, почему пропала часть кадра.
     final cropped = await Navigator.of(context).push<Uint8List>(
       MaterialPageRoute(
         builder: (_) => AvatarCropScreen(imageBytes: bytes),
@@ -101,6 +123,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
     setState(() => _isUploading = true);
     try {
       final auth = context.read<AuthProvider>();
+      // Расширение всегда png: экран кадрирования кодирует результат именно
+      // в него, и прежнее имя файла (например, .jpg) ввело бы сервер в
+      // заблуждение при определении типа.
       final fileName = 'avatar_${DateTime.now().millisecondsSinceEpoch}.png';
       await auth.uploadAvatar(cropped, fileName);
       if (!mounted) return;
@@ -130,28 +155,35 @@ class _SettingsBodyState extends State<_SettingsBody> {
           _ => 'Как в системе',
         };
 
-    void openSection(String title, List<Widget> children) {
+    void openSection(String title, List<Widget> Function(BuildContext) builder) {
       if (isDesktop) {
         setState(() {
           _openSectionTitle = title;
-          _openSectionChildren = children;
+          _openSectionBuilder = builder;
         });
         return;
       }
       Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => SettingsSectionScreen(title: title, children: children),
+        // builder вызывается внутри — раздел перестраивается при каждом
+        // изменении настроек, как и на широком экране.
+        builder: (ctx) => SettingsSectionScreen(
+          title: title,
+          children: builder(ctx),
+        ),
       ));
     }
 
-    if (_openSectionChildren != null) {
+    // Раздел открыт — показываем его вместо списка, оставаясь в центральной
+    // части главного экрана.
+    if (_openSectionBuilder != null) {
       return SettingsSectionScreen(
         embedded: true,
         title: _openSectionTitle ?? 'Настройки',
         onBack: () => setState(() {
           _openSectionTitle = null;
-          _openSectionChildren = null;
+          _openSectionBuilder = null;
         }),
-        children: _openSectionChildren!,
+        children: _openSectionBuilder!(context),
       );
     }
 
@@ -171,48 +203,53 @@ class _SettingsBodyState extends State<_SettingsBody> {
         ),
         const SizedBox(height: AppSpacing.lg),
 
+        // Разделы вместо одного длинного списка.
+        //
+        // Раньше все настройки лежали на одном экране: он рос с каждой новой
+        // функцией, и найти нужное можно было только прокруткой. Подпись под
+        // названием показывает содержимое раздела до открытия.
         SettingsSectionTile(
           icon: Icons.person_outline_rounded,
           title: 'Аккаунт',
           summary: '${user?.displayName ?? 'Имя'} • '
               '${user?.spotifyConnected == true ? 'Spotify подключён' : 'Spotify не подключён'}',
-          onTap: () => openSection('Аккаунт', _accountSection(context, auth)),
+          onTap: () => openSection('Аккаунт', (ctx) => _accountSection(ctx, auth)),
         ),
         SettingsSectionTile(
           icon: Icons.palette_outlined,
           title: 'Оформление',
           summary: themeName(),
-          onTap: () => openSection('Оформление', _appearanceSection(context)),
+          onTap: () => openSection('Оформление', _appearanceSection),
         ),
         SettingsSectionTile(
           icon: Icons.play_circle_outline_rounded,
           title: 'Воспроизведение',
           summary: 'Задержка звука • Фоновый режим',
-          onTap: () => openSection('Воспроизведение', _playbackSection(context)),
+          onTap: () => openSection('Воспроизведение', _playbackSection),
         ),
         SettingsSectionTile(
           icon: Icons.headphones_outlined,
           title: 'Сессии',
           summary: 'Кто может звать • Приглашения',
-          onTap: () => openSection('Сессии', _sessionsSection(context, auth)),
+          onTap: () => openSection('Сессии', (ctx) => _sessionsSection(ctx, auth)),
         ),
         SettingsSectionTile(
           icon: Icons.lock_outline_rounded,
           title: 'Приватность',
           summary: _privacySummary(user),
-          onTap: () => openSection('Приватность', _privacySection(context, auth)),
+          onTap: () => openSection('Приватность', (ctx) => _privacySection(ctx, auth)),
         ),
         SettingsSectionTile(
           icon: Icons.storage_outlined,
           title: 'Данные',
           summary: 'Кэш • Удаление аккаунта',
-          onTap: () => openSection('Данные', _dataSection(context)),
+          onTap: () => openSection('Данные', _dataSection),
         ),
         SettingsSectionTile(
           icon: Icons.info_outline_rounded,
           title: 'О приложении',
           summary: 'Версия • Соединение',
-          onTap: () => openSection('О приложении', _aboutSection(context)),
+          onTap: () => openSection('О приложении', _aboutSection),
         ),
 
         const SizedBox(height: AppSpacing.lg),
@@ -242,6 +279,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
     return 'Скрыто: ${hidden.join(', ')}';
   }
 
+  // ─── Разделы ─────────────────────────────────────────────────────────────
 
   List<Widget> _accountSection(BuildContext context, AuthProvider auth) {
     final connected = auth.user?.spotifyConnected == true;
@@ -284,15 +322,66 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   List<Widget> _appearanceSection(BuildContext context) {
-    return const [
-      SettingsGroup(
+    final appearance = context.watch<AppearanceProvider>();
+
+    return [
+      const SettingsGroup(
         title: 'Тема',
         children: [_ThemeSelectorTile()],
+      ),
+      SettingsGroup(
+        title: 'Цвет акцента',
+        children: [_AccentPicker(current: appearance.accent)],
+      ),
+      SettingsGroup(
+        title: 'Размер текста',
+        children: [_TextScaleTile(scale: appearance.textScale)],
+      ),
+      SettingsGroup(
+        title: 'Плотность и движение',
+        children: [
+          SettingsSwitch(
+            icon: Icons.density_medium_rounded,
+            title: 'Компактный режим',
+            subtitle: 'Плотнее списки — на экран помещается больше',
+            value: appearance.compact,
+            onChanged: appearance.setCompact,
+          ),
+          SettingsSwitch(
+            icon: Icons.motion_photos_off_outlined,
+            title: 'Меньше анимации',
+            subtitle: 'Переходы без движения — если оно мешает или укачивает',
+            value: appearance.reduceMotion,
+            onChanged: appearance.setReduceMotion,
+          ),
+          SettingsSwitch(
+            icon: Icons.gradient_rounded,
+            title: 'Фон по обложке',
+            subtitle: 'Свечение в цвет обложки на экране плеера',
+            value: appearance.artworkBackground,
+            onChanged: appearance.setArtworkBackground,
+          ),
+        ],
+      ),
+      SettingsGroup(
+        children: [
+          SettingsAction(
+            icon: Icons.restart_alt_rounded,
+            title: 'Сбросить оформление',
+            subtitle: 'Вернуть тему, цвет, размер текста и плотность к исходным',
+            onTap: () {
+              context.read<AppearanceProvider>().resetAll();
+              showSuccess(context, 'Оформление сброшено');
+            },
+          ),
+        ],
       ),
     ];
   }
 
   List<Widget> _playbackSection(BuildContext context) {
+    final appearance = context.watch<AppearanceProvider>();
+
     return [
       const SettingsGroup(
         title: 'Синхронизация звука',
@@ -322,15 +411,15 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.open_in_full_rounded,
             title: 'Открывать плеер при запуске',
             subtitle: 'Полноэкранный плеер появится сразу после нажатия на трек',
-            value: LocalStore.readBool(StoreKeys.autoOpenPlayer, defaultValue: true),
-            onChanged: (v) => _setFlag(StoreKeys.autoOpenPlayer, v),
+            value: appearance.flag(StoreKeys.autoOpenPlayer, defaultValue: true),
+            onChanged: (v) => appearance.setFlag(StoreKeys.autoOpenPlayer, v),
           ),
           SettingsSwitch(
             icon: Icons.screen_lock_portrait_rounded,
             title: 'Не гасить экран в сессии',
             subtitle: 'Пока идёт совместное прослушивание, экран остаётся включённым',
-            value: LocalStore.readBool(StoreKeys.keepScreenOn, defaultValue: true),
-            onChanged: (v) => _setFlag(StoreKeys.keepScreenOn, v),
+            value: appearance.flag(StoreKeys.keepScreenOn, defaultValue: true),
+            onChanged: (v) => appearance.setFlag(StoreKeys.keepScreenOn, v),
           ),
         ],
       ),
@@ -340,6 +429,12 @@ class _SettingsBodyState extends State<_SettingsBody> {
           SettingsAction(
             icon: Icons.graphic_eq_rounded,
             title: 'Настройки Spotify',
+            // Честная ссылка вместо переключателя.
+            //
+            // Качество потока, кроссфейд и нормализация громкости задаются в
+            // самом Spotify: SDK ими не управляет. Переключатель здесь
+            // выглядел бы рабочим, но ни на что не влиял — это хуже, чем
+            // честно отправить туда, где настройка действительно есть.
             subtitle: 'Качество, кроссфейд и громкость задаются в приложении Spotify',
             onTap: () => showAppNotification(
               context,
@@ -353,6 +448,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   List<Widget> _sessionsSection(BuildContext context, AuthProvider auth) {
+    final appearance = context.watch<AppearanceProvider>();
+
     return [
       SettingsGroup(
         title: 'Приглашения',
@@ -361,8 +458,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.notifications_active_outlined,
             title: 'Показывать уведомление',
             subtitle: 'Всплывающая карточка, когда друг зовёт в сессию',
-            value: LocalStore.readBool(StoreKeys.inviteNotifications, defaultValue: true),
-            onChanged: (v) => _setFlag(StoreKeys.inviteNotifications, v),
+            value: appearance.flag(StoreKeys.inviteNotifications, defaultValue: true),
+            onChanged: (v) => appearance.setFlag(StoreKeys.inviteNotifications, v),
           ),
         ],
       ),
@@ -373,8 +470,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.help_outline_rounded,
             title: 'Спрашивать перед завершением',
             subtitle: 'Подтверждение, чтобы не закрыть сессию случайно',
-            value: LocalStore.readBool(StoreKeys.confirmEndSession, defaultValue: true),
-            onChanged: (v) => _setFlag(StoreKeys.confirmEndSession, v),
+            value: appearance.flag(StoreKeys.confirmEndSession, defaultValue: true),
+            onChanged: (v) => appearance.setFlag(StoreKeys.confirmEndSession, v),
           ),
         ],
       ),
@@ -384,6 +481,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
           SettingsAction(
             icon: Icons.people_outline_rounded,
             title: 'Только друзья',
+            // Не переключатель: ограничение действует на сервере и изменить
+            // его нельзя. Переключатель здесь выглядел бы настройкой, но
+            // ничего не менял — а строка честно сообщает правило.
             subtitle: 'Пригласить в сессию может только тот, кто у вас в друзьях',
             trailing: Icon(Icons.lock_outline_rounded,
                 size: 18, color: context.colors.onSurfaceVariant),
@@ -426,6 +526,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   List<Widget> _dataSection(BuildContext context) {
+    final appearance = context.watch<AppearanceProvider>();
+
     return [
       SettingsGroup(
         title: 'Хранилище',
@@ -434,8 +536,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.bolt_outlined,
             title: 'Загружать данные при запуске',
             subtitle: 'Списки друзей и сессий готовы к моменту открытия вкладки',
-            value: LocalStore.readBool(StoreKeys.prefetchOnStart, defaultValue: true),
-            onChanged: (v) => _setFlag(StoreKeys.prefetchOnStart, v),
+            value: appearance.flag(StoreKeys.prefetchOnStart, defaultValue: true),
+            onChanged: (v) => appearance.setFlag(StoreKeys.prefetchOnStart, v),
           ),
           SettingsAction(
             icon: Icons.cleaning_services_outlined,
@@ -452,6 +554,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
             title: 'Очистить кэш изображений',
             subtitle: 'Аватары и обложки будут загружены заново',
             onTap: () async {
+              // Оба кэша: в памяти и на диске. Первый освобождает картинки
+              // прямо сейчас, второй убирает файлы, иначе они подтянутся
+              // обратно при первом же показе.
               PaintingBinding.instance.imageCache.clear();
               PaintingBinding.instance.imageCache.clearLiveImages();
               await DefaultCacheManager().emptyCache();
@@ -507,6 +612,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
           SettingsAction(
             icon: Icons.sync_rounded,
             title: 'Синхронизация часов',
+            // Реальное значение, а не заглушка: расхождение часов напрямую
+            // влияет на то, насколько точно совпадает воспроизведение, и
+            // при жалобах на рассинхрон это первое, что стоит посмотреть.
             subtitle: _clockSyncSummary(),
             onTap: () {
               SocketService().resyncNow();
@@ -528,11 +636,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
     if (offset == 0) return 'Ещё не измерено — нажмите, чтобы обновить';
     final sign = offset > 0 ? '+' : '';
     return 'Расхождение с сервером: $sign$offset мс';
-  }
-
-  Future<void> _setFlag(String key, bool value) async {
-    await LocalStore.saveBool(key, value);
-    if (mounted) setState(() {});
   }
 
   static void _noop() {}
@@ -567,6 +670,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
     if (confirmed != true || !mounted) return;
 
     try {
+      // Останавливаем воспроизведение до удаления: проигрыватель переживает
+      // смену пользователя, и после выхода панель осталась бы играть.
       await context.read<PlaybackProvider>().stopAndClear();
       if (!mounted) return;
 
@@ -574,6 +679,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
       await auth.api.deleteAccount();
       if (!mounted) return;
 
+      // Локальное состояние чистим вручную: обычный logout обращается к
+      // серверу, а пользователя там уже нет — запрос вернул бы 401.
       await auth.forgetLocalSession();
       if (!mounted) return;
 
@@ -610,6 +717,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
 
     if (confirmed != true || !mounted) return;
 
+    // Останавливаем воспроизведение до выхода: проигрыватель переживает
+    // смену аккаунта, и без этого следующий вошедший видел бы панель с
+    // чужим треком.
     await context.read<PlaybackProvider>().stopAndClear();
     if (!mounted) return;
 
@@ -950,6 +1060,160 @@ class _NameEditorState extends State<_NameEditor> {
                 ),
               ),
             ),
+    );
+  }
+}
+
+/// Выбор цвета акцента.
+///
+/// Кружки, а не выпадающий список: цвет — визуальное свойство, и выбирать
+/// его по названию («Слива», «Янтарь») значит гадать, как он выглядит.
+class _AccentPicker extends StatelessWidget {
+  const _AccentPicker({required this.current});
+
+  final AccentColor current;
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Wrap(
+        spacing: AppSpacing.md,
+        runSpacing: AppSpacing.sm,
+        children: [
+          for (final accent in AccentColor.values)
+            _AccentDot(
+              accent: accent,
+              color: accent.forBrightness(brightness),
+              selected: accent == current,
+              onTap: () => context.read<AppearanceProvider>().setAccent(accent),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccentDot extends StatelessWidget {
+  const _AccentDot({
+    required this.accent,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AccentColor accent;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      // Название в озвучке: программам чтения с экрана цвет недоступен, и
+      // без подписи все пять кружков звучали бы одинаково.
+      label: accent.label,
+      selected: selected,
+      button: true,
+      child: Tooltip(
+        message: accent.label,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color,
+              border: Border.all(
+                color: selected ? context.colors.onSurface : Colors.transparent,
+                width: 2.5,
+              ),
+            ),
+            child: selected
+                ? Icon(Icons.check_rounded,
+                    size: 20, color: context.roles.onMine)
+                : null,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Размер текста с живым примером.
+class _TextScaleTile extends StatelessWidget {
+  const _TextScaleTile({required this.scale});
+
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) {
+    final texts = context.texts;
+    final colors = context.colors;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Образец меняется вместе с ползунком.
+          //
+          // Без него выбирать приходится вслепую: число «1.15» ничего не
+          // говорит о том, как это будет выглядеть в списке треков.
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHigh,
+              borderRadius: AppRadius.medium,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Название трека',
+                  style: texts.titleSmall?.copyWith(fontSize: 14 * scale),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Исполнитель',
+                  style: texts.bodySmall?.copyWith(
+                    fontSize: 12 * scale,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              const Icon(Icons.text_fields_rounded, size: 16),
+              Expanded(
+                child: Slider(
+                  value: scale,
+                  min: AppearanceProvider.minTextScale,
+                  max: AppearanceProvider.maxTextScale,
+                  // Шаг 5%: мельче незаметно, крупнее — скачками.
+                  divisions: 9,
+                  label: '${(scale * 100).round()}%',
+                  onChanged: (v) =>
+                      context.read<AppearanceProvider>().setTextScale(v),
+                ),
+              ),
+              const Icon(Icons.text_fields_rounded, size: 24),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

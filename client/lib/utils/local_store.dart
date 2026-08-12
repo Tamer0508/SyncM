@@ -116,6 +116,13 @@ class LocalStore {
     await _prefs?.setBool(key, value);
   }
 
+  static double readDouble(String key, {double defaultValue = 0}) =>
+      _prefs?.getDouble(key) ?? defaultValue;
+
+  static Future<void> saveDouble(String key, double value) async {
+    await _prefs?.setDouble(key, value);
+  }
+
   static Future<void> remove(String key) async {
     final prefs = _prefs;
     if (prefs == null) return;
@@ -163,6 +170,12 @@ class StoreKeys {
 
   /// Показывать уведомление о приглашении в сессию.
   static const inviteNotifications = 'settings:invite_notifications';
+
+  static const textScale = 'settings:text_scale';
+  static const compactMode = 'settings:compact_mode';
+  static const accentColor = 'settings:accent_color';
+  static const reduceMotion = 'settings:reduce_motion';
+  static const artworkBackground = 'settings:artwork_background';
 
   static const all = [friends, friendRequests, sessions, invites];
 }

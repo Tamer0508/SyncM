@@ -61,7 +61,6 @@ class AppRoleColors extends ThemeExtension<AppRoleColors> {
   final Color spotify;
   final Color online;
 
-  /// Цвет по роли. Избавляет вызывающий код от развилок.
   Color forMe(bool isMine) => isMine ? mine : theirs;
   Color onRole(bool isMine) => isMine ? onMine : onTheirs;
 
@@ -98,6 +97,24 @@ class AppRoleColors extends ThemeExtension<AppRoleColors> {
   }
 }
 
+enum AccentColor {
+  olive('Оливковый', Color(0xFF6A7A4E), Color(0xFFC5E384)),
+  clay('Глина', Color(0xFFB55E3F), Color(0xFFEE9377)),
+  indigo('Индиго', Color(0xFF4C5B9E), Color(0xFF9DAAEE)),
+  plum('Слива', Color(0xFF7B4B78), Color(0xFFD79FD3)),
+  amber('Янтарь', Color(0xFF9A6B15), Color(0xFFE7BC63));
+
+  const AccentColor(this.label, this.light, this.dark);
+
+  final String label;
+
+  final Color light;
+
+  final Color dark;
+
+  Color forBrightness(Brightness b) => b == Brightness.dark ? dark : light;
+}
+
 class AppTheme {
   static const Color _olive = Color(0xFF6A7A4E);
 
@@ -126,7 +143,12 @@ class AppTheme {
         .apply(bodyColor: onSurface, displayColor: onSurface);
   }
 
-  static ThemeData _build(ColorScheme scheme, AppRoleColors roles) {
+  static ThemeData _build(
+    ColorScheme scheme,
+    AppRoleColors roles, {
+    VisualDensity density = VisualDensity.standard,
+    bool reduceMotion = false,
+  }) {
     final base = ThemeData(brightness: scheme.brightness, useMaterial3: true);
     final text = _textTheme(base.textTheme, scheme.onSurface);
 
@@ -135,10 +157,22 @@ class AppTheme {
       scaffoldBackgroundColor: scheme.surface,
       canvasColor: scheme.surface,
       textTheme: text,
-      splashFactory: InkSparkle.splashFactory,
+      visualDensity: density,
+      splashFactory: reduceMotion ? NoSplash.splashFactory : InkSparkle.splashFactory,
       extensions: <ThemeExtension<dynamic>>[roles],
 
-      pageTransitionsTheme: const PageTransitionsTheme(
+      pageTransitionsTheme: reduceMotion
+          ? const PageTransitionsTheme(
+              builders: {
+                // Мгновенная смена экрана вместо перехода.
+                TargetPlatform.android: _NoTransitionsBuilder(),
+                TargetPlatform.iOS: _NoTransitionsBuilder(),
+                TargetPlatform.macOS: _NoTransitionsBuilder(),
+                TargetPlatform.windows: _NoTransitionsBuilder(),
+                TargetPlatform.linux: _NoTransitionsBuilder(),
+              },
+            )
+          : const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
@@ -381,6 +415,33 @@ class AppTheme {
 
   static ThemeData get light => _build(_lightScheme, _lightRoles);
   static ThemeData get dark => _build(_darkScheme, _darkRoles);
+
+  static ThemeData build({
+    required Brightness brightness,
+    AccentColor accent = AccentColor.olive,
+    bool compact = false,
+    bool reduceMotion = false,
+  }) {
+    final isDark = brightness == Brightness.dark;
+    final accentColor = accent.forBrightness(brightness);
+
+    final scheme = (isDark ? _darkScheme : _lightScheme).copyWith(
+      primary: accentColor,
+    );
+
+    final baseRoles = isDark ? _darkRoles : _lightRoles;
+    final roles = baseRoles.copyWith(
+      mine: accentColor,
+      onMine: isDark ? const Color(0xFF14100F) : Colors.white,
+    );
+
+    return _build(
+      scheme,
+      roles,
+      density: compact ? VisualDensity.compact : VisualDensity.standard,
+      reduceMotion: reduceMotion,
+    );
+  }
 }
 
 extension AppThemeContext on BuildContext {
@@ -390,4 +451,18 @@ extension AppThemeContext on BuildContext {
   AppRoleColors get roles => Theme.of(this).extension<AppRoleColors>()!;
 
   AppRoleColors get brand => roles;
+}
+
+class _NoTransitionsBuilder extends PageTransitionsBuilder {
+  const _NoTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) =>
+      child;
 }

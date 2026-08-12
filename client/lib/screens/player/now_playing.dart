@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
+import '../../providers/appearance_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../theme.dart';
 
@@ -482,10 +483,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
               // сквозь экран просвечивал предыдущий, и выезд снизу выглядел
               // как проявление из ниоткуда.
               ColoredBox(color: context.colors.surface),
-              _AnimatedGlowBackground(
-                dominantColor: _displayDominant,
-                vibrantColor: _displayVibrant,
-              ),
+              if (context.watch<AppearanceProvider>().artworkBackground)
+                _AnimatedGlowBackground(
+                  dominantColor: _displayDominant,
+                  vibrantColor: _displayVibrant,
+                ),
 
               // Затемнение сверху и снизу — под шапку и под управление.
               // Без него светлая обложка делает белый текст нечитаемым.
