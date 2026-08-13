@@ -84,6 +84,8 @@ const httpUrlSchema = z.string().url('Некорректный URL аватар�
 const updateSettingsSchema = z.object({
   isOnlineHidden: z.boolean().optional(),
   isFriendsHidden: z.boolean().optional(),
+
+  isSearchHidden: z.boolean().optional(),
   isActivityHidden: z.boolean().optional(),
 }).refine(data => Object.keys(data).length > 0, {
   message: 'Нет данных для обновления',
@@ -338,6 +340,8 @@ const getMe = asyncHandler(async (req, res) => {
         spotifyConnected: !!user.spotifyUser,
         spotifyId: user.spotifyUser?.spotifyId || null,
         isFriendsHidden: user.isFriendsHidden,
+
+        isSearchHidden: user.isSearchHidden,
         isActivityHidden: user.isActivityHidden,
         isOnlineHidden: user.isOnlineHidden,
         customAvatarUrl: user.customAvatarUrl,
@@ -357,6 +361,8 @@ const getMe = asyncHandler(async (req, res) => {
         spotifyConnected: true,
         spotifyId: spotifyUser.spotifyId,
         isFriendsHidden: spotifyUser.user?.isFriendsHidden ?? false,
+
+        isSearchHidden: spotifyUser.user?.isSearchHidden ?? false,
         isActivityHidden: spotifyUser.user?.isActivityHidden ?? false,
         isOnlineHidden: spotifyUser.user?.isOnlineHidden ?? false,
       };
@@ -455,7 +461,7 @@ const getSettings = asyncHandler(async (req, res) => {
   const settings = await getOrSet(`db:user-settings:${userId}`, 'settings', 300, async () => {
     return prisma.user.findUnique({
       where: { id: userId },
-      select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true },
+      select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true, isSearchHidden: true },
     });
   });
 
@@ -473,7 +479,7 @@ const updateSettings = asyncHandler(async (req, res) => {
   const updated = await prisma.user.update({
     where: { id: userId },
     data: dataToUpdate,
-    select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true },
+    select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true, isSearchHidden: true },
   });
 
   await invalidateUserCaches(userId);
@@ -803,6 +809,38 @@ const deleteAccount = asyncHandler(async (req, res) => {
   res.json({ message: 'Аккаунт удалён' });
 });
 
+
+const getPlayHistory = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+  const rows = await prisma.playHistory.findMany({
+    where: { userId },
+    orderBy: { playedAt: 'desc' },
+    take: limit * 4,
+    select: { spotifyUri: true, trackName: true, artistName: true, playedAt: true },
+  });
+
+  const seen = new Set();
+  const unique = [];
+  for (const row of rows) {
+    if (seen.has(row.spotifyUri)) continue;
+    seen.add(row.spotifyUri);
+    unique.push(row);
+    if (unique.length >= limit) break;
+  }
+
+  res.json(unique);
+});
+
+const clearPlayHistory = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  const { count } = await prisma.playHistory.deleteMany({ where: { userId } });
+
+  logger.info({ userId, count }, 'Play history cleared');
+  res.json({ message: 'История очищена', removed: count });
+});
+
 module.exports = {
   login,
   callback,
@@ -819,4 +857,8 @@ module.exports = {
   uploadAvatar,
 
   deleteAccount,
+
+  getPlayHistory,
+
+  clearPlayHistory,
 };

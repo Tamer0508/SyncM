@@ -50,6 +50,19 @@ const searchUsers = asyncHandler(async (req, res) => {
       where: {
         username: { contains: query, mode: 'insensitive' },
         id: { not: userId },
+
+        OR: [
+          { isSearchHidden: false },
+          {
+            OR: [
+              { sentRequests: { some: { receiverId: userId, status: 'accepted' } } },
+              { receivedRequests: { some: { senderId: userId, status: 'accepted' } } },
+            ],
+          },
+        ],
+
+        blocksMade: { none: { blockedId: userId } },
+        blocksReceived: { none: { blockerId: userId } },
       },
       take: 20,
       orderBy: { username: 'asc' },
@@ -98,6 +111,19 @@ const sendRequest = asyncHandler(async (req, res) => {
 
   if (senderId === receiverId) {
     return res.status(400).json({ error: 'Нельзя добавить себя' });
+  }
+
+  const blocked = await prisma.block.findFirst({
+    where: {
+      OR: [
+        { blockerId: senderId, blockedId: receiverId },
+        { blockerId: receiverId, blockedId: senderId },
+      ],
+    },
+    select: { id: true },
+  });
+  if (blocked) {
+    return res.status(400).json({ error: 'Не удалось отправить заявку' });
   }
 
   const pairKey = [senderId, receiverId].sort().join(':');
@@ -453,7 +479,107 @@ const deleteFriendByUserId = asyncHandler(async (req, res) => {
   });
 });
 
+
+const blockUser = asyncHandler(async (req, res) => {
+  const blockerId = req.userId;
+  const { userId: blockedId } = userIdParamsSchema.parse(req.params);
+
+  if (blockerId === blockedId) {
+    return res.status(400).json({ error: 'Нельзя заблокировать себя' });
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: blockedId },
+    select: { id: true },
+  });
+  if (!target) return res.status(404).json({ error: 'Пользователь не найден' });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.block.upsert({
+      where: { blockerId_blockedId: { blockerId, blockedId } },
+      create: { blockerId, blockedId },
+      update: {},
+    });
+
+    // Дружба и заявки в обе стороны.
+    const removed = await tx.friendship.deleteMany({
+      where: {
+        OR: [
+          { senderId: blockerId, receiverId: blockedId },
+          { senderId: blockedId, receiverId: blockerId },
+        ],
+      },
+    });
+
+    if (removed.count > 0) {
+      await tx.user.updateMany({
+        where: { id: { in: [blockerId, blockedId] }, friendsCount: { gt: 0 } },
+        data: { friendsCount: { decrement: 1 } },
+      });
+    }
+  });
+
+  await Promise.all([
+    incrementVersion(`db:friends-list:${blockerId}`),
+    incrementVersion(`db:friends-list:${blockedId}`),
+    incrementVersion(`db:friend-requests:${blockerId}`),
+    incrementVersion(`db:friend-requests:${blockedId}`),
+    invalidateSearchCaches(blockerId, blockedId),
+  ]);
+
+  logger.info({ blockerId, blockedId }, 'User blocked');
+  res.json({ message: 'Пользователь заблокирован' });
+});
+
+const unblockUser = asyncHandler(async (req, res) => {
+  const blockerId = req.userId;
+  const { userId: blockedId } = userIdParamsSchema.parse(req.params);
+
+  await prisma.block.deleteMany({ where: { blockerId, blockedId } });
+
+  await Promise.all([
+    invalidateSearchCaches(blockerId, blockedId),
+  ]);
+
+  res.json({ message: 'Пользователь разблокирован' });
+});
+
+const getBlockedUsers = asyncHandler(async (req, res) => {
+  const blockerId = req.userId;
+
+  const blocks = await prisma.block.findMany({
+    where: { blockerId },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    include: {
+      blocked: {
+        select: {
+          id: true,
+          username: true,
+          customAvatarUrl: true,
+          spotifyUser: { select: { avatarUrl: true } },
+        },
+      },
+    },
+  });
+
+  res.json(
+    blocks.map((b) => ({
+      id: b.blocked.id,
+      displayName: b.blocked.username,
+      avatarUrl: b.blocked.customAvatarUrl || b.blocked.spotifyUser?.avatarUrl || null,
+      blockedAt: b.createdAt,
+    }))
+  );
+});
+
 module.exports = {
+
+  blockUser,
+
+  unblockUser,
+
+  getBlockedUsers,
   searchUsers,
   sendRequest,
   acceptRequest,

@@ -17,6 +17,11 @@ const {
   checkPendingAuth,
   uploadAvatar,
   deleteAccount,
+
+  getPlayHistory,
+
+  clearPlayHistory,
+
   createSpotifyLinkIntent,
 } = require('../controllers/authController');
 
@@ -38,6 +43,9 @@ router.post('/avatar',     requireAuth, rateLimitMiddleware(10, 60), uploadAvata
 router.get('/settings',    requireAuth, rateLimitMiddleware(15, 60), getSettings);
 router.patch('/settings',  requireAuth, rateLimitMiddleware(10, 60), idempotency, updateSettings);
 router.patch('/profile',   requireAuth, rateLimitMiddleware(10, 60), idempotency, updateProfile);
+
+router.get('/history',    requireAuth, rateLimitMiddleware(15, 60), getPlayHistory);
+router.delete('/history', requireAuth, rateLimitMiddleware(5, 60), idempotency, clearPlayHistory);
 
 router.delete('/account', requireAuth, rateLimitMiddleware(3, 3600, { failOpen: false }), deleteAccount);
 

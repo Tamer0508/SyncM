@@ -23,6 +23,7 @@ model User {
   isOnlineHidden   Boolean   @default(false)
   isFriendsHidden  Boolean   @default(false)
   isActivityHidden Boolean   @default(false)
+  isSearchHidden   Boolean   @default(false)
 
   friendsCount    Int @default(0)
   sessionsCount   Int @default(0)
@@ -37,6 +38,8 @@ model User {
   likedTracks      LikedTrack[]
   addedTracks      SessionTrack[]  @relation("trackAdder")
   playHistory      PlayHistory[]
+  blocksMade       Block[]         @relation("blocker")
+  blocksReceived   Block[]         @relation("blocked")
 
   spotifyUser      SpotifyUser?
 
@@ -187,6 +190,21 @@ model SessionTrack {
   ratings    TrackRating[]
 
   @@index([sessionId, addedAt])
+}
+
+model Block {
+  id        String   @id @default(uuid())
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker   User     @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@index([blockerId])
+  @@index([blockedId])
+  @@unique([blockerId, blockedId])
+  @@map("blocks")
 }
 
 model PlayHistory {

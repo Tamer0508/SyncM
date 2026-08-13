@@ -10,6 +10,12 @@ const {
   deleteRequest,
   getUserById,
   deleteFriendByUserId,
+
+  blockUser,
+
+  unblockUser,
+
+  getBlockedUsers,
   getFriends,
   getIncomingRequests,
 } = require('../controllers/friendsController');
@@ -24,5 +30,9 @@ router.post('/request', rateLimitMiddleware(10, 60), idempotency, sendRequest);
 router.patch('/:friendshipId/accept', rateLimitMiddleware(10, 60), idempotency, acceptRequest);
 router.delete('/:friendshipId', rateLimitMiddleware(10, 60), idempotency, deleteRequest);
 router.delete('/by-user/:friendId', rateLimitMiddleware(10, 60), idempotency, deleteFriendByUserId);
+
+router.get('/blocked', rateLimitMiddleware(15, 60), getBlockedUsers);
+router.post('/blocked/:userId', rateLimitMiddleware(10, 60), idempotency, blockUser);
+router.delete('/blocked/:userId', rateLimitMiddleware(10, 60), idempotency, unblockUser);
 
 module.exports = router;
