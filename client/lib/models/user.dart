@@ -7,6 +7,9 @@ class User {
   final bool spotifyConnected;
   final String? spotifyId;
   final bool isFriendsHidden;
+
+
+  final bool isSearchHidden;
   final bool isActivityHidden;
   final bool isOnlineHidden;
 
@@ -19,6 +22,8 @@ class User {
     this.spotifyConnected = false,
     this.spotifyId,
     this.isFriendsHidden = false,
+
+    this.isSearchHidden = false,
     this.isActivityHidden = false,
     this.isOnlineHidden = false,
   });
@@ -32,6 +37,8 @@ class User {
     bool? spotifyConnected,
     String? spotifyId,
     bool? isFriendsHidden,
+
+    bool? isSearchHidden,
     bool? isActivityHidden,
     bool? isOnlineHidden,
   }) {
@@ -44,6 +51,8 @@ class User {
       spotifyConnected: spotifyConnected ?? this.spotifyConnected,
       spotifyId: spotifyId ?? this.spotifyId,
       isFriendsHidden: isFriendsHidden ?? this.isFriendsHidden,
+
+      isSearchHidden: isSearchHidden ?? this.isSearchHidden,
       isActivityHidden: isActivityHidden ?? this.isActivityHidden,
       isOnlineHidden: isOnlineHidden ?? this.isOnlineHidden,
     );
@@ -61,6 +70,8 @@ class User {
           ((json['spotifyId'] as String?)?.isNotEmpty ?? false),
       spotifyId: json['spotifyId'] as String?,
       isFriendsHidden: json['isFriendsHidden'] == true,
+
+      isSearchHidden: json['isSearchHidden'] == true,
       isActivityHidden: json['isActivityHidden'] == true,
       isOnlineHidden: json['isOnlineHidden'] == true,
     );

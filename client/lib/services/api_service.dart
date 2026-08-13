@@ -117,6 +117,50 @@ class ApiService {
     return res.body.isNotEmpty ? res.body : 'Неизвестная ошибка';
   }
 
+
+  Future<List<Map<String, dynamic>>> getBlockedUsers() async {
+    final res = await http
+        .get(_uri('/friends/blocked'), headers: _headers)
+        .timeout(timeout);
+    if (res.statusCode != 200) return [];
+    final data = jsonDecode(res.body);
+    return data is List ? data.whereType<Map>().map(Map<String, dynamic>.from).toList() : [];
+  }
+
+  Future<bool> blockUser(String userId) async {
+    final res = await http
+        .post(_uri('/friends/blocked/$userId'),
+            headers: _headersWithIdempotency('block:$userId'))
+        .timeout(timeout);
+    return res.statusCode == 200;
+  }
+
+  Future<bool> unblockUser(String userId) async {
+    final res = await http
+        .delete(_uri('/friends/blocked/$userId'),
+            headers: _headersWithIdempotency('unblock:$userId'))
+        .timeout(timeout);
+    return res.statusCode == 200;
+  }
+
+
+  Future<List<Map<String, dynamic>>> getPlayHistory({int limit = 50}) async {
+    final res = await http
+        .get(_uri('/auth/history?limit=$limit'), headers: _headers)
+        .timeout(timeout);
+    if (res.statusCode != 200) return [];
+    final data = jsonDecode(res.body);
+    return data is List ? data.whereType<Map>().map(Map<String, dynamic>.from).toList() : [];
+  }
+
+  Future<bool> clearPlayHistory() async {
+    final res = await http
+        .delete(_uri('/auth/history'),
+            headers: _headersWithIdempotency('clear-history'))
+        .timeout(timeout);
+    return res.statusCode == 200;
+  }
+
   Future<void> deleteAccount() async {
     final res = await http
         .delete(_uri('/auth/account'), headers: _headers)

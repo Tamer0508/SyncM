@@ -11,6 +11,8 @@ import '../../providers/auth_provider.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide Config;
 import '../../services/socket_service.dart';
 import '../../theme.dart';
+import 'play_history_screen.dart';
+import 'blocked_users_screen.dart';
 import '../../widgets/settings_widgets.dart';
 import '../../utils/local_store.dart';
 import '../../config.dart';
@@ -520,6 +522,26 @@ class _SettingsBodyState extends State<_SettingsBody> {
             value: user?.isOnlineHidden ?? false,
             onChanged: (v) => _updatePrivacy({'isOnlineHidden': v}),
           ),
+          SettingsSwitch(
+            icon: Icons.person_search_outlined,
+            title: 'Скрыть из поиска',
+            subtitle: 'Новые люди не найдут вас по имени. Друзья — увидят',
+            value: user?.isSearchHidden ?? false,
+            onChanged: (v) => _updatePrivacy({'isSearchHidden': v}),
+          ),
+        ],
+      ),
+      SettingsGroup(
+        title: 'Чёрный список',
+        children: [
+          SettingsAction(
+            icon: Icons.block_rounded,
+            title: 'Заблокированные',
+            subtitle: 'Не смогут найти вас, писать и звать в сессии',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const BlockedUsersScreen(),
+            )),
+          ),
         ],
       ),
     ];
@@ -538,6 +560,14 @@ class _SettingsBodyState extends State<_SettingsBody> {
             subtitle: 'Списки друзей и сессий готовы к моменту открытия вкладки',
             value: appearance.flag(StoreKeys.prefetchOnStart, defaultValue: true),
             onChanged: (v) => appearance.setFlag(StoreKeys.prefetchOnStart, v),
+          ),
+          SettingsAction(
+            icon: Icons.history_rounded,
+            title: 'История прослушанного',
+            subtitle: 'Последние треки, которые вы включали',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const PlayHistoryScreen(),
+            )),
           ),
           SettingsAction(
             icon: Icons.cleaning_services_outlined,
