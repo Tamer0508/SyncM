@@ -127,6 +127,16 @@ class ApiService {
     return data is List ? data.whereType<Map>().map(Map<String, dynamic>.from).toList() : [];
   }
 
+  Future<Map<String, dynamic>> getUserActivity(String userId) async {
+    final res = await http
+        .get(_uri('/friends/user/$userId/activity'), headers: _headers)
+        .timeout(timeout);
+    if (res.statusCode != 200) return {'history': [], 'likedCount': 0};
+
+    final data = jsonDecode(res.body);
+    return data is Map ? Map<String, dynamic>.from(data) : {'history': [], 'likedCount': 0};
+  }
+
   Future<bool> blockUser(String userId) async {
     final res = await http
         .post(_uri('/friends/blocked/$userId'),

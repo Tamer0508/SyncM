@@ -1,48 +1,46 @@
-import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
+
 import '../../providers/auth_provider.dart';
-import '../../providers/playback_provider.dart';
-import '../../services/api_service.dart';
+import '../../providers/friends_provider.dart';
 import '../../services/spotify_link_service.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
-import '../../utils/notifications.dart';
-import '../../widgets/app_icon_button.dart';
-import '../../widgets/screen_chrome.dart';
+import '../../widgets/mini_player.dart';
+import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
-import 'spotify_webview_screen.dart'
-    if (dart.library.html) 'spotify_webview_stub.dart';
+import '../settings/play_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  final bool embedded;
   const ProfileScreen({
     super.key,
     this.embedded = false,
     this.overrideArgs,
     this.onBack,
     this.onOpenSettings,
+    this.onOpenHistory,
   });
 
-  final VoidCallback? onOpenSettings;
+  final bool embedded;
 
   final Map<String, dynamic>? overrideArgs;
 
-  /// Как вернуться из встроенного вида.
   final VoidCallback? onBack;
+
+  final VoidCallback? onOpenSettings;
+
+  final VoidCallback? onOpenHistory;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String? _displayId;
   Map<String, dynamic>? _profileData;
+  String? _displayId;
   bool _loading = false;
-  // Локальный сервер авторизации переехал в spotify_link_service вместе с
-  // самой логикой подключения. Закрывать его здесь было неверно: авторизация
-  // в браузере могла ещё идти, а уход с экрана обрывал приём возврата.
 
   @override
   void didChangeDependencies() {
@@ -54,12 +52,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final args = widget.overrideArgs ??
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    String? targetId;
-    if (args != null && args['friendId'] != null) {
-      targetId = args['friendId'] as String;
-    } else {
-      targetId = auth.user?.id;
-    }
+
+    final targetId = (args != null && args['friendId'] != null)
+        ? args['friendId'] as String
+        : auth.user?.id;
 
     if (targetId != null && targetId != _displayId) {
       _displayId = targetId;
@@ -74,10 +70,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final data = await api.getUserProfile(userId);
       if (!mounted) return;
       setState(() => _profileData = data);
-    } catch (e) {
-      if (mounted && !(e is ApiException && e.suppressUiNotification)) {
-        showError(context, e);
-      }
+    } catch (err) {
+      if (mounted) showError(context, err);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -88,362 +82,837 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return _displayId == auth.user?.id;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context);
-    final theme = Theme.of(context);
-
-    final displayName = isOwnProfile
-        ? (auth.user?.displayName ?? 'Пользователь')
-        : (_profileData?['displayName'] ?? 'Друг');
-    final avatarUrl = isOwnProfile
-        ? auth.user?.avatarUrl
-        : _profileData?['avatarUrl'] as String?;
-    final email = isOwnProfile ? auth.user?.email : null;
-    final friendsCount = _profileData?['friendsCount'] ?? 0;
-    final mutualCount = _profileData?['mutualFriendsCount'] ?? 0;
-
-    final body = _loading
-        ? const Center(child: CircularProgressIndicator())
-        : AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: _ProfileContent(
-              key: ValueKey(_displayId),
-              theme: theme,
-              isOwnProfile: isOwnProfile,
-              displayName: displayName,
-              avatarUrl: avatarUrl,
-              email: email,
-              friendsCount: friendsCount,
-              mutualCount: mutualCount,
-              profileData: _profileData,
-              onConnectSpotify: () => connectSpotify(context),
-              onDisconnectSpotify: () => disconnectSpotify(context),
+  Future<void> _confirmBlock(BuildContext context, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.block_rounded, color: ctx.colors.error),
+        title: Text('Заблокировать $name?'),
+        content: const Text(
+          'Он не найдёт вас в поиске, не сможет отправить заявку или позвать '
+          'в сессию. Дружба будет удалена. Уведомления он не получит.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: ctx.colors.error,
+              foregroundColor: ctx.colors.onError,
             ),
-          );
-
-    return ScreenChrome(
-      embedded: widget.embedded,
-      header: ScreenHeader(
-        title: isOwnProfile ? 'Профиль' : displayName,
-        onBack: widget.onBack ??
-            (widget.embedded ? null : () => Navigator.of(context).pop()),
-        actions: isOwnProfile
-            ? [
-                AppIconButton(
-                  icon: Icons.settings_outlined,
-                  onPressed: widget.onOpenSettings ??
-                      () => Navigator.of(context).pushNamed('/settings'),
-                  tooltip: 'Настройки',
-                ),
-              ]
-            : const [],
+            child: const Text('Заблокировать'),
+          ),
+        ],
       ),
-      child: body,
     );
+
+    if (confirmed != true || !mounted) return;
+
+    final targetId = _displayId;
+    if (targetId == null) return;
+
+    try {
+      final ok = await context.read<AuthProvider>().api.blockUser(targetId);
+      if (!mounted) return;
+
+      if (ok) {
+        context.read<FriendsProvider>().fetchFriends(refresh: true).ignore();
+        showSuccess(context, '$name заблокирован');
+        if (widget.onBack != null) {
+          widget.onBack!();
+        } else {
+          Navigator.of(context).pop();
+        }
+      } else {
+        showError(context, 'Не удалось заблокировать', force: true);
+      }
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
+    }
   }
 
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+
+    final displayName = isOwnProfile
+        ? (auth.user?.displayName ?? 'Профиль')
+        : (_profileData?['displayName'] as String? ?? 'Друг');
+
+    final avatarUrl = isOwnProfile
+        ? auth.user?.effectiveAvatarUrl
+        : _profileData?['avatarUrl'] as String?;
+
+    final friendsCount = _profileData?['friendsCount'] as int? ?? 0;
+    final mutualCount = _profileData?['mutualFriendsCount'] as int? ?? 0;
+
+    final body = _loading && _profileData == null
+        ? const SingleChildScrollView(child: SkeletonList(itemCount: 4))
+        : _ProfileContent(
+            key: ValueKey(_displayId),
+            isOwnProfile: isOwnProfile,
+            displayName: displayName,
+            avatarUrl: avatarUrl,
+            friendsCount: friendsCount,
+            mutualCount: mutualCount,
+            profileData: _profileData,
+            targetId: _displayId,
+            onConnectSpotify: () => connectSpotify(context),
+            onDisconnectSpotify: () => disconnectSpotify(context),
+            onOpenSettings: widget.onOpenSettings ??
+                () => Navigator.of(context).pushNamed('/settings'),
+            onOpenHistory: widget.onOpenHistory ??
+                () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const PlayHistoryScreen()),
+                    ),
+          );
+
+    return Scaffold(
+      backgroundColor: context.colors.surface,
+      bottomNavigationBar: widget.embedded ? null : const MiniPlayerDock(),
+      body: Stack(
+        children: [
+          Positioned.fill(child: body),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.xs,
+                ),
+                child: Row(
+                  children: [
+                    if (widget.onBack != null || !widget.embedded)
+                      _OverlayButton(
+                        icon: Icons.arrow_back_rounded,
+                        tooltip: 'Назад',
+                        onPressed: widget.onBack ??
+                            () => Navigator.of(context).maybePop(),
+                      ),
+                    const Spacer(),
+                    if (!isOwnProfile)
+                      _OverlayButton(
+                        icon: Icons.block_rounded,
+                        tooltip: 'Заблокировать',
+                        onPressed: () => _confirmBlock(context, displayName),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-
-class _ProfileContent extends StatelessWidget {
-  final ThemeData theme;
-  final bool isOwnProfile;
-  final String displayName;
-  final String? avatarUrl;
-  final String? email;
-  final int friendsCount;
-  final int mutualCount;
-  final Map<String, dynamic>? profileData;
-  final VoidCallback onConnectSpotify;
-  final VoidCallback onDisconnectSpotify;
-
+/// Содержимое профиля: шапка с градиентом и списки треков.
+class _ProfileContent extends StatefulWidget {
   const _ProfileContent({
-    // key нужен: место вызова передаёт ValueKey(_displayId), чтобы
-    // AnimatedSwitcher распознавал смену профиля и проигрывал переход.
     super.key,
-    required this.theme,
     required this.isOwnProfile,
     required this.displayName,
     required this.avatarUrl,
-    required this.email,
     required this.friendsCount,
     required this.mutualCount,
     required this.profileData,
+    required this.targetId,
     required this.onConnectSpotify,
     required this.onDisconnectSpotify,
+    required this.onOpenSettings,
+    required this.onOpenHistory,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    // watch, а не listen: false — раньше при подключении или отключении
-    // Spotify карточка не перерисовывалась до перехода на другой экран,
-    // потому что провайдер не был подписан.
-    final auth = context.watch<AuthProvider>();
-    final spotifyConnected = auth.user?.spotifyConnected == true;
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.xl,
-      ),
-      children: [
-        _ProfileHeader(
-          displayName: displayName,
-          avatarUrl: avatarUrl,
-          email: isOwnProfile ? email : null,
-          isOwnProfile: isOwnProfile,
-          profileData: profileData,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-
-        // Счётчики вынесены из списка «ключ — значение» в отдельные плитки:
-        // число друзей — это то, на что смотрят в профиле в первую очередь,
-        // а строкой в таблице оно теряется среди прочих полей.
-        Row(
-          children: [
-            Expanded(
-              child: _StatTile(
-                value: '$friendsCount',
-                label: 'Друзей',
-                icon: Icons.people_rounded,
-              ),
-            ),
-            if (!isOwnProfile && mutualCount > 0) ...[
-              const SizedBox(width: AppSpacing.sm + 4),
-              Expanded(
-                child: _StatTile(
-                  value: '$mutualCount',
-                  label: 'Общих',
-                  icon: Icons.handshake_rounded,
-                ),
-              ),
-            ],
-          ],
-        ),
-
-        if (isOwnProfile) ...[
-          const SizedBox(height: AppSpacing.lg),
-          _StatusRow(
-            connected: spotifyConnected,
-            onConnect: onConnectSpotify,
-            onDisconnect: onDisconnectSpotify,
-          ),
-        ],
-
-        if (!isOwnProfile && email != null) ...[
-          const SizedBox(height: AppSpacing.lg),
-          Text(
-            email!,
-            textAlign: TextAlign.center,
-            style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-/// Шапка профиля: аватар, имя, статус.
-class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({
-    required this.displayName,
-    required this.avatarUrl,
-    required this.email,
-    required this.isOwnProfile,
-    required this.profileData,
-  });
-
+  final bool isOwnProfile;
   final String displayName;
   final String? avatarUrl;
-  final String? email;
-  final bool isOwnProfile;
+  final int friendsCount;
+  final int mutualCount;
   final Map<String, dynamic>? profileData;
+  final String? targetId;
+  final VoidCallback onConnectSpotify;
+  final VoidCallback onDisconnectSpotify;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onOpenHistory;
+
+  @override
+  State<_ProfileContent> createState() => _ProfileContentState();
+}
+
+class _ProfileContentState extends State<_ProfileContent> {
+  /// Цвет шапки, снятый с аватара.
+  Color? _heroColor;
+
+  List<Map<String, dynamic>> _history = [];
+  List<Map<String, dynamic>> _liked = [];
+
+  int _likedCount = 0;
+
+  bool _loadingLists = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _extractHeroColor();
+      _loadLists();
+    });
+  }
+
+  Future<void> _extractHeroColor() async {
+    final url = widget.avatarUrl;
+    if (url == null || url.isEmpty) return;
+
+    try {
+      final palette = await PaletteGenerator.fromImageProvider(
+        CachedNetworkImageProvider(url),
+        size: const Size(48, 48),
+        maximumColorCount: 8,
+      );
+      if (!mounted) return;
+
+      final color = palette.dominantColor?.color ??
+          palette.vibrantColor?.color ??
+          palette.mutedColor?.color;
+      if (color != null) setState(() => _heroColor = color);
+    } catch (err) {
+      debugPrint('Не удалось снять цвет с аватара: $err');
+    }
+  }
+
+  Future<void> _loadLists() async {
+    try {
+      final api = context.read<AuthProvider>().api;
+
+      if (widget.isOwnProfile) {
+        final results = await Future.wait([
+          api.getPlayHistory(limit: 20),
+          api.getLikedTracks(),
+        ]);
+        if (!mounted) return;
+
+        setState(() {
+          _history = results[0] as List<Map<String, dynamic>>;
+          _liked = (results[1] as List)
+              .whereType<Map>()
+              .map(Map<String, dynamic>.from)
+              .take(20)
+              .toList();
+        });
+        return;
+      }
+
+      final id = widget.targetId;
+      if (id == null) return;
+
+      final data = await api.getUserActivity(id);
+      if (!mounted) return;
+
+      setState(() {
+        _history = (data['history'] as List?)
+                ?.whereType<Map>()
+                .map(Map<String, dynamic>.from)
+                .toList() ??
+            [];
+        _likedCount = data['likedCount'] as int? ?? 0;
+      });
+    } catch (err) {
+      // Списки второстепенны: профиль полезен и без них.
+      debugPrint('Не удалось загрузить списки профиля: $err');
+    } finally {
+      if (mounted) setState(() => _loadingLists = false);
+    }
+  }
+
+  int get _likedTotal => widget.isOwnProfile ? _liked.length : _likedCount;
+
+  String _buildSubtitle() {
+    final sessions = widget.profileData?['sessionsCount'] as int? ?? 0;
+
+    final parts = <String>[
+      '${widget.friendsCount} ${_plural(widget.friendsCount, 'друг', 'друга', 'друзей')}',
+      if (sessions > 0)
+        '$sessions ${_plural(sessions, 'сессия', 'сессии', 'сессий')}',
+      if (_likedTotal > 0) '$_likedTotal любимых',
+      if (!widget.isOwnProfile && widget.mutualCount > 0)
+        '${widget.mutualCount} общих',
+    ];
+    return parts.join(' • ');
+  }
+
+  String _plural(int n, String one, String few, String many) {
+    final mod100 = n % 100;
+    if (mod100 >= 11 && mod100 <= 14) return many;
+    return switch (n % 10) {
+      1 => one,
+      2 || 3 || 4 => few,
+      _ => many,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final texts = context.texts;
+    final isNarrow = MediaQuery.sizeOf(context).width < 700;
 
-    return Column(
-      children: [
-        // Нажатие разворачивает аватар на весь экран с плавным переходом.
-        // Кольцо вокруг отделяет фотографию от фона, если её края по цвету
-        // совпадают с поверхностью.
-        TappableAvatar(
-          imageUrl: avatarUrl,
-          radius: 52,
-          showRing: true,
-          title: displayName,
-          heroTag: 'profile-avatar-$displayName',
-        ),
-        const SizedBox(height: AppSpacing.md),
-        Text(
-          displayName,
-          textAlign: TextAlign.center,
-          style: texts.headlineMedium,
-        ),
-        if (email != null) ...[
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            email!,
-            textAlign: TextAlign.center,
-            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+    final base = _heroColor ?? colors.primary;
+    final hsl = HSLColor.fromColor(base);
+    final hero = hsl
+        .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.6))
+        .withLightness(0.32)
+        .toColor();
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: _Hero(
+            color: hero,
+            isNarrow: isNarrow,
+            displayName: widget.displayName,
+            avatarUrl: widget.avatarUrl,
+            subtitle: _buildSubtitle(),
           ),
+        ),
+
+        SliverToBoxAdapter(
+          child: _ActionsRow(
+            isOwnProfile: widget.isOwnProfile,
+            onOpenSettings: widget.onOpenSettings,
+            spotifyConnected:
+                context.watch<AuthProvider>().user?.spotifyConnected == true,
+            onConnect: widget.onConnectSpotify,
+            onDisconnect: widget.onDisconnectSpotify,
+          ),
+        ),
+
+        if (_loadingLists)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: SkeletonList(itemCount: 3, padding: EdgeInsets.zero),
+            ),
+          )
+        else ...[
+          SliverToBoxAdapter(
+            child: _TrackSection(
+              title: 'Недавно слушали',
+              hint: _history.isEmpty
+                  ? (widget.isOwnProfile
+                      ? 'Здесь появятся треки, которые вы включали'
+                      : 'Ничего не показывается')
+                  : (widget.isOwnProfile ? 'Видно только вам' : 'Последнее'),
+              tracks: _history,
+              onShowAll: (_history.isEmpty || !widget.isOwnProfile)
+                  ? null
+                  : widget.onOpenHistory,
+            ),
+          ),
+
+          if (widget.isOwnProfile)
+            SliverToBoxAdapter(
+              child: _TrackSection(
+                title: 'Любимые треки',
+                hint: _liked.isEmpty
+                    ? 'Отмечайте треки сердечком — они соберутся здесь'
+                    : '${_liked.length} в подборке',
+                tracks: _liked,
+              ),
+            ),
         ],
-        if (!isOwnProfile) ...[
-          const SizedBox(height: AppSpacing.sm),
-          _OnlineStatus(profileData: profileData),
-        ],
+
+        const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
       ],
     );
   }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({required this.value, required this.label, required this.icon});
+/// Шапка профиля с градиентом от цвета аватара.
+class _Hero extends StatelessWidget {
+  const _Hero({
+    required this.color,
+    required this.isNarrow,
+    required this.displayName,
+    required this.avatarUrl,
+    required this.subtitle,
+  });
 
-  final String value;
-  final String label;
-  final IconData icon;
+  final Color color;
+  final bool isNarrow;
+  final String displayName;
+  final String? avatarUrl;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final texts = context.texts;
 
+    final avatarSize = isNarrow ? 96.0 : 200.0;
+    final nameSize = isNarrow ? 30.0 : 72.0;
+
+    final info = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Профиль',
+          style: texts.labelLarge?.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          displayName,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: texts.displaySmall?.copyWith(
+            fontSize: nameSize,
+            height: 1.05,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -2,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs + 2),
+        Text(
+          subtitle,
+          style: texts.bodyMedium?.copyWith(
+            color: Colors.white.withValues(alpha: 0.85),
+          ),
+        ),
+      ],
+    );
+
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.md,
+      width: double.infinity,
+      // Отступ сверху с запасом под системную строку и кнопку возврата,
+      // которая лежит поверх градиента.
+      padding: EdgeInsets.fromLTRB(
+        isNarrow ? AppSpacing.md : AppSpacing.xl,
+        MediaQuery.paddingOf(context).top + 64,
+        AppSpacing.lg,
+        AppSpacing.lg,
       ),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        borderRadius: AppRadius.large,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color,
+            Color.lerp(color, colors.surface, 0.55)!,
+            colors.surface,
+          ],
+          stops: const [0.0, 0.65, 1.0],
+        ),
       ),
       child: Row(
+        crossAxisAlignment:
+            isNarrow ? CrossAxisAlignment.center : CrossAxisAlignment.end,
         children: [
-          Icon(icon, color: colors.primary, size: 22),
-          const SizedBox(width: AppSpacing.sm + 4),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(value, style: texts.headlineSmall),
-              Text(label, style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant)),
-            ],
-          ),
+          _HeroAvatar(size: avatarSize, url: avatarUrl, name: displayName),
+          SizedBox(width: isNarrow ? AppSpacing.md : AppSpacing.xl),
+          Expanded(child: info),
         ],
       ),
     );
   }
 }
 
-class _StatusRow extends StatelessWidget {
-  const _StatusRow({
-    required this.connected,
+class _HeroAvatar extends StatelessWidget {
+  const _HeroAvatar({required this.size, required this.url, required this.name});
+
+  final double size;
+  final String? url;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          // Тень отделяет аватар от градиента: без неё он сливается с шапкой,
+          // цвет которой снят с него же самого.
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 28,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: TappableAvatar(
+        imageUrl: url,
+        radius: size / 2,
+        title: name,
+        heroTag: 'profile-hero-$name',
+      ),
+    );
+  }
+}
+
+/// Кнопки под шапкой.
+class _ActionsRow extends StatelessWidget {
+  const _ActionsRow({
+    required this.isOwnProfile,
+    required this.onOpenSettings,
+    required this.spotifyConnected,
     required this.onConnect,
     required this.onDisconnect,
   });
 
-  final bool connected;
+  final bool isOwnProfile;
+  final VoidCallback onOpenSettings;
+  final bool spotifyConnected;
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
 
   @override
   Widget build(BuildContext context) {
+    if (!isOwnProfile) return const SizedBox(height: AppSpacing.md);
+
     final colors = context.colors;
     final texts = context.texts;
     final spotify = context.roles.spotify;
 
-    return Material(
-      color: colors.surfaceContainerLow,
-      borderRadius: AppRadius.medium,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: connected ? onDisconnect : onConnect,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm + 4,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        0,
+      ),
+      child: Row(
+        children: [
+          IconButton.filledTonal(
+            // Через обработчик, а не маршрутом: прямой pushNamed открывал
+            // настройки во весь экран на широкой раскладке, закрывая боковую
+            // панель — в отличие от всех остальных переходов.
+            onPressed: onOpenSettings,
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Настройки',
           ),
-          child: Row(
-            children: [
-              Icon(
-                connected ? Icons.check_circle_rounded : Icons.link_rounded,
-                size: 20,
-                color: connected ? spotify : colors.onSurfaceVariant,
-              ),
-              const SizedBox(width: AppSpacing.sm + 4),
-              Expanded(
-                child: Text(
-                  connected ? 'Spotify подключён' : 'Подключить Spotify',
-                  style: texts.bodyMedium,
+          const SizedBox(width: AppSpacing.sm),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_horiz_rounded),
+            tooltip: 'Ещё',
+            shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
+            onSelected: (value) {
+              if (value == 'spotify') {
+                spotifyConnected ? onDisconnect() : onConnect();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'spotify',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    spotifyConnected
+                        ? Icons.link_off_rounded
+                        : Icons.link_rounded,
+                    color: spotify,
+                  ),
+                  title: Text(
+                    spotifyConnected
+                        ? 'Отключить Spotify'
+                        : 'Подключить Spotify',
+                  ),
                 ),
               ),
-              Text(
-                connected ? 'Отключить' : '',
-                style: texts.labelMedium?.copyWith(color: colors.onSurfaceVariant),
-              ),
-              const SizedBox(width: AppSpacing.xs),
-              Icon(Icons.chevron_right_rounded, size: 20, color: colors.onSurfaceVariant),
             ],
           ),
+          const Spacer(),
+          if (spotifyConnected)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_rounded, size: 16, color: spotify),
+                const SizedBox(width: AppSpacing.xs),
+                Text(
+                  'Spotify',
+                  style: texts.labelMedium
+                      ?.copyWith(color: colors.onSurfaceVariant),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverlayButton extends StatelessWidget {
+  const _OverlayButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.28),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        color: Colors.white,
+        tooltip: tooltip,
+      ),
+    );
+  }
+}
+
+/// Список треков с разворотом.
+///
+/// Горизонтальная лента здесь не подошла: у трека длинное название, в узкой
+/// карточке оно обрезается, а прокрутка вбок внутри вертикального списка
+/// конфликтует с основным жестом. Вертикальный список читается сразу, а
+/// чтобы он не занимал пол-экрана, свёрнут до пяти строк.
+class _TrackSection extends StatefulWidget {
+  const _TrackSection({
+    required this.title,
+    required this.hint,
+    required this.tracks,
+    this.onShowAll,
+  });
+
+  final String title;
+  final String hint;
+  final List<Map<String, dynamic>> tracks;
+  final VoidCallback? onShowAll;
+
+  @override
+  State<_TrackSection> createState() => _TrackSectionState();
+}
+
+class _TrackSectionState extends State<_TrackSection> {
+  static const int _collapsedCount = 5;
+
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    final total = widget.tracks.length;
+    final visible =
+        _expanded ? total : (total < _collapsedCount ? total : _collapsedCount);
+    final canExpand = total > _collapsedCount;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
+      // GestureDetector, а не InkWell.
+      //
+      // Нажатие в любом месте секции разворачивает и сворачивает её, но
+      // заливка на всю площадь выглядела бы неуместно: подсветка размером
+      // в пол-экрана читается как ошибка, а не как отклик. Отклик здесь даёт
+      // само раскрытие списка.
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: canExpand ? () => setState(() => _expanded = !_expanded) : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.title, style: texts.titleLarge),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.hint,
+                          style: texts.bodySmall
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.onShowAll != null)
+                    TextButton(
+                      onPressed: widget.onShowAll,
+                      child: const Text('Все'),
+                    ),
+                  if (canExpand)
+                    // Стрелка показывает, что секцию можно раскрыть, и
+                    // поворачивается вместе с состоянием.
+                    AnimatedRotation(
+                      turns: _expanded ? 0.5 : 0,
+                      duration: AppMotion.short,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+
+            AnimatedSize(
+              duration: AppMotion.medium,
+              curve: AppMotion.emphasized,
+              alignment: Alignment.topCenter,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (total == 0)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.md,
+                        0,
+                        AppSpacing.md,
+                        AppSpacing.sm,
+                      ),
+                      child: Text(
+                        'Пока пусто',
+                        style: texts.bodyMedium
+                            ?.copyWith(color: colors.onSurfaceVariant),
+                      ),
+                    )
+                  else
+                    for (var i = 0; i < visible; i++)
+                      _TrackRow(
+                        // Ключ по идентификатору трека: без него Flutter
+                        // сопоставляет строки по позиции, и при раскрытии
+                        // обложки на мгновение перескакивают между соседями.
+                        key: ValueKey(widget.tracks[i]['spotifyUri'] ??
+                            widget.tracks[i]['uri'] ??
+                            'row-$i'),
+                        track: widget.tracks[i],
+                        index: i + 1,
+                      ),
+                ],
+              ),
+            ),
+
+            if (canExpand)
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: AppSpacing.md,
+                  top: AppSpacing.xs,
+                  bottom: AppSpacing.xs,
+                ),
+                child: Text(
+                  _expanded ? 'Свернуть' : 'Ещё ${total - visible}',
+                  style:
+                      texts.labelMedium?.copyWith(color: colors.onSurfaceVariant),
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _OnlineStatus extends StatelessWidget {
-  const _OnlineStatus({required this.profileData});
+/// Строка трека в списке профиля.
+class _TrackRow extends StatelessWidget {
+  const _TrackRow({super.key, required this.track, required this.index});
 
-  final Map<String, dynamic>? profileData;
+  final Map<String, dynamic> track;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
-    final data = profileData;
-    if (data == null || data['isOnlineHidden'] == true) return const SizedBox.shrink();
-
     final colors = context.colors;
     final texts = context.texts;
-    final isOnline = data['isOnline'] == true;
 
-    if (isOnline) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
+    final name = track['trackName'] as String? ?? track['name'] as String? ?? '';
+    final artist =
+        track['artistName'] as String? ?? track['artist'] as String? ?? '';
+    final image = track['imageUrl'] as String?;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
+      ),
+      child: Row(
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: context.brand.online),
+          SizedBox(
+            width: 22,
+            child: Text(
+              '$index',
+              textAlign: TextAlign.center,
+              style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+            ),
           ),
           const SizedBox(width: AppSpacing.sm),
-          Text('В сети', style: texts.bodyMedium?.copyWith(color: context.brand.online)),
+          ClipRRect(
+            // Квадрат со скруглением, а не круг: у трека есть обложка, и
+            // круглая маска срезает её углы вместе с частью изображения.
+            // Круглыми показывают исполнителей, а не песни.
+            borderRadius: BorderRadius.circular(AppRadius.xs),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: image != null && image.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: image,
+                      fit: BoxFit.cover,
+                      placeholder: (_, _) =>
+                          ColoredBox(color: colors.surfaceContainerHigh),
+                      errorWidget: (_, _, _) => ColoredBox(
+                        color: colors.surfaceContainerHigh,
+                        child: Icon(Icons.music_note_rounded,
+                            size: 18, color: colors.onSurfaceVariant),
+                      ),
+                    )
+                  : ColoredBox(
+                      color: colors.surfaceContainerHigh,
+                      child: Icon(Icons.music_note_rounded,
+                          size: 18, color: colors.onSurfaceVariant),
+                    ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: texts.titleSmall,
+                ),
+                if (artist.isNotEmpty)
+                  Text(
+                    artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: texts.bodySmall
+                        ?.copyWith(color: colors.onSurfaceVariant),
+                  ),
+              ],
+            ),
+          ),
         ],
-      );
-    }
-
-    final lastSeenAtStr = data['lastSeenAt'] as String?;
-    final lastSeenAt = lastSeenAtStr != null ? DateTime.tryParse(lastSeenAtStr)?.toLocal() : null;
-    if (lastSeenAt == null) return const SizedBox.shrink();
-
-    final diff = DateTime.now().difference(lastSeenAt);
-    final text = diff.inMinutes < 1
-        ? 'только что'
-        : diff.inMinutes < 60
-            ? '${diff.inMinutes} мин. назад'
-            : diff.inHours < 24
-                ? '${diff.inHours} ч. назад'
-                : '${diff.inDays} д. назад';
-
-    return Text(
-      'Был(а) в сети $text',
-      style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+      ),
     );
   }
 }

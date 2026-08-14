@@ -16,6 +16,8 @@ const {
   unblockUser,
 
   getBlockedUsers,
+
+  getUserActivity,
   getFriends,
   getIncomingRequests,
 } = require('../controllers/friendsController');
@@ -26,6 +28,7 @@ router.get('/search', rateLimitMiddleware(15, 60), searchUsers);
 router.get('/', rateLimitMiddleware(15, 60), getFriends);
 router.get('/requests', rateLimitMiddleware(15, 60), getIncomingRequests);
 router.get('/user/:userId', rateLimitMiddleware(15, 60), getUserById);
+router.get('/user/:userId/activity', rateLimitMiddleware(15, 60), getUserActivity);
 router.post('/request', rateLimitMiddleware(10, 60), idempotency, sendRequest);
 router.patch('/:friendshipId/accept', rateLimitMiddleware(10, 60), idempotency, acceptRequest);
 router.delete('/:friendshipId', rateLimitMiddleware(10, 60), idempotency, deleteRequest);

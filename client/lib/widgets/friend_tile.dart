@@ -10,11 +10,14 @@ class FriendTile extends StatelessWidget {
     required this.friend,
     required this.onViewProfile,
     required this.onRemoveFriend,
+    this.onBlock,
   });
 
   final Friend friend;
   final VoidCallback onViewProfile;
   final VoidCallback onRemoveFriend;
+
+  final VoidCallback? onBlock;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +62,7 @@ class FriendTile extends StatelessWidget {
                 onSelected: (action) => switch (action) {
                   _FriendAction.profile => onViewProfile(),
                   _FriendAction.remove => onRemoveFriend(),
+                  _FriendAction.block => onBlock?.call(),
                 },
                 itemBuilder: (context) => [
                   const PopupMenuItem(
@@ -69,6 +73,18 @@ class FriendTile extends StatelessWidget {
                       title: Text('Открыть профиль'),
                     ),
                   ),
+                  if (onBlock != null)
+                    PopupMenuItem(
+                      value: _FriendAction.block,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.block_rounded, color: colors.error),
+                        title: Text(
+                          'Заблокировать',
+                          style: TextStyle(color: colors.error),
+                        ),
+                      ),
+                    ),
                   PopupMenuItem(
                     value: _FriendAction.remove,
                     child: ListTile(
@@ -90,7 +106,7 @@ class FriendTile extends StatelessWidget {
   }
 }
 
-enum _FriendAction { profile, remove }
+enum _FriendAction { profile, remove, block }
 
 class _AvatarWithPresence extends StatelessWidget {
   const _AvatarWithPresence({required this.friend});

@@ -177,5 +177,7 @@ class StoreKeys {
   static const reduceMotion = 'settings:reduce_motion';
   static const artworkBackground = 'settings:artwork_background';
 
+  static const railWidth = 'settings:rail_width';
+
   static const all = [friends, friendRequests, sessions, invites];
 }

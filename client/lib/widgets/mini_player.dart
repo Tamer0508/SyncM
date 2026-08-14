@@ -63,7 +63,7 @@ class MiniPlayer extends StatelessWidget {
       child: Material(
         color: colors.surfaceContainerHigh,
         elevation: 0,
-        borderRadius: AppRadius.large,
+        borderRadius: AppRadius.medium,
         clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -214,7 +214,7 @@ class _Artwork extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: ClipRRect(borderRadius: AppRadius.small, child: image),
+      child: ClipRRect(borderRadius: BorderRadius.circular(AppRadius.xs), child: image),
     );
   }
 }

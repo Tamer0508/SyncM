@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:syncm/screens/playlist/playlist_tracks_screen.dart';
+import 'package:syncm/screens/settings/play_history_screen.dart';
 import 'package:syncm/screens/settings/settings_screen.dart';
 import 'package:syncm/screens/session/create_session_screen.dart';
 import 'package:syncm/screens/profile/profile_screen.dart';
@@ -53,21 +54,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _creatingSession = false;
 
-  /// Сбрасывает ВСЕ наложенные экраны широкой раскладки.
-  ///
-  /// Раньше эти состояния были независимы и могли быть подняты одновременно,
-  /// а что показать — решал фиксированный порядок проверок. Отсюда три
-  /// разных проявления одной ошибки:
-  ///   • переключение вкладок в боковой панели не работало, пока открыто
-  ///     создание сессии: selectTab сбрасывал остальные состояния, но не
-  ///     _creatingSession, и наложенный экран продолжал перекрывать вкладку;
-  ///   • «Найти друзей» поверх открытого создания сессии показывал друзей,
-  ///     а создание сессии оставалось «под ним» и всплывало при закрытии;
-  ///   • обратный порядок вовсе не срабатывал, потому что проверка друзей
-  ///     стоит выше по списку.
-  ///
-  /// Теперь любой переход сначала гасит всё, и одновременно поднятых
-  /// состояний просто не бывает.
   void _clearOverlays() {
     _creatingSession = false;
     _activeFriendView = null;
@@ -78,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _viewingProfile = null;
     _showingOwnProfile = false;
     _showingSettings = false;
+    _showingHistory = false;
     _selectedPlaylist = null;
   }
 
@@ -90,11 +77,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
   Map<String, dynamic>? _activeSession;
 
-  /// Итоги завершённой сессии, показанные в центральной части.
-  ///
-  /// Отдельным маршрутом они закрывали боковую панель и панель
-  /// воспроизведения и выглядели чужеродно рядом с остальными экранами,
-  /// которые меняют только середину.
   Map<String, dynamic>? _sessionResults;
 
   /// Открыт ли список приглашений в центральной части.
@@ -103,13 +85,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Профиль друга, открытый в центральной части.
   Map<String, dynamic>? _viewingProfile;
 
-  /// Свой профиль и настройки в центральной части.
-  ///
-  /// На широкой раскладке ни один экран не должен открываться маршрутом:
-  /// это закрывает боковую панель и панель воспроизведения. Всё, что
-  /// показывается на десктопе, проходит через эти состояния.
   bool _showingOwnProfile = false;
   bool _showingSettings = false;
+
+  bool _showingHistory = false;
   String? _activeFriendView; // 'search' или 'requests'
 
 
@@ -127,14 +106,6 @@ class _HomeScreenState extends State<HomeScreen> {
       friendsProv.init(socket);
       sessionProv.init(socket);
 
-      // Прогрев всех разделов сразу, а не по мере открытия вкладок.
-      //
-      // Вместе с IndexedStack это и даёт ощущение мгновенности: к моменту,
-      // когда человек переключится на «Друзья», список уже загружен, вкладка
-      // построена и просто становится видимой.
-      // Прогрев можно отключить в настройках: на медленной сети он
-      // занимает канал в момент запуска, а кому-то важнее, чтобы приложение
-      // не ходило в сеть без явного действия.
       if (LocalStore.readBool(StoreKeys.prefetchOnStart, defaultValue: true)) {
       _prefetch.warmUp(friends: friendsProv, sessions: sessionProv).then((_) {
         if (mounted) _prefetch.warmUpAvatars(context, friendsProv.friends);
@@ -143,28 +114,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Открывает приглашения: встроенно на широком экране, маршрутом на узком.
-  ///
-  /// Раньше везде стоял переход маршрутом, и на компьютере список занимал
-  /// весь экран, закрывая боковую панель и панель воспроизведения — в
-  /// отличие от остальных разделов, которые меняют только середину.
-  /// Свой профиль: встроенно на широком экране, маршрутом на узком.
-  /// Открыт ли поверх вкладки какой-нибудь экран.
-  ///
-  /// Наложенные экраны приносят собственную шапку с заголовком и кнопкой
-  /// возврата. Шапка вкладки при этом продолжала рисоваться выше — и над
-  /// «Профилем» висело «Друзья». Заодно там оставались кнопки вкладки,
-  /// не относящиеся к открытому экрану.
-  /// Экраны, которые приносят СВОЮ шапку (через ScreenChrome).
-  ///
-  /// Только они прячут шапку вкладки. Остальные наложенные экраны своей
-  /// шапки не имеют и полагаются на десктопную — спрятать её означало бы
-  /// оставить их без заголовка и без кнопки возврата.
-  ///
-  /// Не входят сюда: плейлист (у него раскрывающаяся шапка с обложкой,
-  /// встроенная в список) и итоги сессии — их заголовок рисует шапка вкладки.
   bool get _hasOverlay =>
       _showingSettings ||
+      _showingHistory ||
       _showingOwnProfile ||
       _viewingProfile != null ||
       _showingInvites ||
@@ -199,12 +151,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (session == null || !mounted) return;
     final data = Map<String, dynamic>.from(session);
 
-    // На узком экране — обычный переход, на широком — встроенный блок.
-    //
-    // Наложенные экраны (_activeSession и прочие) отрисовываются ТОЛЬКО в
-    // широкой раскладке. На телефоне состояние выставлялось, но показать его
-    // было негде: нажатие на активную сессию визуально срабатывало, а экран
-    // не открывался вовсе.
     if (MediaQuery.sizeOf(context).width < 900) {
       await Navigator.of(context).pushNamed('/session', arguments: data);
       return;
@@ -583,20 +529,6 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Заголовок «Панель» убран: слово ничего не сообщает, а место
-          // занимало. Содержимое и так говорит само за себя.
-          FilledButton.icon(
-            onPressed: () => _openOverlay(() => _creatingSession = true),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Новая сессия'),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          OutlinedButton.icon(
-            onPressed: () => _openOverlay(() => _activeFriendView = 'search'),
-            icon: const Icon(Icons.person_search_rounded),
-            label: const Text('Найти друзей'),
-          ),
-          const SizedBox(height: AppSpacing.lg),
           Expanded(
             // select вместо Consumer: панель перестраивается только при
             // появлении или исчезновении трека, а не на каждый тик позиции
@@ -864,21 +796,35 @@ class _HomeScreenState extends State<HomeScreen> {
           });
 
       return Scaffold(
+        backgroundColor: isDesktop
+            ? context.colors.surfaceContainerLowest
+            : context.colors.surface,
         body: isDesktop
-            ? Row(children: [
+            ? Padding(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                child: Row(children: [
                 HomeNavigationRail(
                   currentIndex: _currentIndex,
                   onSelected: selectTab,
-                  onToggleTheme: themeProvider.toggleTheme,
-                  isDark: themeProvider.isDark,
                   unreadFriendRequests: unreadCount,
+                  onCreateSession: () =>
+                      _openOverlay(() => _creatingSession = true),
+                  onFindFriends: () =>
+                      _openOverlay(() => _activeFriendView = 'search'),
+                  onOpenLiked: () => selectTab(1),
+                  // Встроенно, а не маршрутом: полноэкранный переход закрыл
+                  // бы боковую панель и панель воспроизведения.
+                  onOpenHistory: () =>
+                      _openOverlay(() => _showingHistory = true),
                 ),
 
-                const VerticalDivider(width: 1),
+                // Зазор до центральной панели даёт сама область захвата
+                // ширины внутри рельса — второй отступ здесь удвоил бы его.
                 Expanded(
                     child: Row(children: [
                   Expanded(
-                      child: Column(children: [
+                      child: _Panel(
+                          child: Column(children: [
                     if (!_hasOverlay) _buildDesktopHeader(),
                     Expanded(
                       child: _activeFriendView != null // ← новая проверка
@@ -891,15 +837,25 @@ class _HomeScreenState extends State<HomeScreen> {
                                   embedded: true,
                                   onBack: () =>
                                       setState(() => _activeFriendView = null)))
+                          : _showingHistory
+                              ? PlayHistoryScreen(
+                                  embedded: true,
+                                  onBack: () =>
+                                      setState(() => _showingHistory = false),
+                                )
                           : _showingSettings
                               ? SettingsScreen(
                                   embedded: true,
+                                  onOpenHistory: () => _openOverlay(
+                                      () => _showingHistory = true),
                                   onBack: () =>
                                       setState(() => _showingSettings = false),
                                 )
                           : _showingOwnProfile
                               ? ProfileScreen(
                                   embedded: true,
+                                  onOpenHistory: () => _openOverlay(
+                                      () => _showingHistory = true),
                                   onOpenSettings: () => _openOverlay(
                                       () => _showingSettings = true),
                                   onBack: () => setState(
@@ -989,10 +945,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 children: tabs,
                                               ))),
                     ),
-                  ])),
-                  SizedBox(width: 320, child: _buildRightPanel()),
+                  ]))),
+                  const SizedBox(width: AppSpacing.sm),
+                  SizedBox(
+                      width: 320, child: _Panel(child: _buildRightPanel())),
                 ])),
-              ])
+              ]))
             : SafeArea(
                 child: Column(
                   children: [
@@ -1321,8 +1279,6 @@ class _DesktopHeaderShell extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: colors.surface,
-        // Граница из палитры вместо dividerColor с прозрачностью 6%: та
-        // была почти невидима на тёмной теме, и шапка сливалась с контентом.
         border: Border(bottom: BorderSide(color: colors.outlineVariant)),
       ),
       child: Row(
@@ -1350,6 +1306,24 @@ class _DesktopHeaderShell extends StatelessWidget {
           ...actions,
         ],
       ),
+    );
+  }
+}
+
+class _Panel extends StatelessWidget {
+  const _Panel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: AppRadius.large,
+      ),
+      child: child,
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/friend.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
@@ -76,6 +77,51 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return result ?? false;
   }
 
+  Future<void> _blockFriend(Friend friend) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.block_rounded, color: ctx.colors.error),
+        title: Text('Заблокировать ${friend.name}?'),
+        content: const Text(
+          'Он не найдёт вас в поиске, не сможет отправить заявку или позвать '
+          'в сессию. Дружба будет удалена. Уведомления он не получит.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: ctx.colors.error,
+              foregroundColor: ctx.colors.onError,
+            ),
+            child: const Text('Заблокировать'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final ok = await context.read<AuthProvider>().api.blockUser(friend.id);
+      if (!mounted) return;
+
+      if (ok) {
+        context.read<FriendsProvider>().fetchFriends(refresh: true).ignore();
+        showSuccess(context, '${friend.name} заблокирован');
+      } else {
+        showError(context, 'Не удалось заблокировать', force: true);
+      }
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
+    }
+  }
+
   Future<void> _removeFriend(Friend friend) async {
     if (!await _confirmRemove(friend.name)) return;
     if (!mounted) return;
@@ -135,6 +181,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         onLoadMore: prov.fetchFriends,
         onViewProfile: _openProfile,
         onRemoveFriend: _removeFriend,
+        onBlockFriend: _blockFriend,
       );
     }
 
@@ -243,6 +290,7 @@ class _FriendsListView extends StatelessWidget {
     required this.onLoadMore,
     required this.onViewProfile,
     required this.onRemoveFriend,
+    required this.onBlockFriend,
   });
 
   final List<Friend> friends;
@@ -251,6 +299,7 @@ class _FriendsListView extends StatelessWidget {
   final VoidCallback onLoadMore;
   final void Function(Friend friend) onViewProfile;
   final void Function(Friend friend) onRemoveFriend;
+  final void Function(Friend friend) onBlockFriend;
 
   @override
   Widget build(BuildContext context) {
@@ -288,6 +337,7 @@ class _FriendsListView extends StatelessWidget {
           friend: friend,
           onViewProfile: () => onViewProfile(friend),
           onRemoveFriend: () => onRemoveFriend(friend),
+          onBlock: () => onBlockFriend(friend),
         );
       },
     );

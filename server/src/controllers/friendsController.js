@@ -573,6 +573,68 @@ const getBlockedUsers = asyncHandler(async (req, res) => {
   );
 });
 
+
+const getUserActivity = asyncHandler(async (req, res) => {
+  const viewerId = req.userId;
+  const { userId: targetId } = userIdParamsSchema.parse(req.params);
+
+  if (viewerId === targetId) return res.json({ history: [], likedCount: 0 });
+
+  const [target, friendship, blocked] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: targetId },
+      select: { isActivityHidden: true },
+    }),
+    prisma.friendship.findFirst({
+      where: {
+        status: 'accepted',
+        OR: [
+          { senderId: viewerId, receiverId: targetId },
+          { senderId: targetId, receiverId: viewerId },
+        ],
+      },
+      select: { id: true },
+    }),
+    prisma.block.findFirst({
+      where: {
+        OR: [
+          { blockerId: viewerId, blockedId: targetId },
+          { blockerId: targetId, blockedId: viewerId },
+        ],
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  if (!target) return res.status(404).json({ error: 'Пользователь не найден' });
+
+  if (target.isActivityHidden || blocked || !friendship) {
+    return res.json({ history: [], likedCount: 0 });
+  }
+
+  const [rows, likedCount] = await Promise.all([
+    prisma.playHistory.findMany({
+      where: { userId: targetId },
+      orderBy: { playedAt: 'desc' },
+      take: 40,
+      select: { spotifyUri: true, trackName: true, artistName: true, playedAt: true },
+    }),
+    prisma.likedTrack.count({ where: { userId: targetId } }),
+  ]);
+
+  // Схлопываем повторы: одна песня встречается в истории десятки раз подряд.
+  const seen = new Set();
+  const history = [];
+  for (const row of rows) {
+    if (seen.has(row.spotifyUri)) continue;
+    seen.add(row.spotifyUri);
+    history.push(row);
+    if (history.length >= 10) break;
+  }
+
+  res.json({ history, likedCount });
+});
+
 module.exports = {
 
   blockUser,
@@ -580,6 +642,8 @@ module.exports = {
   unblockUser,
 
   getBlockedUsers,
+
+  getUserActivity,
   searchUsers,
   sendRequest,
   acceptRequest,

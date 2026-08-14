@@ -28,14 +28,22 @@ import 'avatar_crop_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   final bool embedded;
-  const SettingsScreen({super.key, this.embedded = false, this.onBack});
+  const SettingsScreen({
+    super.key,
+    this.embedded = false,
+    this.onBack,
+    this.onOpenHistory,
+  });
+
+  /// Как открыть историю. На широкой раскладке её показывает главный экран.
+  final VoidCallback? onOpenHistory;
 
   /// Как вернуться из встроенного вида.
   final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
-    final body = _SettingsBody();
+    final body = _SettingsBody(onOpenHistory: onOpenHistory);
 
     return ScreenChrome(
       embedded: embedded,
@@ -49,6 +57,10 @@ class SettingsScreen extends StatelessWidget {
 }
 
 class _SettingsBody extends StatefulWidget {
+  const _SettingsBody({this.onOpenHistory});
+
+  final VoidCallback? onOpenHistory;
+
   @override
   State<_SettingsBody> createState() => _SettingsBodyState();
 }
@@ -215,7 +227,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
           title: 'Аккаунт',
           summary: '${user?.displayName ?? 'Имя'} • '
               '${user?.spotifyConnected == true ? 'Spotify подключён' : 'Spotify не подключён'}',
-          onTap: () => openSection('Аккаунт', (ctx) => _accountSection(ctx, auth)),
+          onTap: () => openSection('Аккаунт', _accountSection),
         ),
         SettingsSectionTile(
           icon: Icons.palette_outlined,
@@ -233,13 +245,13 @@ class _SettingsBodyState extends State<_SettingsBody> {
           icon: Icons.headphones_outlined,
           title: 'Сессии',
           summary: 'Кто может звать • Приглашения',
-          onTap: () => openSection('Сессии', (ctx) => _sessionsSection(ctx, auth)),
+          onTap: () => openSection('Сессии', _sessionsSection),
         ),
         SettingsSectionTile(
           icon: Icons.lock_outline_rounded,
           title: 'Приватность',
           summary: _privacySummary(user),
-          onTap: () => openSection('Приватность', (ctx) => _privacySection(ctx, auth)),
+          onTap: () => openSection('Приватность', _privacySection),
         ),
         SettingsSectionTile(
           icon: Icons.storage_outlined,
@@ -283,7 +295,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
 
   // ─── Разделы ─────────────────────────────────────────────────────────────
 
-  List<Widget> _accountSection(BuildContext context, AuthProvider auth) {
+  List<Widget> _accountSection(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
     final connected = auth.user?.spotifyConnected == true;
     return [
       SettingsGroup(
@@ -449,7 +462,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
     ];
   }
 
-  List<Widget> _sessionsSection(BuildContext context, AuthProvider auth) {
+  List<Widget> _sessionsSection(BuildContext context) {
     final appearance = context.watch<AppearanceProvider>();
 
     return [
@@ -496,7 +509,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
     ];
   }
 
-  List<Widget> _privacySection(BuildContext context, AuthProvider auth) {
+  List<Widget> _privacySection(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
     final user = auth.user;
     return [
       SettingsGroup(
@@ -565,9 +579,10 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.history_rounded,
             title: 'История прослушанного',
             subtitle: 'Последние треки, которые вы включали',
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => const PlayHistoryScreen(),
-            )),
+            onTap: widget.onOpenHistory ??
+                () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const PlayHistoryScreen(),
+                    )),
           ),
           SettingsAction(
             icon: Icons.cleaning_services_outlined,

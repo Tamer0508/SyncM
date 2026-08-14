@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../utils/local_store.dart';
 
 class HomeDestination {
   const HomeDestination({
@@ -68,6 +69,12 @@ class HomeBottomNav extends StatelessWidget {
     );
   }
 
+  /// Счётчик непрочитанных на вкладке «Друзья».
+  ///
+  /// Badge — штатный виджет Material 3. Раньше значок собирался вручную из
+  /// Stack + Positioned + Container с жёстко заданным Colors.yellow[700]:
+  /// он не менялся вместе с темой, съезжал при другом размере шрифта и не
+  /// озвучивался программами чтения с экрана.
   Widget _maybeBadge(BuildContext context, Widget icon, int index) {
     if (index != 2 || unreadFriendRequests <= 0) return icon;
     return Badge.count(
@@ -79,103 +86,335 @@ class HomeBottomNav extends StatelessWidget {
   }
 }
 
+/// Боковая навигация (широкая раскладка).
+///
+/// Заменяет рукописную панель на ~90 строк с самодельным индикатором на
+/// AnimatedPositioned. У штатного NavigationRail индикатор, состояния
+/// наведения, доступность и поддержка темы уже есть; расхождение размеров
+/// пунктов и индикатора, которое приходилось согласовывать вручную через
+/// константы _itemHeight/_itemPadding, исчезает как класс задач./// Боковая панель широкой раскладки.
+///
+/// Раньше она раскрывалась по наведению мыши и схлопывалась обратно. Это
+/// казалось экономным, но на деле мешало: подписи появлялись и исчезали, а
+/// на панель приходилось «наводиться», чтобы понять, где находишься.
+///
+/// Теперь панель открыта всегда, а ширину можно потянуть за правый край —
+/// как в Spotify. Значение сохраняется, поэтому подстраивать его каждый
+/// запуск не нужно.
 class HomeNavigationRail extends StatefulWidget {
   const HomeNavigationRail({
     super.key,
     required this.currentIndex,
     required this.onSelected,
-    required this.onToggleTheme,
-    required this.isDark,
     this.unreadFriendRequests = 0,
+    this.onCreateSession,
+    this.onFindFriends,
+    this.onOpenLiked,
+    this.onOpenHistory,
   });
 
   final int currentIndex;
   final ValueChanged<int> onSelected;
-  final VoidCallback onToggleTheme;
-  final bool isDark;
   final int unreadFriendRequests;
+
+  final VoidCallback? onCreateSession;
+  final VoidCallback? onFindFriends;
+  final VoidCallback? onOpenLiked;
+  final VoidCallback? onOpenHistory;
 
   @override
   State<HomeNavigationRail> createState() => _HomeNavigationRailState();
 }
 
 class _HomeNavigationRailState extends State<HomeNavigationRail> {
-  bool _expanded = false;
+  static const double _minWidth = 200;
+  static const double _maxWidth = 340;
+  static const double _defaultWidth = 240;
+
+  late double _width;
+
+  bool _hoveringHandle = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _width = LocalStore.readDouble(StoreKeys.railWidth, defaultValue: _defaultWidth)
+        .clamp(_minWidth, _maxWidth);
+  }
+
+  void _onDrag(DragUpdateDetails details) {
+    setState(() {
+      _width = (_width + details.delta.dx).clamp(_minWidth, _maxWidth);
+    });
+  }
+
+  void _onDragEnd(DragEndDetails _) {
+    LocalStore.saveDouble(StoreKeys.railWidth, _width);
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final destinations = homeDestinationsFor(isDesktop: true);
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _expanded = true),
-      onExit: (_) => setState(() => _expanded = false),
-      child: AnimatedContainer(
-        duration: AppMotion.medium,
-        curve: AppMotion.emphasized,
-        width: _expanded ? 220 : 88,
-        clipBehavior: Clip.hardEdge,
-        decoration: BoxDecoration(
-          color: colors.surfaceContainer,
-          border: Border(right: BorderSide(color: colors.outlineVariant)),
+    return Row(
+      children: [
+        Container(
+          width: _width,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: AppRadius.large,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _RailHeader(expanded: true),
+              const SizedBox(height: AppSpacing.sm),
+
+              for (var i = 0; i < destinations.length; i++)
+                _RailItem(
+                  destination: destinations[i],
+                  selected: widget.currentIndex == i,
+                  badgeCount: i == 2 ? widget.unreadFriendRequests : 0,
+                  onTap: () => widget.onSelected(i),
+                ),
+
+              const _RailDivider(),
+
+              const _RailSectionTitle('Быстро'),
+              if (widget.onCreateSession != null)
+                _RailAction(
+                  icon: Icons.add_circle_outline_rounded,
+                  label: 'Новая сессия',
+                  onTap: widget.onCreateSession!,
+                ),
+              if (widget.onFindFriends != null)
+                _RailAction(
+                  icon: Icons.person_search_outlined,
+                  label: 'Найти друзей',
+                  onTap: widget.onFindFriends!,
+                ),
+
+              const _RailDivider(),
+
+              const _RailSectionTitle('Библиотека'),
+              if (widget.onOpenLiked != null)
+                _RailAction(
+                  icon: Icons.favorite_border_rounded,
+                  label: 'Любимые треки',
+                  onTap: widget.onOpenLiked!,
+                ),
+              if (widget.onOpenHistory != null)
+                _RailAction(
+                  icon: Icons.history_rounded,
+                  label: 'История',
+                  onTap: widget.onOpenHistory!,
+                ),
+
+              const Spacer(),
+            ],
+          ),
         ),
-        child: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height),
-            child: IntrinsicHeight(
-              child: NavigationRail(
-                extended: _expanded,
-                backgroundColor: Colors.transparent,
-                selectedIndex: widget.currentIndex.clamp(0, destinations.length - 1),
-                onDestinationSelected: widget.onSelected,
-                labelType: _expanded ? null : NavigationRailLabelType.none,
-                leading: _RailHeader(expanded: _expanded),
-                trailing: Expanded(
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                      child: IconButton(
-                        onPressed: widget.onToggleTheme,
-                        tooltip: widget.isDark ? 'Светлая тема' : 'Тёмная тема',
-                        icon: AnimatedSwitcher(
-                          duration: AppMotion.short,
-                          transitionBuilder: (child, animation) => RotationTransition(
-                            turns: Tween<double>(begin: 0.6, end: 1).animate(animation),
-                            child: FadeTransition(opacity: animation, child: child),
-                          ),
-                          child: Icon(
-                            widget.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                            key: ValueKey(widget.isDark),
-                          ),
-                        ),
-                      ),
+
+        MouseRegion(
+          cursor: SystemMouseCursors.resizeLeftRight,
+          onEnter: (_) => setState(() => _hoveringHandle = true),
+          onExit: (_) => setState(() => _hoveringHandle = false),
+          child: GestureDetector(
+            onHorizontalDragUpdate: _onDrag,
+            onHorizontalDragEnd: _onDragEnd,
+            behavior: HitTestBehavior.opaque,
+            child: SizedBox(
+              width: AppSpacing.sm,
+              child: Center(
+                child: AnimatedOpacity(
+                  opacity: _hoveringHandle ? 1 : 0,
+                  duration: AppMotion.short,
+                  child: Container(
+                    width: 4,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: colors.onSurfaceVariant.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(AppRadius.full),
                     ),
                   ),
                 ),
-                destinations: [
-                  for (var i = 0; i < destinations.length; i++)
-                    NavigationRailDestination(
-                      icon: _maybeBadge(context, Icon(destinations[i].icon), i),
-                      selectedIcon: _maybeBadge(context, Icon(destinations[i].selectedIcon), i),
-                      label: Text(destinations[i].label),
-                    ),
-                ],
               ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Пункт навигации в панели.
+class _RailItem extends StatelessWidget {
+  const _RailItem({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+    this.badgeCount = 0,
+  });
+
+  final HomeDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
+  final int badgeCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: 2,
+      ),
+      child: Material(
+        color: selected ? colors.primary.withValues(alpha: 0.16) : Colors.transparent,
+        borderRadius: AppRadius.medium,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm + 4,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  selected ? destination.selectedIcon : destination.icon,
+                  size: 22,
+                  color: selected ? colors.primary : colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Text(
+                    destination.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: texts.titleSmall?.copyWith(
+                      color: selected ? colors.onSurface : colors.onSurfaceVariant,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (badgeCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colors.error,
+                      borderRadius: BorderRadius.circular(AppRadius.full),
+                    ),
+                    child: Text(
+                      '$badgeCount',
+                      style: texts.labelSmall?.copyWith(
+                        color: colors.onError,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _maybeBadge(BuildContext context, Widget icon, int index) {
-    if (index != 2 || widget.unreadFriendRequests <= 0) return icon;
-    return Badge.count(
-      count: widget.unreadFriendRequests,
-      backgroundColor: context.colors.error,
-      textColor: context.colors.onError,
-      child: icon,
+/// Второстепенное действие в панели — тоньше и бледнее пунктов навигации.
+class _RailAction extends StatelessWidget {
+  const _RailAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: AppRadius.medium,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm + 2,
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: colors.onSurfaceVariant),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.texts.bodyMedium
+                        ?.copyWith(color: colors.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RailSectionTitle extends StatelessWidget {
+  const _RailSectionTitle(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.xs,
+      ),
+      child: Text(
+        title.toUpperCase(),
+        style: context.texts.labelSmall?.copyWith(
+          color: context.colors.onSurfaceVariant,
+          letterSpacing: 1.2,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _RailDivider extends StatelessWidget {
+  const _RailDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      child: Divider(height: 1, color: context.colors.outlineVariant),
     );
   }
 }

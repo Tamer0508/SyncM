@@ -58,6 +58,7 @@ class AuthProvider with ChangeNotifier {
       isFriendsHidden: updated['isFriendsHidden'],
       isActivityHidden: updated['isActivityHidden'],
       isOnlineHidden: updated['isOnlineHidden'],
+      isSearchHidden: updated['isSearchHidden'],
     );
     notifyListeners();
   }
