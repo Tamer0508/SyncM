@@ -8,6 +8,7 @@ import '../../providers/playback_provider.dart';
 import '../../services/api_service.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
+import '../../utils/local_store.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/track_card.dart';
@@ -157,8 +158,12 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       );
     }
 
-    final isDesktop = MediaQuery.of(context).size.width >= 900;
-    if (!isDesktop && mounted) {
+    if (!mounted) return;
+
+    final autoOpen =
+        LocalStore.readBool(StoreKeys.autoOpenPlayer, defaultValue: true);
+
+    if (!context.isWideWindow && autoOpen) {
       Navigator.of(context).push(
         PageRouteBuilder(
           pageBuilder: (context, animation, secondaryAnimation) {
@@ -276,25 +281,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
             child: Center(
               child: Text(_error!,
                   style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.error)),
-            ),
-          )
-        else if (_unavailable)
-          SliverFillRemaining(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.settings, size: 64, color: theme.iconTheme.color?.withValues(alpha: 0.8)),
-                  const SizedBox(height: 12),
-                  Text(
-                    _unavailableMessage,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
-                    ),
-                  ),
-                ],
-              ),
             ),
           )
         else if (_tracks.isEmpty)

@@ -488,13 +488,6 @@ class ApiService {
     });
   }
 
-  Future<Map<String, dynamic>?> getSession(String sessionId) async {
-    final response = await http.get(_uri('/sessions/$sessionId'));
-    if (response.statusCode == 200) {
-      return json.decode(response.body) as Map<String, dynamic>;
-    }
-    return null;
-  }
 
   // ---------- ИСПРАВЛЕННЫЙ МЕТОД (без dart:html) ----------
   Future<Map<String, dynamic>> uploadAvatar(Uint8List bytes, String fileName) async {

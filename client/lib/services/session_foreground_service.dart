@@ -1,5 +1,5 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -17,14 +17,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 class SessionForegroundService {
   static const MethodChannel _channel = MethodChannel('syncm/system');
 
-  static bool get _isAndroid {
-    if (kIsWeb) return false;
-    try {
-      return Platform.isAndroid;
-    } catch (_) {
-      return false;
-    }
-  }
+  static bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   static bool _initialized = false;
   static bool _running = false;
@@ -52,14 +46,19 @@ class SessionForegroundService {
     _initialized = true;
   }
 
-  /// Запускает foreground-сервис и wakelock. Вызывать при входе в сессию.
-  static Future<void> start({String title = 'Сессия SyncM активна',
-      String text = 'Слушаете вместе с друзьями'}) async {
+  static Future<void> start({
+    String title = 'Сессия SyncM активна',
+    String text = 'Слушаете вместе с друзьями',
+    bool keepScreenOn = true,
+  }) async {
+    if (keepScreenOn) {
+      try {
+        await WakelockPlus.enable();
+      } catch (_) {}
+    }
+
     if (!_isAndroid) return;
     _ensureInitialized();
-    try {
-      await WakelockPlus.enable();
-    } catch (_) {}
 
     try {
       if (await FlutterForegroundTask.isRunningService) {
@@ -83,10 +82,11 @@ class SessionForegroundService {
 
   /// Останавливает сервис и снимает wakelock. Вызывать при выходе из сессии.
   static Future<void> stop() async {
-    if (!_isAndroid) return;
     try {
       await WakelockPlus.disable();
     } catch (_) {}
+
+    if (!_isAndroid) return;
     try {
       if (_running || await FlutterForegroundTask.isRunningService) {
         await FlutterForegroundTask.stopService();

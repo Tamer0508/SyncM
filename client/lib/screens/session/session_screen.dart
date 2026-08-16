@@ -44,7 +44,6 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _initialized = false;
   bool _refreshing = false;
   PlaybackProvider? _playback;
-  SocketService? _sessionSocket;
   Set<String> _onlineUserIds = {};
   bool _isPlayerOpen = false;
 
@@ -61,10 +60,14 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   void _openPlayerIfMobile(Map<String, dynamic> track) async {
-    final isDesktop = MediaQuery.of(context).size.width >= 900;
-    if (isDesktop || !mounted || _isPlayerOpen) return;
+    if (!mounted || _isPlayerOpen) return;
+    if (context.isWideWindow) return;
+    if (!LocalStore.readBool(StoreKeys.autoOpenPlayer, defaultValue: true)) {
+      return;
+    }
     _isPlayerOpen = true;
-    
+
+
     await Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) {
@@ -188,61 +191,50 @@ class _SessionScreenState extends State<SessionScreen> {
 
   StreamSubscription<void>? _reconnectSub;
 
+  final List<SocketSubscription> _subscriptions = [];
+
   void _setupSessionSocketListeners(SocketService socket) {
-    _sessionSocket = socket;
 
-    socket.on('session_ended', (data) {
-      if (!mounted) return;
-
-      final result = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
-
-      if (widget.embedded && widget.onBack != null) {
-        widget.onBack!();
-        return;
-      }
-      Navigator.of(context).pushReplacementNamed(
-        '/session/results',
-        arguments: result,
-      );
-    });
-    socket.on('user_joined', (_) {
-      if (mounted) _refreshSession();
-    });
-
-    socket.on('session_presence', (data) {
-      if (!mounted) return;
-      final ids = (data is Map ? data['onlineUserIds'] : null);
-      if (ids is List) {
+    _subscriptions.addAll([
+      socket.on('user_joined', (_) {
+        if (mounted) _refreshSession();
+      }),
+      socket.on('session_presence', (data) {
+        if (!mounted) return;
+        final ids = (data is Map ? data['onlineUserIds'] : null);
+        if (ids is List) {
+          setState(() {
+            _onlineUserIds = ids.map((e) => e.toString()).toSet();
+          });
+        }
+      }),
+      socket.on('participant_dropped', (data) {
+        if (!mounted) return;
+        _refreshSession();
+      }),
+      socket.on('host_changed', (data) {
+        if (!mounted) return;
+        final newHostId = (data is Map ? data['hostId'] : null)?.toString();
+        if (newHostId == null) return;
+        final auth = Provider.of<AuthProvider>(context, listen: false);
         setState(() {
-          _onlineUserIds = ids.map((e) => e.toString()).toSet();
+          _session?['hostId'] = newHostId;
         });
-      }
-    });
-    socket.on('participant_dropped', (data) {
-      if (!mounted) return;
-      _refreshSession();
-    });
+        _playback?.updateHostStatus(newHostId == auth.user?.id);
+        final becameHost = newHostId == auth.user?.id;
+        showAppNotification(
+          context,
+          message: becameHost
+              ? 'Вы теперь ведущий сессии'
+              : 'Ведущий сессии сменился',
+          type: NotificationType.info,
+        );
+      }),
+    ]);
+
     _reconnectSub = socket.onReconnect.listen((_) {
       if (!mounted) return;
       _refreshSession();
-    });
-    socket.on('host_changed', (data) {
-      if (!mounted) return;
-      final newHostId = (data is Map ? data['hostId'] : null)?.toString();
-      if (newHostId == null) return;
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      setState(() {
-        _session?['hostId'] = newHostId;
-      });
-      _playback?.updateHostStatus(newHostId == auth.user?.id);
-      final becameHost = newHostId == auth.user?.id;
-      showAppNotification(
-        context,
-        message: becameHost
-            ? 'Вы теперь ведущий сессии'
-            : 'Ведущий сессии сменился',
-        type: NotificationType.info,
-      );
     });
   }
 
@@ -252,10 +244,7 @@ class _SessionScreenState extends State<SessionScreen> {
     _playback?.onSessionPlaybackStarted = null;
     _playback?.onPrepareError = null;
     _reconnectSub?.cancel();
-    _sessionSocket?.off('participant_dropped');
-    _sessionSocket?.off('user_joined');
-    _sessionSocket?.off('session_presence');
-    _sessionSocket?.off('host_changed');
+    _subscriptions.cancelAll();
     super.dispose();
   }
 
@@ -457,7 +446,7 @@ class _SessionScreenState extends State<SessionScreen> {
     final sessionId = _session?['id'] as String?;
     if (sessionId == null) return;
 
-    final isWide = MediaQuery.sizeOf(context).width >= 900;
+    final isWide = context.isWideWindow;
 
     final Object? added;
     if (isWide) {

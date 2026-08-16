@@ -286,41 +286,58 @@ class _CompactProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // LayoutBuilder, а не context.findRenderObject().
+    //
+    // Прежний код брал размер у контекста самого виджета — то есть у
+    // RenderPadding, который шире полосы на 32 точки (по 16 с каждой стороны),
+    // тогда как localPosition отсчитывается от GestureDetector уже ВНУТРИ
+    // отступа. Знаменатель был завышен, начало координат смещено: нажатие по
+    // левому краю не давало нуля, по правому — единицы, а расхождение на
+    // панели шириной 300 доходило до пяти процентов длины трека.
+    //
+    // Здесь constraints.maxWidth — ширина ровно той области, внутри которой
+    // считается localPosition.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GestureDetector(
-        onHorizontalDragStart: (details) {
-          final box = context.findRenderObject() as RenderBox;
-          onSeek(details.localPosition.dx.clamp(0.0, box.size.width) /
-              box.size.width);
-        },
-        onHorizontalDragUpdate: (details) {
-          final box = context.findRenderObject() as RenderBox;
-          onSeek(details.localPosition.dx.clamp(0.0, box.size.width) /
-              box.size.width);
-        },
-        onHorizontalDragEnd: (details) {
-          final box = context.findRenderObject() as RenderBox;
-          onSeekEnd(details.localPosition.dx.clamp(0.0, box.size.width) /
-              box.size.width);
-        },
-        child: Container(
-            height: 20,
-            alignment: Alignment.centerLeft,
-            child: Stack(children: [
-              Container(
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: inactiveColor,
-                      borderRadius: BorderRadius.circular(2))),
-              FractionallySizedBox(
-                  widthFactor: fraction,
-                  child: Container(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          double fractionAt(Offset local) =>
+              width <= 0 ? 0.0 : (local.dx / width).clamp(0.0, 1.0);
+
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (details) => onSeek(fractionAt(details.localPosition)),
+            onTapUp: (details) => onSeekEnd(fractionAt(details.localPosition)),
+            onHorizontalDragStart: (details) =>
+                onSeek(fractionAt(details.localPosition)),
+            onHorizontalDragUpdate: (details) =>
+                onSeek(fractionAt(details.localPosition)),
+            onHorizontalDragEnd: (_) => onSeekEnd(fraction),
+            child: SizedBox(
+              height: 20,
+              width: width,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Stack(children: [
+                  Container(
+                      width: width,
                       height: 4,
                       decoration: BoxDecoration(
-                          color: activeColor,
-                          borderRadius: BorderRadius.circular(2)))),
-            ])),
+                          color: inactiveColor,
+                          borderRadius: BorderRadius.circular(2))),
+                  FractionallySizedBox(
+                      widthFactor: fraction,
+                      child: Container(
+                          height: 4,
+                          decoration: BoxDecoration(
+                              color: activeColor,
+                              borderRadius: BorderRadius.circular(2)))),
+                ]),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

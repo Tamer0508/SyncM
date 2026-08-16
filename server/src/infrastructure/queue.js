@@ -252,7 +252,7 @@ function initQueues() {
 
         await Promise.all([
           incrementVersion(`db:user-playlists-db:${userId}`),
-          incrementVersion(`db:playlist-tracks-db:${playlistId}`),
+          incrementVersion(`db:playlist-tracks-db:${result.playlist.id}`),
           incrementVersion(`spotify:user-playlists:${userId}`),
           incrementVersion(`spotify:playlist-tracks:${playlistId}`),
         ]);

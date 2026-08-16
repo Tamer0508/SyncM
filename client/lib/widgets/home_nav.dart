@@ -8,13 +8,11 @@ class HomeDestination {
     required this.icon,
     required this.selectedIcon,
     required this.label,
-    this.desktopOnly = false,
   });
 
   final IconData icon;
   final IconData selectedIcon;
   final String label;
-  final bool desktopOnly;
 }
 
 const List<HomeDestination> kHomeDestinations = [
@@ -35,9 +33,6 @@ const List<HomeDestination> kHomeDestinations = [
   ),
 ];
 
-List<HomeDestination> homeDestinationsFor({required bool isDesktop}) =>
-    kHomeDestinations;
-
 class HomeBottomNav extends StatelessWidget {
   const HomeBottomNav({
     super.key,
@@ -52,7 +47,7 @@ class HomeBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final destinations = homeDestinationsFor(isDesktop: false);
+    const destinations = kHomeDestinations;
 
     return NavigationBar(
       selectedIndex: currentIndex.clamp(0, destinations.length - 1),
@@ -155,7 +150,7 @@ class _HomeNavigationRailState extends State<HomeNavigationRail> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final destinations = homeDestinationsFor(isDesktop: true);
+    const destinations = kHomeDestinations;
 
     return Row(
       children: [
@@ -169,7 +164,7 @@ class _HomeNavigationRailState extends State<HomeNavigationRail> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _RailHeader(expanded: true),
+              const _RailHeader(),
               const SizedBox(height: AppSpacing.sm),
 
               for (var i = 0; i < destinations.length; i++)
@@ -420,9 +415,7 @@ class _RailDivider extends StatelessWidget {
 }
 
 class _RailHeader extends StatelessWidget {
-  const _RailHeader({required this.expanded});
-
-  final bool expanded;
+  const _RailHeader();
 
   @override
   Widget build(BuildContext context) {
@@ -430,29 +423,23 @@ class _RailHeader extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
-      child: AnimatedSwitcher(
-        duration: AppMotion.short,
-        child: expanded
-            ? Row(
-                key: const ValueKey('wide'),
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _Logo(colors: colors),
-                  const SizedBox(width: AppSpacing.sm + 4),
-                  Text(
-                    'SyncM',
-                    style: context.texts.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                  ),
-                ],
-              )
-            : _Logo(key: const ValueKey('narrow'), colors: colors),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _Logo(colors: colors),
+          const SizedBox(width: AppSpacing.sm + 4),
+          Text(
+            'SyncM',
+            style: context.texts.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _Logo extends StatelessWidget {
-  const _Logo({super.key, required this.colors});
+  const _Logo({required this.colors});
 
   final ColorScheme colors;
 

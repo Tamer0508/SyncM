@@ -84,6 +84,21 @@ class _SettingsBodyState extends State<_SettingsBody> {
   /// Функция вызывается при каждой перерисовке и всегда даёт свежие данные.
   List<Widget> Function(BuildContext context)? _openSectionBuilder;
 
+  Widget Function(BuildContext context, VoidCallback onBack)? _openChildScreen;
+
+  void _openChild(
+    BuildContext context,
+    Widget Function(BuildContext context, VoidCallback onBack) builder,
+  ) {
+    if (context.isWideWindow) {
+      setState(() => _openChildScreen = builder);
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (ctx) => builder(ctx, () => Navigator.of(ctx).pop()),
+    ));
+  }
+
   Future<void> _pickAndUploadAvatar() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
@@ -161,7 +176,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
     final auth = context.watch<AuthProvider>();
     final theme = context.watch<ThemeProvider>();
     final user = auth.user;
-    final isDesktop = MediaQuery.sizeOf(context).width >= 900;
+    final isDesktop = context.isWideWindow;
 
     String themeName() => switch (theme.themeMode) {
           ThemeMode.light => 'Светлая',
@@ -185,6 +200,14 @@ class _SettingsBodyState extends State<_SettingsBody> {
           children: builder(ctx),
         ),
       ));
+    }
+
+    final childScreen = _openChildScreen;
+    if (childScreen != null) {
+      return childScreen(
+        context,
+        () => setState(() => _openChildScreen = null),
+      );
     }
 
     // Раздел открыт — показываем его вместо списка, оставаясь в центральной
@@ -552,9 +575,13 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.block_rounded,
             title: 'Заблокированные',
             subtitle: 'Не смогут найти вас, писать и звать в сессии',
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => const BlockedUsersScreen(),
-            )),
+            onTap: () => _openChild(
+              context,
+              (ctx, onBack) => BlockedUsersScreen(
+                embedded: ctx.isWideWindow,
+                onBack: onBack,
+              ),
+            ),
           ),
         ],
       ),
@@ -580,9 +607,13 @@ class _SettingsBodyState extends State<_SettingsBody> {
             title: 'История прослушанного',
             subtitle: 'Последние треки, которые вы включали',
             onTap: widget.onOpenHistory ??
-                () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const PlayHistoryScreen(),
-                    )),
+                () => _openChild(
+                      context,
+                      (ctx, onBack) => PlayHistoryScreen(
+                        embedded: ctx.isWideWindow,
+                        onBack: onBack,
+                      ),
+                    ),
           ),
           SettingsAction(
             icon: Icons.cleaning_services_outlined,

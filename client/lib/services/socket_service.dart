@@ -240,6 +240,8 @@ class SocketService {
 
     debugPrint('[Socket] подключаемся к $baseUrl, длинаТокена=${token.length}');
 
+    _rebindAll();
+
     _socket!.onConnectError((err) => debugPrint('[Socket] ОШИБКА подключения: $err'));
     _socket!.onError((err) => debugPrint('[Socket] ошибка: $err'));
     _socket!.onDisconnect((reason) => debugPrint('[Socket] отключён: $reason'));
@@ -275,9 +277,55 @@ class SocketService {
     _socket!.onDisconnect((_) => _stopHeartbeat());
   }
 
-  void on(String event, Function(dynamic) handler) => _socket?.on(event, (data) => handler(data));
 
-  void off(String event) => _socket?.off(event);
+  final Map<String, List<_Subscriber>> _subscribers = {};
+  final Set<String> _boundEvents = {};
+
+  /// Подписывается на событие. Возвращает токен — отписываться нужно им.
+  SocketSubscription on(String event, void Function(dynamic data) handler) {
+    final subscriber = _Subscriber(event, handler);
+    _subscribers.putIfAbsent(event, () => <_Subscriber>[]).add(subscriber);
+    _bindEvent(event);
+    return SocketSubscription._(this, subscriber);
+  }
+
+  void _bindEvent(String event) {
+    final socket = _socket;
+    if (socket == null) return;
+    if (!_boundEvents.add(event)) return;
+    socket.on(event, (data) => _dispatch(event, data));
+  }
+
+  void _rebindAll() {
+    _boundEvents.clear();
+    for (final event in _subscribers.keys) {
+      _bindEvent(event);
+    }
+  }
+
+  void _dispatch(String event, dynamic data) {
+    final list = _subscribers[event];
+    if (list == null || list.isEmpty) return;
+    // Копия списка: обработчик вправе отписаться прямо во время вызова —
+    // так делает PlaybackProvider.stop() внутри session_ended.
+    for (final subscriber in List<_Subscriber>.of(list)) {
+      if (subscriber.cancelled) continue;
+      try {
+        subscriber.handler(data);
+      } catch (err, stack) {
+        debugPrint('[Socket] обработчик "$event" упал: $err\n$stack');
+      }
+    }
+  }
+
+  void _cancel(_Subscriber subscriber) {
+    if (subscriber.cancelled) return;
+    subscriber.cancelled = true;
+    final list = _subscribers[subscriber.event];
+    if (list == null) return;
+    list.remove(subscriber);
+    if (list.isEmpty) _subscribers.remove(subscriber.event);
+  }
 
   void emit(String event, [dynamic data]) => _socket?.emit(event, data);
 
@@ -290,11 +338,42 @@ class SocketService {
     _hasConnectedOnce = false;
     _activeSessionId = null;
     _masterOffset = 0;
+    _boundEvents.clear();
   }
 
   Future<void> dispose() async {
     disconnect();
+    _subscribers.clear();
     await _friendRequestController.close();
     await _reconnectController.close();
+  }
+}
+
+class _Subscriber {
+  _Subscriber(this.event, this.handler);
+
+  final String event;
+  final void Function(dynamic data) handler;
+  bool cancelled = false;
+}
+
+class SocketSubscription {
+  SocketSubscription._(this._service, this._subscriber);
+
+  final SocketService _service;
+  final _Subscriber _subscriber;
+
+  String get event => _subscriber.event;
+  bool get isCancelled => _subscriber.cancelled;
+
+  void cancel() => _service._cancel(_subscriber);
+}
+
+extension SocketSubscriptionList on List<SocketSubscription> {
+  void cancelAll() {
+    for (final subscription in this) {
+      subscription.cancel();
+    }
+    clear();
   }
 }

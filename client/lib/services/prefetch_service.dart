@@ -40,7 +40,7 @@ class PrefetchService {
         _safe(() => friends.fetchFriends(refresh: true)),
         _safe(() => friends.fetchIncomingRequests(refresh: true)),
         _safe(() => sessions.fetchMySessions()),
-        _safe(() => sessions.fetchInvites(refresh: true)),
+        _safe(() => sessions.fetchInvites()),
         // Плейлисты греем ради кэша на сервере и в ApiService: результат
         // здесь не нужен, экран запросит его сам и получит уже готовый.
         _safe(() async => _api.getMyPlaylists()),

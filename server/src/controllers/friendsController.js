@@ -3,6 +3,7 @@ const prisma = require('../db/prisma');
 const { getOrSet, incrementVersion } = require('../infrastructure/redis');
 const { addNotificationJob } = require('../infrastructure/queue');
 const { withLock } = require('../infrastructure/lock');
+const logger = require('../infrastructure/logger');
 const asyncHandler = require('../utils/asyncHandler');
 
 const invalidateFriendshipCaches = (userIdA, userIdB) =>
@@ -11,6 +12,12 @@ const invalidateFriendshipCaches = (userIdA, userIdB) =>
     incrementVersion(`db:friends-list:${userIdB}`),
     incrementVersion(`db:user-profile:${userIdA}`),
     incrementVersion(`db:user-profile:${userIdB}`),
+  ]);
+
+const invalidateSearchCaches = (userIdA, userIdB) =>
+  Promise.all([
+    incrementVersion(`db:search-users:${userIdA}`),
+    incrementVersion(`db:search-users:${userIdB}`),
   ]);
 
 const searchQuerySchema = z.object({

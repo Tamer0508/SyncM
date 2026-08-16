@@ -5,8 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
-import 'dart:async';
-import 'dart:io';
+import '../../services/oauth_loopback.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
 
@@ -14,12 +13,17 @@ import '../../utils/notifications.dart';
 import 'google_sign_stub.dart'
     if (dart.library.html) 'google_sign_web.dart';
 
+const int _googleLoopbackPort = 8181;
+
 class GoogleSignInButton extends StatelessWidget {
   final VoidCallback onSignInSuccess;
 
   const GoogleSignInButton({super.key, required this.onSignInSuccess});
 
-  bool get _isWindows => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+  bool get _isWindows =>
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.windows &&
+      supportsOAuthLoopback;
 
   @override
   Widget build(BuildContext context) {
@@ -45,67 +49,45 @@ class GoogleSignInButton extends StatelessWidget {
   }
 
   Future<void> _handleWindowsSignIn(BuildContext context) async {
-  try {
-    final api = ApiService();
-    final completer = Completer<Map<String, dynamic>?>();
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8181);
-    debugPrint('Local server started on port 8181');
+    try {
+      final api = ApiService();
 
-    final authUrl = Uri.parse(
-      '${api.baseUrl}/auth/google-web?returnTo=http://localhost:8181/callback',
-    );
-    debugPrint('Opening URL: $authUrl');
+      final result = await runOAuthLoopback(
+        port: _googleLoopbackPort,
+        responseHtml:
+            '<html><body><h2>Вход выполнен! Вкладку можно закрыть.</h2></body></html>',
+        onServerReady: (redirectUri) async {
+          final authUrl = Uri.parse(
+            '${api.baseUrl}/auth/google-web?returnTo=$redirectUri',
+          );
+          await launchUrl(authUrl, mode: LaunchMode.externalApplication);
+        },
+      );
 
-    await launchUrl(authUrl, mode: LaunchMode.externalApplication);
+      if (result == null || !context.mounted) return;
 
-    server.listen((request) async {
-  final uri = request.requestedUri;
-  final response = request.response;
-  response.headers.set('Content-Type', 'text/html; charset=utf-8');
-  response.write('<html><body><h2>Login successful! You can close this tab.</h2></body></html>');
-  await response.close();
-  await server.close();
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final token = result['token'];
+      final cookie = result['cookie'];
 
-  final cookie = uri.queryParameters['cookie'];
-  final token = uri.queryParameters['token'];
-  completer.complete({'cookie': cookie, 'token': token});
-});
+      if (token != null && token.isNotEmpty) {
+        auth.setCookie(token);
+      } else if (cookie != null && cookie.isNotEmpty) {
+        auth.setCookie(cookie);
+      }
 
-    final result = await completer.future.timeout(
-      const Duration(minutes: 2),
-      onTimeout: () { server.close(); return null; },
-    );
+      await auth.fetchMe();
 
-    debugPrint('Auth result: $result');
-
-    if (result != null && context.mounted) {
-  final auth = Provider.of<AuthProvider>(context, listen: false);
-  final token = result['token'] as String?;
-  final cookie = result['cookie'] as String?;
-  
-  debugPrint('token: $token');
-  debugPrint('cookie: $cookie');
-  
-  if (token != null && token.isNotEmpty) {
-    auth.setCookie(token);
-  } else if (cookie != null && cookie.isNotEmpty) {
-    auth.setCookie(cookie);
-  }
-  
-  await auth.fetchMe();
-  debugPrint('isLoggedIn: ${auth.isLoggedIn}');
-  
-  if (auth.isLoggedIn && context.mounted) {
-    Navigator.of(context).pushReplacementNamed('/home');
-  }
-}
-  } catch (e) {
-    debugPrint('Windows Google Sign-In error: $e');
-    if (context.mounted) {
-      showError(context, e);
+      if (auth.isLoggedIn && context.mounted) {
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
+    } catch (e) {
+      debugPrint('Windows Google Sign-In error: $e');
+      if (context.mounted) {
+        showError(context, e);
+      }
     }
   }
-}
 
   Future<void> _handleSignIn(BuildContext context) async {
     try {

@@ -178,7 +178,7 @@ class FriendsProvider with ChangeNotifier {
 
   SocketService? _socket;
 
-  static const _events = ['friend_request', 'friend_online', 'friend_offline'];
+  final List<SocketSubscription> _subscriptions = [];
 
   void init(SocketService socketService) {
     if (identical(_socket, socketService)) return;
@@ -186,29 +186,25 @@ class FriendsProvider with ChangeNotifier {
     _detachSocket();
     _socket = socketService;
 
-    socketService.on('friend_request', (data) {
-      if (data is Map) _addNewRequest(Map<String, dynamic>.from(data));
-    });
-
-    socketService.on('friend_online', (data) {
-      final userId = (data is Map) ? data['userId'] as String? : null;
-      if (userId != null) _updateFriendOnline(userId, true);
-    });
-
-    socketService.on('friend_offline', (data) {
-      if (data is! Map) return;
-      final userId = data['userId'] as String?;
-      if (userId == null) return;
-      _updateFriendOnline(userId, false, lastSeenAt: data['lastSeenAt'] as String?);
-    });
+    _subscriptions.addAll([
+      socketService.on('friend_request', (data) {
+        if (data is Map) _addNewRequest(Map<String, dynamic>.from(data));
+      }),
+      socketService.on('friend_online', (data) {
+        final userId = (data is Map) ? data['userId'] as String? : null;
+        if (userId != null) _updateFriendOnline(userId, true);
+      }),
+      socketService.on('friend_offline', (data) {
+        if (data is! Map) return;
+        final userId = data['userId'] as String?;
+        if (userId == null) return;
+        _updateFriendOnline(userId, false, lastSeenAt: data['lastSeenAt'] as String?);
+      }),
+    ]);
   }
 
   void _detachSocket() {
-    final socket = _socket;
-    if (socket == null) return;
-    for (final event in _events) {
-      socket.off(event);
-    }
+    _subscriptions.cancelAll();
     _socket = null;
   }
 
@@ -230,6 +226,7 @@ class FriendsProvider with ChangeNotifier {
       isOnline: online,
       lastSeenAt: online ? null : seenAt,
       isOnlineHidden: old.isOnlineHidden,
+      friendshipStatus: old.friendshipStatus,
     );
     notifyListeners();
   }

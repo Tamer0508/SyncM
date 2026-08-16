@@ -12,9 +12,9 @@ import '../theme.dart';
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key});
 
-  static const double _compactBreakpoint = 900;
-
   void _openPlayer(BuildContext context, Map<String, dynamic> track, String? imageUrl) {
+    if (context.isWideWindow) return;
+
     Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (_, _, _) => NowPlayingScreen(
@@ -50,7 +50,7 @@ class MiniPlayer extends StatelessWidget {
     final texts = context.texts;
     final imageBytes = pb.currentImageBytes;
     final imageUrl = track['imageUrl'] as String?;
-    final isCompact = MediaQuery.sizeOf(context).width < _compactBreakpoint;
+    final isCompact = !context.isWideWindow;
     final artSize = isCompact ? 44.0 : 52.0;
 
     return Padding(

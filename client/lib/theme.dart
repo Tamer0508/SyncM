@@ -41,6 +41,16 @@ class AppSpacing {
   static const double xl = 32;
 }
 
+class AppBreakpoints {
+  const AppBreakpoints._();
+
+  static const double wide = 900;
+
+  static const double compact = 600;
+
+  static bool isWide(BoxConstraints constraints) => constraints.maxWidth >= wide;
+}
+
 @immutable
 class AppRoleColors extends ThemeExtension<AppRoleColors> {
   const AppRoleColors({
@@ -451,6 +461,9 @@ extension AppThemeContext on BuildContext {
   AppRoleColors get roles => Theme.of(this).extension<AppRoleColors>()!;
 
   AppRoleColors get brand => roles;
+
+  bool get isWideWindow =>
+      MediaQuery.sizeOf(this).width >= AppBreakpoints.wide;
 }
 
 class _NoTransitionsBuilder extends PageTransitionsBuilder {

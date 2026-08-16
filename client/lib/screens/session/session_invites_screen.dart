@@ -33,7 +33,7 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
       if (!mounted) return;
       final prov = context.read<SessionProvider>();
       prov.markInvitesAsRead();
-      prov.fetchInvites(refresh: true);
+      prov.fetchInvites();
     });
   }
 
@@ -62,7 +62,7 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
         // боковую панель и панель воспроизведения. При повторном заходе с
         // главной та же сессия показывалась встроенной — из-за этого одна и
         // та же сессия выглядела по-разному в зависимости от пути входа.
-        if (MediaQuery.sizeOf(context).width >= 900) {
+        if (context.isWideWindow) {
           context.read<SessionProvider>().requestOpenSession(session);
           Navigator.of(context).maybePop();
           return;
@@ -123,7 +123,7 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
             icon: Icons.refresh_rounded,
             tooltip: 'Обновить',
             onPressed: () =>
-                context.read<SessionProvider>().fetchInvites(refresh: true),
+                context.read<SessionProvider>().fetchInvites(),
           ),
         ],
       ),

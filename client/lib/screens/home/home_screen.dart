@@ -151,7 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (session == null || !mounted) return;
     final data = Map<String, dynamic>.from(session);
 
-    if (MediaQuery.sizeOf(context).width < 900) {
+    if (!context.isWideWindow) {
       await Navigator.of(context).pushNamed('/session', arguments: data);
       return;
     }
@@ -202,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// существует, лежало третьим блоком ниже сгиба. Плейлисты переехали в
   /// свою вкладку, а здесь осталось только текущее состояние.
   Widget _buildHomeTab() {
-    final isDesktop = MediaQuery.sizeOf(context).width >= 900;
+    final isDesktop = context.isWideWindow;
     final enablePullToRefresh = !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS);
@@ -302,7 +302,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final sessions = context.read<SessionProvider>();
         await Future.wait([
           sessions.fetchMySessions(),
-          sessions.fetchInvites(refresh: true),
+          sessions.fetchInvites(),
         ]);
       },
       child: child,
@@ -342,7 +342,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildPlaylistsTab(bool isCustom) {
     final playlists = isCustom ? _customPlaylists : _spotifyPlaylists;
     final loading = isCustom ? _loadingCustom : _loadingSpotify;
-    final isDesktop = MediaQuery.sizeOf(context).width >= 900;
+    final isDesktop = context.isWideWindow;
     if (loading) return const SkeletonPlaylistRow();
     if (playlists.isEmpty) {
       return Center(
@@ -668,7 +668,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {
               final sessions = context.read<SessionProvider>();
               sessions.fetchMySessions();
-              sessions.fetchInvites(refresh: true);
+              sessions.fetchInvites();
             },
             tooltip: 'Обновить',
           ),
@@ -727,7 +727,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     return LayoutBuilder(builder: (context, constraints) {
-      final isDesktop = constraints.maxWidth >= 900;
+      final isDesktop = AppBreakpoints.isWide(constraints);
       // Вкладок теперь три в обеих раскладках — подрезать индекс не нужно.
       final unreadCount = Provider.of<FriendsProvider>(context).unreadCount;
 
@@ -751,10 +751,11 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final pendingResults = context.watch<SessionProvider>().endedResults;
-      if (pendingResults != null && _sessionResults == null) {
+      if (pendingResults != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           context.read<SessionProvider>().consumeEndedResults();
+          if (_sessionResults != null) return;
           _openOverlay(() => _sessionResults = pendingResults);
         });
       }

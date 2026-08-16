@@ -132,7 +132,17 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
 
   try {
-    const tracks = await getOrSet(`spotify:playlist-tracks:${playlistId}`, 'items', CACHE_TTL.playlistTracks, async () => {
+    // Ключ включает userId, а пространство имён остаётся привязанным к
+    // плейлисту.
+    //
+    // Общий на всех ключ был утечкой: содержимое приватного плейлиста,
+    // однажды загруженное его владельцем, отдавалось любому, кто знает id, —
+    // проверка прав выполняется внутри fetchFn и на попадании в кэш не
+    // срабатывает вовсе. Теперь у каждого своя запись, и каждый получает её
+    // только после собственного запроса к Spotify, который и решает, есть ли
+    // у него доступ. Инвалидация по namespace при этом продолжает гасить
+    // копии всех пользователей разом.
+    const tracks = await getOrSet(`spotify:playlist-tracks:${playlistId}`, `user:${userId}`, CACHE_TTL.playlistTracks, async () => {
       const spotifyUser = await requireSpotifyUser(userId);
       const collected = [];
       let nextUrl =

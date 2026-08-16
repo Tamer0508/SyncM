@@ -1,6 +1,3 @@
-import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,21 +6,13 @@ import 'package:url_launcher/url_launcher.dart';
 import '../providers/auth_provider.dart';
 import '../utils/error_utils.dart';
 import '../utils/notifications.dart';
+import 'oauth_loopback.dart';
 import '../screens/profile/spotify_webview_screen.dart'
     if (dart.library.html) '../screens/profile/spotify_webview_stub.dart';
 
-HttpServer? _oauthServer;
+const int _oauthLoopbackPort = 8282;
 
-Future<void> stopSpotifyOauthServer() async {
-  final server = _oauthServer;
-  if (server == null) return;
-  _oauthServer = null;
-  try {
-    await server.close(force: true);
-  } catch (err) {
-    debugPrint('Не удалось закрыть локальный сервер авторизации: $err');
-  }
-}
+Future<void> stopSpotifyOauthServer() => stopOAuthLoopback();
 
 Future<void> connectSpotify(BuildContext context) async {
   final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -37,62 +26,35 @@ Future<void> connectSpotify(BuildContext context) async {
     return;
   }
 
-  if (defaultTargetPlatform == TargetPlatform.windows) {
-    HttpServer? server;
+  if (defaultTargetPlatform == TargetPlatform.windows && supportsOAuthLoopback) {
     try {
-      if (_oauthServer != null) {
-        try { await _oauthServer!.close(force: true); } catch (_) {}
-        _oauthServer = null;
-      }
-
-      final completer = Completer<Map<String, dynamic>?>();
-      server = await HttpServer.bind(
-        InternetAddress.loopbackIPv4, 8282, shared: true,
-      );
-      _oauthServer = server;
-
-      final state = await api.createSpotifyLinkIntent(
-          returnTo: 'http://localhost:8282/callback');
-      final authUrl = Uri.parse('${api.baseUrl}/auth/login?state=$state');
-      await launchUrl(authUrl, mode: LaunchMode.externalApplication);
-      server.listen((request) async {
-        final uri = request.requestedUri;
-        final response = request.response;
-        response.headers.set('Content-Type', 'text/html; charset=utf-8');
-        response.write('<html><body><h2>Spotify connected! You can close this tab.</h2></body></html>');
-        await response.close();
-        await server!.close(force: true);
-        _oauthServer = null;
-        if (!completer.isCompleted) {
-          completer.complete({
-            'token': uri.queryParameters['token'],
-            'cookie': uri.queryParameters['cookie'],
-          });
-        }
-      });
-      final result = await completer.future.timeout(
-        const Duration(minutes: 2),
-        onTimeout: () async {
-          try { await server?.close(force: true); } catch (_) {}
-          _oauthServer = null;
-          return null;
+      final result = await runOAuthLoopback(
+        port: _oauthLoopbackPort,
+        responseHtml:
+            '<html><body><h2>Spotify подключён! Вкладку можно закрыть.</h2></body></html>',
+        onServerReady: (redirectUri) async {
+          final state = await api.createSpotifyLinkIntent(returnTo: redirectUri);
+          final authUrl = Uri.parse('${api.baseUrl}/auth/login?state=$state');
+          await launchUrl(authUrl, mode: LaunchMode.externalApplication);
         },
       );
+
       if (result != null) {
-        final token = result['token'] as String?;
-        final cookie = result['cookie'] as String?;
+        final token = result['token'];
+        final cookie = result['cookie'];
         if (token != null && token.isNotEmpty) {
           auth.setCookie(token);
-        } else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
+        } else if (cookie != null && cookie.isNotEmpty) {
+          auth.setCookie(cookie);
+        }
         await auth.fetchMe();
         if (context.mounted) {
-          showAppNotification(context, message: 'Spotify успешно подключён!', type: NotificationType.success);
+          showAppNotification(context,
+              message: 'Spotify успешно подключён!',
+              type: NotificationType.success);
         }
       }
     } catch (e) {
-      // Гарантированно освобождаем порт при любой ошибке.
-      try { await server?.close(force: true); } catch (_) {}
-      _oauthServer = null;
       final msg = e.toString().contains('bind') || e.toString().contains('port')
           ? 'Не удалось начать подключение: предыдущая попытка ещё не завершилась. Подождите несколько секунд и попробуйте снова.'
           : 'Ошибка подключения: $e';

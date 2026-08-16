@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/session.dart';
 import '../services/api_service.dart';
+import '../theme.dart';
 import '../utils/local_store.dart';
 import '../services/socket_service.dart';
 import '../utils/app_globals.dart';
@@ -96,7 +97,13 @@ class SessionProvider with ChangeNotifier {
     }
   }
 
-  Future<void> fetchInvites({bool refresh = false}) async {
+  /// Загружает приглашения.
+  ///
+  /// Параметра `refresh` здесь нет намеренно: список приглашений всегда
+  /// перезаписывается целиком, страниц у него нет, и «обновить» — это
+  /// единственное, что метод умеет. Раньше параметр был, но не использовался,
+  /// и вызывающий код рассчитывал на поведение, которого не существовало.
+  Future<void> fetchInvites() async {
     if (_invitesLoading) return;
     _invitesLoading = true;
     notifyListeners();
@@ -112,12 +119,9 @@ class SessionProvider with ChangeNotifier {
 
   SocketService? _socket;
 
-  static const _events = [
-    'session_invite',
-    'invite_response',
-    'session_ended',
-    'user_joined',
-  ];
+  final List<SocketSubscription> _subscriptions = [];
+
+  final Set<String> _selfEndedSessions = {};
 
   void init(SocketService socketService) {
     if (identical(_socket, socketService)) return;
@@ -125,36 +129,24 @@ class SessionProvider with ChangeNotifier {
     _detachSocket();
     _socket = socketService;
 
-    socketService.on('session_invite', (data) {
+    _subscriptions.add(socketService.on('session_invite', (data) {
       if (data is Map) _onSessionInvite(Map<String, dynamic>.from(data));
-    });
+    }));
 
-    // Завершение сессии обрабатываем ЗДЕСЬ, а не только на экране сессии.
-    //
-    // Провайдер живёт всё время работы приложения, а экран — нет: он может
-    // быть пересоздан при смене раскладки, открыт во встроенном виде без
-    // обработчика возврата или вообще закрыт. Подписка на уровне экрана
-    // оказывалась ненадёжной, и участники оставались в закрытой сессии.
-    //
-    // Переход делаем через глобальный ключ навигатора: у провайдера своего
-    // BuildContext нет.
-    socketService.on('session_ended', (data) {
+    _subscriptions.add(socketService.on('session_ended', (data) {
       final result = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
 
       // Список активных сессий изменился.
       fetchMySessions().ignore();
 
+      // Сессию закрыли мы сами — итоги уже показал тот, кто нажал кнопку.
+      final endedId = result['sessionId'] as String?;
+      if (endedId != null && _selfEndedSessions.remove(endedId)) return;
+
       final ctx = navigatorKey.currentContext;
       if (ctx == null) return;
 
-      // На широком экране итоги показывает главный экран в центральной
-      // части — так же, как встроенную сессию. Отдельный маршрут закрыл бы
-      // боковую панель и панель воспроизведения, и итоги выглядели бы
-      // чужеродно рядом с остальными экранами.
-      //
-      // Провайдеру нужно лишь сообщить о них: он выставляет поле, а главный
-      // экран, подписанный на провайдер, покажет его сам.
-      if (MediaQuery.sizeOf(ctx).width >= 900) {
+      if (ctx.isWideWindow) {
         _endedResults = result;
         notifyListeners();
         return;
@@ -171,29 +163,25 @@ class SessionProvider with ChangeNotifier {
         (route) => route.settings.name == '/home' || route.isFirst,
         arguments: result,
       );
-    });
+    }));
 
     // Кто-то присоединился к сессии — обновляем список, чтобы состав
     // участников не приходилось обновлять вручную.
-    socketService.on('user_joined', (_) {
+    _subscriptions.add(socketService.on('user_joined', (_) {
       fetchMySessions().ignore();
-    });
+    }));
 
-    socketService.on('invite_response', (data) {
+    _subscriptions.add(socketService.on('invite_response', (data) {
       if (data is! Map) return;
       if (data['accept'] == true) {
         // Список активных сессий изменился — подтягиваем свежий.
         fetchMySessions().ignore();
       }
-    });
+    }));
   }
 
   void _detachSocket() {
-    final socket = _socket;
-    if (socket == null) return;
-    for (final event in _events) {
-      socket.off(event);
-    }
+    _subscriptions.cancelAll();
     _socket = null;
   }
 
@@ -212,7 +200,7 @@ class SessionProvider with ChangeNotifier {
       notifyListeners();
     }
 
-    fetchInvites(refresh: true).ignore();
+    fetchInvites().ignore();
   }
 
   void markInvitesAsRead() {}
@@ -253,7 +241,19 @@ class SessionProvider with ChangeNotifier {
 
   Future<bool> rateTrack(String trackId, int rating) => api.rateTrack(trackId, rating);
 
-  Future<Map<String, dynamic>?> endSession(String sessionId) => api.endSession(sessionId);
+  Future<Map<String, dynamic>?> endSession(String sessionId) async {
+    // Помечаем ДО запроса: рассылка session_ended уходит из обработчика на
+    // сервере и вполне может опередить ответ на наш же HTTP-запрос.
+    _selfEndedSessions.add(sessionId);
+    try {
+      return await api.endSession(sessionId);
+    } catch (err) {
+      // Не завершилась — отметку снимаем, иначе чужое завершение этой сессии
+      // потом будет молча проигнорировано.
+      _selfEndedSessions.remove(sessionId);
+      rethrow;
+    }
+  }
 
   String? hostNameForInvite(Map<String, dynamic> invite) {
     final hostId = invite['hostId'] as String?;

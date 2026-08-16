@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../services/session_foreground_service.dart';
+import '../utils/local_store.dart';
 
 typedef SessionTracksCallback = void Function(Map<String, dynamic> data);
 typedef SessionPlaybackCallback = void Function(Map<String, dynamic> track);
@@ -51,6 +52,14 @@ class PlaybackProvider extends ChangeNotifier {
   static const String _kAudioLatencyKey = 'audio_latency_ms';
 
   SocketService? _socketService;
+
+  /// Подписки на события сессии, оформленные этим провайдером.
+  ///
+  /// Держим токены, а не имена событий: на те же события подписаны
+  /// SessionProvider и экран сессии, и снимать обработчики события целиком —
+  /// значит гасить чужие.
+  final List<SocketSubscription> _sessionSubscriptions = [];
+
   String? _currentSessionId;
   String? _userId;
   String? _preparedTrackId;
@@ -443,21 +452,18 @@ class PlaybackProvider extends ChangeNotifier {
     // Без явной очистки старые обработчики остаются висеть на сокете, и
     // ОДНО серверное событие (например session_prepare) обрабатывается
     // несколько раз подряд — это и вызывало повторные "скипы" трека.
-    for (final event in _sessionEvents) {
-      socketService.off(event);
-    }
+    _sessionSubscriptions.cancelAll();
 
     socketService.emit('join_session', {'sessionId': sessionId});
     socketService.setActiveSession(sessionId); // Фаза 6: для авто-ресинка
     _startSessionUiTicker();
-    // Шаг 2: удерживаем приложение живым в фоне на время сессии (Android).
-    SessionForegroundService.start();
+    SessionForegroundService.start(
+      keepScreenOn: LocalStore.readBool(StoreKeys.keepScreenOn, defaultValue: true),
+    );
 
-    // ─── Фаза 2: Получаем команду подготовить трек ─────────────────────────
-    socketService.on('session_prepare', handleServerPrepare);
+    _sessionSubscriptions.add(socketService.on('session_prepare', handleServerPrepare));
 
-    // ─── Фаза 3: Синхронный старт ───────────────────────────────────────────
-    socketService.on('session_start', (data) async {
+    _sessionSubscriptions.add(socketService.on('session_start', (data) async {
       _sessionPaused = false;
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final trackId = map['trackId'] as String?;
@@ -530,10 +536,10 @@ class PlaybackProvider extends ChangeNotifier {
       await _playAtPosition(trackId, positionMs);
       await _restoreVolumeIfMuted();
       _clearSessionSeekingSoon();
-    });
+    }));
 
     // ─── Фаза 4: Периодическая синхронизация ────────────────────────────────
-    socketService.on('session_sync', (data) {
+    _sessionSubscriptions.add(socketService.on('session_sync', (data) {
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final positionMs = (map['positionMs'] as num?)?.toInt();
       final serverTime = (map['serverTime'] as num?)?.toInt();
@@ -597,12 +603,12 @@ class PlaybackProvider extends ChangeNotifier {
           }
         }
       }
-    });
+    }));
 
     // ─── Авто-ресинк: принудительная синхронная перемотка ──────────────────
     // Приходит через несколько секунд после старта трека (когда трек у всех
     // загрузился). Выравнивает рассинхрон от разного времени загрузки Spotify.
-    socketService.on('session_reseek', (data) async {
+    _sessionSubscriptions.add(socketService.on('session_reseek', (data) async {
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final positionMs = (map['positionMs'] as num?)?.toInt();
       final serverTime = (map['serverTime'] as num?)?.toInt();
@@ -634,10 +640,10 @@ class PlaybackProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint('[SyncM] session_reseek не удался: $e');
       }
-    });
+    }));
 
     // ─── Фаза 5: Пауза от сервера ───────────────────────────────────────────
-    socketService.on('session_pause', (data) async {
+    _sessionSubscriptions.add(socketService.on('session_pause', (data) async {
       debugPrint('[Socket] Получен session_pause: $data');
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final positionMs = (map['positionMs'] as num?)?.toInt();
@@ -658,9 +664,9 @@ class PlaybackProvider extends ChangeNotifier {
           await SpotifySdk.pause();
         } catch (_) {}
       }
-    });
+    }));
 
-    socketService.on('session_resume', (data) async {
+    _sessionSubscriptions.add(socketService.on('session_resume', (data) async {
       _sessionPaused = false;
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final resumePos = (map['positionMs'] as num?)?.toInt();
@@ -685,10 +691,10 @@ class PlaybackProvider extends ChangeNotifier {
         // Отправитель: уже возобновили локально в togglePlay, просто уведомляем UI
         notifyListeners();
       }
-    });
+    }));
 
     // ─── Фаза 6: Полное состояние при подключении/переподключении ──────────
-    socketService.on('session_state', (data) async {
+    _sessionSubscriptions.add(socketService.on('session_state', (data) async {
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final state = map['state'] as String?;
       final positionMs = (map['positionMs'] as num?)?.toInt() ?? 0;
@@ -713,15 +719,15 @@ class PlaybackProvider extends ChangeNotifier {
         _clearSyncAnchor();
         notifyListeners();
       }
-    });
+    }));
 
     // Обратная совместимость
-    socketService.on('session_play', (data) {
+    _sessionSubscriptions.add(socketService.on('session_play', (data) {
       if (data is Map) handleSessionPlayEvent(Map<String, dynamic>.from(data));
-    });
+    }));
 
     // ─── Исправленный блок Паузы / Возобновления ───────────────────────────
-    socketService.on('play', (data) async {
+    _sessionSubscriptions.add(socketService.on('play', (data) async {
       _sessionPaused = false;
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final String? uri = map['spotifyUri'] as String?;
@@ -759,7 +765,7 @@ class PlaybackProvider extends ChangeNotifier {
           debugPrint('Ошибка снятия с паузы в сессии: $e');
         }
       }
-    });
+    }));
 
     // ─── Исправленный блок Перемотки (Без зацикливания) ───────────────────
     // ─── LEGACY: устаревший обработчик прямой перемотки ─────────────────────
@@ -767,7 +773,7 @@ class PlaybackProvider extends ChangeNotifier {
     // (единый guard-старт), и это событие сервером больше не рассылается.
     // Оставлено для обратной совместимости со старым сервером; при работе с
     // актуальным сервером сюда ничего не приходит.
-    socketService.on('seek', (data) async {
+    _sessionSubscriptions.add(socketService.on('seek', (data) async {
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
       final int pos = (map['position_ms'] as num?)?.toInt() ?? 0;
 
@@ -791,9 +797,9 @@ class PlaybackProvider extends ChangeNotifier {
         await Future.delayed(const Duration(milliseconds: 300));
         _isSeekingFromRemote = false;
       }
-    });
+    }));
 
-    socketService.on('session_ended', (data) async {
+    _sessionSubscriptions.add(socketService.on('session_ended', (data) async {
       debugPrint('[Session] сессия завершена хостом');
       debugPrint('[Session] провайдер: session_ended, глушим');
       try {
@@ -807,11 +813,11 @@ class PlaybackProvider extends ChangeNotifier {
       }
 
       stop();
-    });
+    }));
 
-    socketService.on('tracks-added', (data) {
+    _sessionSubscriptions.add(socketService.on('tracks-added', (data) {
       if (data is Map) onTracksAdded?.call(Map<String, dynamic>.from(data));
-    });
+    }));
   }
 
   // Снимает подавление детекта конца трека через короткую задержку — чтобы
@@ -1526,6 +1532,14 @@ class PlaybackProvider extends ChangeNotifier {
       _socketService?.emit('leave_session', {'sessionId': _currentSessionId, 'userId': _userId});
     }
     _socketService?.setActiveSession(null); // Фаза 6: больше не ресинкаем
+
+    // Отписка ДО обнуления _socketService.
+    //
+    // Раньше её здесь не было вовсе, а dispose() читал уже обнулённое поле и
+    // тоже ничего не снимал. В итоге после выхода из сессии на синглтон-сокете
+    // оставались висеть четырнадцать обработчиков, удерживающих провайдер.
+    _sessionSubscriptions.cancelAll();
+
     SessionForegroundService.stop(); // Шаг 2: снимаем удержание в фоне
     // Не вызываем _socketService?.disconnect() — это общий singleton-сокет,
     // используемый остальным приложением (друзья, presence и т.д.), и его
@@ -1691,32 +1705,11 @@ class PlaybackProvider extends ChangeNotifier {
         onPrepareError?.call(msg);
         // client_ready НЕ отправляем: без активного устройства трек
         // не запустится, а сессия начнёт играть у всех кроме этого участника.
-        // Сервер через READY_TIMEOUT_MS (5с) всё равно стартует без нас.
+        // Сервер через READY_TIMEOUT_MS (2,5 с — см. socket.js) всё равно
+        // стартует без нас.
       }
     }
   }
-
-  /// События сессии, на которые подписывается initSession.
-  ///
-  /// Список вынесен в константу: он нужен и при подписке (чтобы снять
-  /// возможные старые обработчики), и при закрытии провайдера. Раньше он был
-  /// записан только внутри initSession, и при добавлении нового события
-  /// второе место легко было пропустить.
-  static const _sessionEvents = [
-    'session_prepare',
-    'session_start',
-    'session_sync',
-    'session_reseek',
-    'session_pause',
-    'session_resume',
-    'session_state',
-    'session_play',
-    'play',
-    'seek',
-    'tracks-added',
-
-    'session_ended',
-  ];
 
   @override
   void dispose() {
@@ -1732,12 +1725,7 @@ class PlaybackProvider extends ChangeNotifier {
     // удерживают ссылку на закрытый провайдер и продолжают вызывать
     // notifyListeners() на нём, что приводит к исключению «A
     // PlaybackProvider was used after being disposed».
-    final socket = _socketService;
-    if (socket != null) {
-      for (final event in _sessionEvents) {
-        socket.off(event);
-      }
-    }
+    _sessionSubscriptions.cancelAll();
 
     super.dispose();
   }
