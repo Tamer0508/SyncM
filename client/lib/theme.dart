@@ -1,34 +1,64 @@
+import 'dart:ui' show FontFeature;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppMotion {
   const AppMotion._();
 
+  static const Duration press = Duration(milliseconds: 140);
+
   static const Duration short = Duration(milliseconds: 180);
-  static const Duration medium = Duration(milliseconds: 320);
-  static const Duration long = Duration(milliseconds: 460);
 
-  static const Curve emphasized = Cubic(0.2, 0.0, 0.0, 1.0);
-  static const Curve emphasizedDecelerate = Cubic(0.05, 0.7, 0.1, 1.0);
-  static const Curve emphasizedAccelerate = Cubic(0.3, 0.0, 0.8, 0.15);
+  static const Duration medium = Duration(milliseconds: 240);
 
-  static const Curve spring = Cubic(0.34, 1.4, 0.64, 1.0);
+  static const Duration long = Duration(milliseconds: 320);
+
+  static const Duration page = Duration(milliseconds: 420);
+
+  static const Curve enter = Cubic(0.23, 1.0, 0.32, 1.0);
+
+  static const Curve move = Cubic(0.77, 0.0, 0.175, 1.0);
+
+  static const Curve exit = Cubic(0.3, 0.0, 0.8, 0.15);
+
+  static const Curve drawer = Cubic(0.32, 0.72, 0.0, 1.0);
+
+  static const Curve bounce = Cubic(0.34, 1.16, 0.64, 1.0);
+
+  static const Curve emphasized = move;
+  static const Curve emphasizedDecelerate = enter;
+  static const Curve emphasizedAccelerate = exit;
+
+  @Deprecated('Используйте AppMotion.enter, а для редких моментов — bounce')
+  static const Curve spring = bounce;
 }
 
 class AppRadius {
   const AppRadius._();
 
-  static const double xs = 4;
-  static const double sm = 6;
-  static const double md = 8;
-  static const double lg = 12;
-  static const double xl = 16;
+  static const double xs = 6;
+  static const double sm = 10;
+  static const double md = 14;
+  static const double lg = 20;
+  static const double xl = 28;
   static const double full = 999;
 
   static BorderRadius get small => BorderRadius.circular(sm);
   static BorderRadius get medium => BorderRadius.circular(md);
   static BorderRadius get large => BorderRadius.circular(lg);
   static BorderRadius get extraLarge => BorderRadius.circular(xl);
+}
+
+/// Размеры, повторяющиеся в разметке.
+class AppSizes {
+  const AppSizes._();
+
+  static const double buttonHeight = 48;
+
+  static const double buttonHeightDense = 40;
+
+  static const double readableWidth = 560;
 }
 
 class AppSpacing {
@@ -44,11 +74,28 @@ class AppSpacing {
 class AppBreakpoints {
   const AppBreakpoints._();
 
+  /// Начиная с этой ширины показываем раскладку с боковыми панелями.
   static const double wide = 900;
 
+  /// Ниже этой ширины интерфейс уплотняется (размеры, а не структура).
   static const double compact = 600;
 
   static bool isWide(BoxConstraints constraints) => constraints.maxWidth >= wide;
+}
+
+@immutable
+class AppMotionSettings extends ThemeExtension<AppMotionSettings> {
+  const AppMotionSettings({required this.reduceMotion});
+
+  final bool reduceMotion;
+
+  @override
+  AppMotionSettings copyWith({bool? reduceMotion}) =>
+      AppMotionSettings(reduceMotion: reduceMotion ?? this.reduceMotion);
+
+  @override
+  AppMotionSettings lerp(ThemeExtension<AppMotionSettings>? other, double t) =>
+      other is AppMotionSettings ? other : this;
 }
 
 @immutable
@@ -134,8 +181,11 @@ class AppTheme {
 
   static const Color spotifyGreen = Color(0xFF1DB954);
 
+  static TextStyle mono([TextStyle? style]) =>
+      GoogleFonts.jetBrainsMono(textStyle: style);
+
   static TextTheme _textTheme(TextTheme base, Color onSurface) {
-    final t = GoogleFonts.interTextTheme(base);
+    final t = GoogleFonts.onestTextTheme(base);
     return t
         .copyWith(
           displaySmall: t.displaySmall?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -1),
@@ -169,7 +219,10 @@ class AppTheme {
       textTheme: text,
       visualDensity: density,
       splashFactory: reduceMotion ? NoSplash.splashFactory : InkSparkle.splashFactory,
-      extensions: <ThemeExtension<dynamic>>[roles],
+      extensions: <ThemeExtension<dynamic>>[
+        roles,
+        AppMotionSettings(reduceMotion: reduceMotion),
+      ],
 
       pageTransitionsTheme: reduceMotion
           ? const PageTransitionsTheme(
@@ -246,9 +299,10 @@ class AppTheme {
         style: FilledButton.styleFrom(
           backgroundColor: roles.mine,
           foregroundColor: roles.onMine,
-          minimumSize: const Size.fromHeight(52),
+          minimumSize: const Size(96, AppSizes.buttonHeight),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           textStyle: text.labelLarge?.copyWith(fontSize: 15),
-          shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
+          shape: const StadiumBorder(),
         ),
       ),
 
@@ -256,28 +310,32 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: roles.mine,
           foregroundColor: roles.onMine,
-          minimumSize: const Size.fromHeight(52),
+          minimumSize: const Size(96, AppSizes.buttonHeight),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           elevation: 0,
           textStyle: text.labelLarge?.copyWith(fontSize: 15),
-          shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
+          shape: const StadiumBorder(),
         ),
       ),
 
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: scheme.onSurface,
-          minimumSize: const Size.fromHeight(48),
+          minimumSize: const Size(96, AppSizes.buttonHeightDense),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           textStyle: text.labelLarge,
           side: BorderSide(color: scheme.outlineVariant),
-          shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
+          shape: const StadiumBorder(),
         ),
       ),
 
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: roles.mine,
+          minimumSize: const Size(0, AppSizes.buttonHeightDense),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
           textStyle: text.labelLarge,
-          shape: RoundedRectangleBorder(borderRadius: AppRadius.small),
+          shape: const StadiumBorder(),
         ),
       ),
 
@@ -287,7 +345,7 @@ class AppTheme {
         elevation: 0,
         focusElevation: 0,
         hoverElevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
+        shape: const StadiumBorder(),
         extendedTextStyle: text.labelLarge?.copyWith(fontSize: 15),
       ),
 
@@ -382,13 +440,16 @@ class AppTheme {
         brightness: Brightness.light,
       ).copyWith(
         primary: _olive,
-        surface: const Color(0xFFFCFAF3),
+        surface: const Color(0xFFFAFAFA),
         surfaceContainerLowest: const Color(0xFFFFFFFF),
-        surfaceContainerLow: const Color(0xFFF8F5EC),
-        surfaceContainer: const Color(0xFFF2EFE5),
-        surfaceContainerHigh: const Color(0xFFECE9DE),
-        surfaceContainerHighest: const Color(0xFFE6E3D8),
-        outlineVariant: const Color(0xFFDCD8CB),
+        surfaceContainerLow: const Color(0xFFF4F4F4),
+        surfaceContainer: const Color(0xFFEEEEEE),
+        surfaceContainerHigh: const Color(0xFFE7E7E7),
+        surfaceContainerHighest: const Color(0xFFE0E0E0),
+        onSurface: const Color(0xFF1A1A1A),
+        onSurfaceVariant: const Color(0xFF5E5E5E),
+        outline: const Color(0xFF8A8A8A),
+        outlineVariant: const Color(0xFFD6D6D6),
       );
 
   static ColorScheme get _darkScheme => ColorScheme.fromSeed(
@@ -396,13 +457,16 @@ class AppTheme {
         brightness: Brightness.dark,
       ).copyWith(
         primary: _lime,
-        surface: const Color(0xFF101210),
-        surfaceContainerLowest: const Color(0xFF0A0B0A),
-        surfaceContainerLow: const Color(0xFF161816),
-        surfaceContainer: const Color(0xFF1B1E1B),
-        surfaceContainerHigh: const Color(0xFF232622),
-        surfaceContainerHighest: const Color(0xFF2C302B),
-        outlineVariant: const Color(0xFF343A33),
+        surface: const Color(0xFF121212),
+        surfaceContainerLowest: const Color(0xFF0B0B0B),
+        surfaceContainerLow: const Color(0xFF191919),
+        surfaceContainer: const Color(0xFF1F1F1F),
+        surfaceContainerHigh: const Color(0xFF272727),
+        surfaceContainerHighest: const Color(0xFF303030),
+        onSurface: const Color(0xFFEDEDED),
+        onSurfaceVariant: const Color(0xFFA6A6A6),
+        outline: const Color(0xFF6E6E6E),
+        outlineVariant: const Color(0xFF3A3A3A),
       );
 
   static const AppRoleColors _lightRoles = AppRoleColors(
@@ -462,8 +526,23 @@ extension AppThemeContext on BuildContext {
 
   AppRoleColors get brand => roles;
 
+  TextStyle timecode({double? fontSize, Color? color, FontWeight? weight}) {
+    final base = Theme.of(this).textTheme.bodySmall;
+    return AppTheme.mono(base).copyWith(
+      fontSize: fontSize,
+      color: color ?? Theme.of(this).colorScheme.onSurfaceVariant,
+      fontWeight: weight,
+      fontFeatures: const [FontFeature.tabularFigures()],
+      letterSpacing: 0,
+    );
+  }
+
   bool get isWideWindow =>
       MediaQuery.sizeOf(this).width >= AppBreakpoints.wide;
+
+  bool get reduceMotion =>
+      (Theme.of(this).extension<AppMotionSettings>()?.reduceMotion ?? false) ||
+      (MediaQuery.maybeOf(this)?.disableAnimations ?? false);
 }
 
 class _NoTransitionsBuilder extends PageTransitionsBuilder {

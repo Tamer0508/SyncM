@@ -36,8 +36,8 @@ class _InteractiveCardState extends State<InteractiveCard> {
       padding: widget.margin ?? EdgeInsets.zero,
       child: AnimatedScale(
         scale: _pressed ? 0.98 : 1.0,
-        duration: AppMotion.short,
-        curve: AppMotion.emphasized,
+        duration: AppMotion.press,
+        curve: AppMotion.enter,
         child: Material(
           color: widget.color ?? context.colors.surfaceContainerLow,
           borderRadius: radius,

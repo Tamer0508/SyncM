@@ -33,8 +33,8 @@ class MiniPlayer extends StatelessWidget {
             child: child,
           );
         },
-        transitionDuration: AppMotion.long,
-        reverseTransitionDuration: AppMotion.medium,
+        transitionDuration: AppMotion.page,
+        reverseTransitionDuration: AppMotion.long,
       ),
     );
   }
@@ -161,7 +161,7 @@ class _PlayButton extends StatelessWidget {
       icon: AnimatedSwitcher(
         duration: AppMotion.short,
         transitionBuilder: (child, animation) => ScaleTransition(
-          scale: CurvedAnimation(parent: animation, curve: AppMotion.spring),
+          scale: CurvedAnimation(parent: animation, curve: AppMotion.enter),
           child: child,
         ),
         child: Icon(

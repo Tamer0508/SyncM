@@ -259,7 +259,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         sliverAppBar,
         if (_loading)
           SliverFillRemaining(
-            child: const SkeletonList(itemCount: 8, avatarRadius: 24),
+            child: const SkeletonTrackList(itemCount: 8),
           )
         else if (_unavailable)
           SliverFillRemaining(

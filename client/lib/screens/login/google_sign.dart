@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/oauth_loopback.dart';
+import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
 
@@ -32,7 +33,7 @@ class GoogleSignInButton extends StatelessWidget {
     } else {
       return ElevatedButton(
         style: ElevatedButton.styleFrom(
-          minimumSize: const Size.fromHeight(48),
+          minimumSize: const Size.fromHeight(AppSizes.buttonHeight),
         ),
         onPressed: () =>
             _isWindows ? _handleWindowsSignIn(context) : _handleSignIn(context),

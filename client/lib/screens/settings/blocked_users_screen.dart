@@ -6,6 +6,7 @@ import '../../providers/friends_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/screen_chrome.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
 
@@ -169,28 +170,10 @@ class _EmptyBlocked extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.block_rounded,
-                size: 64, color: colors.onSurfaceVariant.withValues(alpha: 0.5)),
-            const SizedBox(height: AppSpacing.lg),
-            Text('Список пуст', style: texts.titleLarge, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Заблокировать можно из профиля пользователя.',
-              textAlign: TextAlign.center,
-              style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ),
+    return const EmptyState(
+      icon: Icons.block_rounded,
+      title: 'Никто не заблокирован',
+      message: 'Заблокировать можно из профиля человека или из списка друзей.',
     );
   }
 }

@@ -6,6 +6,7 @@ import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../widgets/screen_chrome.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/skeleton.dart';
 
 /// История прослушанного.
@@ -126,7 +127,7 @@ class _PlayHistoryScreenState extends State<PlayHistoryScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const SingleChildScrollView(child: SkeletonList(itemCount: 6));
+      return const SingleChildScrollView(child: SkeletonTrackList(itemCount: 6));
     }
 
     if (_items.isEmpty) return const _EmptyHistory();
@@ -182,28 +183,10 @@ class _EmptyHistory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.history_rounded,
-                size: 64, color: colors.onSurfaceVariant.withValues(alpha: 0.5)),
-            const SizedBox(height: AppSpacing.lg),
-            Text('Пока пусто', style: texts.titleLarge, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Здесь появятся треки, которые вы включали в приложении.',
-              textAlign: TextAlign.center,
-              style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ),
+    return const EmptyState(
+      icon: Icons.history_rounded,
+      title: 'История пуста',
+      message: 'Здесь появятся треки, которые вы включали в SyncM.',
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Кнопка-иконка с единым оформлением.
+import 'pressable.dart';
+
 class AppIconButton extends StatelessWidget {
   const AppIconButton({
     super.key,
@@ -19,12 +20,16 @@ class AppIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: onPressed,
-      icon: Icon(icon, size: size),
-      color: color,
-      tooltip: (tooltip != null && tooltip!.isNotEmpty) ? tooltip : null,
-      visualDensity: VisualDensity.compact,
+    return Pressable(
+      enabled: onPressed != null,
+      scale: 0.9,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: size),
+        color: color,
+        tooltip: (tooltip != null && tooltip!.isNotEmpty) ? tooltip : null,
+        visualDensity: VisualDensity.compact,
+      ),
     );
   }
 }

@@ -233,7 +233,7 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
 
   Widget _buildTracks() {
     if (_loadingTracks) {
-      return const SingleChildScrollView(child: SkeletonList(itemCount: 8));
+      return const SingleChildScrollView(child: SkeletonTrackList(itemCount: 8));
     }
 
     if (_tracks.isEmpty) {

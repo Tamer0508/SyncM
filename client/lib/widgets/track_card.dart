@@ -165,14 +165,10 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
                     const SizedBox(width: AppSpacing.sm),
                     Text(
                       _formatDuration(widget.durationMs!),
-                      style: texts.bodySmall?.copyWith(
+                      style: context.timecode(
                         color: highlighted
                             ? colors.onPrimaryContainer.withValues(alpha: 0.75)
                             : colors.onSurfaceVariant,
-                        // Моноширинные цифры: без них строки «3:07» и «3:11»
-                        // имеют разную ширину, и колонка длительностей
-                        // «дрожит» при прокрутке списка.
-                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ],

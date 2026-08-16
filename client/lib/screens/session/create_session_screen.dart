@@ -170,7 +170,8 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
           ),
 
         const SizedBox(height: AppSpacing.lg),
-        FilledButton(
+        Center(
+          child: FilledButton(
           onPressed: _canSubmit ? _create : null,
           child: _creating
               ? SizedBox(
@@ -178,7 +179,8 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
                   width: 20,
                   child: CircularProgressIndicator(strokeWidth: 2, color: colors.onPrimary),
                 )
-              : const Text('Создать сессию'),
+              : const Text('Начать сессию'),
+          ),
         ),
 
         // Подсказка о том, чего не хватает, вместо постоянного текста ошибки

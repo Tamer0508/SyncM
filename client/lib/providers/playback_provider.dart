@@ -7,6 +7,7 @@ import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:spotify_sdk/models/player_state.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/sync_phase.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../services/session_foreground_service.dart';
@@ -177,6 +178,34 @@ class PlaybackProvider extends ChangeNotifier {
 
   DateTime? _positionAnchorAt;
   Uint8List? get currentImageBytes => _currentImageBytes;
+
+  /// Идёт ли сейчас подстройка: подготовка трека, перемотка по команде
+  /// сервера, автопереход к следующему.
+  ///
+  /// Три разных механизма, но для человека это одно и то же состояние —
+  /// «сейчас подравняемся».
+  bool get isSyncing =>
+      _sessionMode &&
+      (_isSessionSeeking ||
+          _isAdvancingQueue ||
+          (_preparedTrackId != null && !_isReadySent));
+
+  /// Насколько сессия сейчас сходится, одним значением.
+  ///
+  /// Выведено здесь, а не в виджете: провайдер — единственное место, где
+  /// собраны все три признака (режим сессии, пауза, подстройка), и решать по
+  /// ним где-то ещё значило бы дублировать эту логику.
+  ///
+  /// `waiting` намеренно означает не «ждём второго участника» — про состав
+  /// сессии провайдер не знает, — а «трек готовится, звук вот-вот пойдёт
+  /// одновременно у всех». Кто в сессии, знает экран, и он вправе показать
+  /// waiting по своей причине.
+  SyncPhase get syncPhase {
+    if (!_sessionMode || _currentSessionId == null) return SyncPhase.idle;
+    if (isSyncing) return SyncPhase.drifting;
+    if (_sessionPaused || !_isPlaying) return SyncPhase.waiting;
+    return SyncPhase.synced;
+  }
 
   bool get shuffleActive => _shuffleActive;
   String get repeatMode => _repeatMode;
@@ -452,17 +481,27 @@ class PlaybackProvider extends ChangeNotifier {
     // Без явной очистки старые обработчики остаются висеть на сокете, и
     // ОДНО серверное событие (например session_prepare) обрабатывается
     // несколько раз подряд — это и вызывало повторные "скипы" трека.
+    //
+    // Отменяем ИМЕННО свои подписки. Раньше здесь снимались все обработчики
+    // события целиком, и заодно улетал обработчик session_ended из
+    // SessionProvider — навсегда, потому что его init вызывается один раз за
+    // запуск приложения.
     _sessionSubscriptions.cancelAll();
 
     socketService.emit('join_session', {'sessionId': sessionId});
     socketService.setActiveSession(sessionId); // Фаза 6: для авто-ресинка
     _startSessionUiTicker();
+    // Шаг 2: удерживаем приложение живым в фоне на время сессии (Android).
+    // Удержание экрана — отдельная настройка: кто-то кладёт телефон в карман
+    // и не хочет, чтобы экран горел всю сессию.
     SessionForegroundService.start(
       keepScreenOn: LocalStore.readBool(StoreKeys.keepScreenOn, defaultValue: true),
     );
 
+    // ─── Фаза 2: Получаем команду подготовить трек ─────────────────────────
     _sessionSubscriptions.add(socketService.on('session_prepare', handleServerPrepare));
 
+    // ─── Фаза 3: Синхронный старт ───────────────────────────────────────────
     _sessionSubscriptions.add(socketService.on('session_start', (data) async {
       _sessionPaused = false;
       final map = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
@@ -1725,6 +1764,10 @@ class PlaybackProvider extends ChangeNotifier {
     // удерживают ссылку на закрытый провайдер и продолжают вызывать
     // notifyListeners() на нём, что приводит к исключению «A
     // PlaybackProvider was used after being disposed».
+    //
+    // Список подписок, а не список имён событий: раньше здесь читалось поле
+    // _socketService, которое stop() успевал обнулить, и до этого места
+    // отписка просто не доходила.
     _sessionSubscriptions.cancelAll();
 
     super.dispose();

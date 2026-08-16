@@ -50,7 +50,7 @@ Future<void> connectSpotify(BuildContext context) async {
         await auth.fetchMe();
         if (context.mounted) {
           showAppNotification(context,
-              message: 'Spotify успешно подключён!',
+              message: 'Spotify подключён',
               type: NotificationType.success);
         }
       }
@@ -78,7 +78,7 @@ Future<void> connectSpotify(BuildContext context) async {
     } else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
     await auth.fetchMe();
     if (context.mounted) {
-      showAppNotification(context, message: 'Spotify успешно подключён!', type: NotificationType.success);
+      showAppNotification(context, message: 'Spotify подключён', type: NotificationType.success);
     }
   }
 }
@@ -108,7 +108,7 @@ Future<void> disconnectSpotify(BuildContext context) async {
               final auth = Provider.of<AuthProvider>(context, listen: false);
               await auth.fetchMe();
               if (context.mounted) {
-                showAppNotification(context, message: 'Spotify отключен', type: NotificationType.success);
+                showAppNotification(context, message: 'Spotify отключён', type: NotificationType.success);
               }
             } catch (e) {
               if (context.mounted) showError(context, e);

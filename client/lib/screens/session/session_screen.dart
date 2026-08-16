@@ -9,11 +9,14 @@ import '../../providers/playback_provider.dart';
 import '../../utils/notifications.dart';
 import '../player/now_playing.dart';
 import '../../services/socket_service.dart';
+import '../../models/sync_phase.dart';
 import '../../theme.dart';
 import '../../utils/local_store.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/screen_chrome.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/tappable_avatar.dart';
+import '../../widgets/sync_mark.dart';
 import '../../widgets/track_card.dart';
 
 class SessionScreen extends StatefulWidget {
@@ -191,6 +194,7 @@ class _SessionScreenState extends State<SessionScreen> {
 
   StreamSubscription<void>? _reconnectSub;
 
+  /// Свои подписки на события сокета.
   final List<SocketSubscription> _subscriptions = [];
 
   void _setupSessionSocketListeners(SocketService socket) {
@@ -381,6 +385,9 @@ class _SessionScreenState extends State<SessionScreen> {
               members: members,
               onlineUserIds: _onlineUserIds,
               trackCount: tracks.length,
+              waitingForOthers: members
+                  .where((m) => m['status'] == 'accepted')
+                  .any((m) => !_onlineUserIds.contains(m['userId'])),
             ),
           ),
           if (tracks.isEmpty)
@@ -515,11 +522,13 @@ class _SessionHeader extends StatelessWidget {
     required this.members,
     required this.onlineUserIds,
     required this.trackCount,
+    required this.waitingForOthers,
   });
 
   final List<Map> members;
   final Set<String> onlineUserIds;
   final int trackCount;
+  final bool waitingForOthers;
 
   @override
   Widget build(BuildContext context) {
@@ -527,6 +536,11 @@ class _SessionHeader extends StatelessWidget {
     final texts = context.texts;
 
     final accepted = members.where((m) => m['status'] == 'accepted').toList();
+
+    final phase = context.select<PlaybackProvider, SyncPhase>((pb) => pb.syncPhase);
+    final shown = waitingForOthers && phase == SyncPhase.synced
+        ? SyncPhase.waiting
+        : phase;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -538,6 +552,23 @@ class _SessionHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Center(
+            child: Column(
+              children: [
+                SyncMark(state: shown, size: 76),
+                const SizedBox(height: AppSpacing.sm),
+                AnimatedSwitcher(
+                  duration: AppMotion.short,
+                  child: Text(
+                    _labelFor(shown),
+                    key: ValueKey(shown),
+                    style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
           Row(
             children: [
               for (final member in accepted) ...[
@@ -564,6 +595,13 @@ class _SessionHeader extends StatelessWidget {
       ),
     );
   }
+
+  static String _labelFor(SyncPhase phase) => switch (phase) {
+        SyncPhase.idle => 'Сессия не запущена',
+        SyncPhase.waiting => 'Ждём второго',
+        SyncPhase.synced => 'Звучит одновременно',
+        SyncPhase.drifting => 'Подстраиваемся',
+      };
 }
 
 class _MemberChip extends StatelessWidget {
@@ -628,37 +666,12 @@ class _EmptyTracksView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.library_music_outlined,
-              size: 72,
-              color: colors.primary.withValues(alpha: 0.4),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Text('Очередь пуста', style: texts.titleLarge, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Добавьте треки из своих плейлистов — их услышат все участники.',
-              textAlign: TextAlign.center,
-              style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            FilledButton.icon(
-              onPressed: onAddTracks,
-              icon: const Icon(Icons.playlist_add_rounded),
-              label: const Text('Добавить треки'),
-            ),
-          ],
-        ),
-      ),
+    return EmptyState(
+      icon: Icons.library_music_outlined,
+      title: 'Очередь пуста',
+      message: 'Добавьте треки из своих плейлистов, их услышат все участники.',
+      actionLabel: 'Добавить треки',
+      onAction: onAddTracks,
     );
   }
 }
@@ -795,7 +808,7 @@ class _RatingButton extends StatelessWidget {
       icon: AnimatedSwitcher(
         duration: AppMotion.short,
         transitionBuilder: (child, animation) => ScaleTransition(
-          scale: CurvedAnimation(parent: animation, curve: AppMotion.spring),
+          scale: CurvedAnimation(parent: animation, curve: AppMotion.enter),
           child: child,
         ),
         child: Icon(

@@ -810,7 +810,7 @@ class _Controls extends StatelessWidget {
             icon: AnimatedSwitcher(
               duration: AppMotion.short,
               transitionBuilder: (child, animation) => ScaleTransition(
-                scale: CurvedAnimation(parent: animation, curve: AppMotion.spring),
+                scale: CurvedAnimation(parent: animation, curve: AppMotion.enter),
                 child: child,
               ),
               child: Icon(
@@ -932,19 +932,11 @@ class _NowPlayingProgressBar extends StatelessWidget {
             children: [
               Text(
                 _format(positionMs),
-                style: context.texts.bodySmall?.copyWith(
-                  color: Colors.white70,
-                  // Моноширинные цифры: иначе левая метка дёргается по
-                  // ширине на каждой секунде и «толкает» полосу.
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+                style: context.timecode(color: Colors.white70),
               ),
               Text(
                 _format(durationMs),
-                style: context.texts.bodySmall?.copyWith(
-                  color: Colors.white70,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+                style: context.timecode(color: Colors.white70),
               ),
             ],
           ),

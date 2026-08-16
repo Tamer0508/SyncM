@@ -6,6 +6,7 @@ import '../../providers/session_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/screen_chrome.dart';
 import '../../widgets/skeleton.dart';
 
@@ -69,10 +70,7 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
         }
         Navigator.of(context).pushReplacementNamed('/session', arguments: session);
       } else {
-        // Сессия принята, но данных для перехода нет — сообщаем об этом
-        // вместо молчания: раньше экран просто оставался на месте, и было
-        // непонятно, сработало ли нажатие.
-        showSuccess(context, 'Вы присоединились к сессии');
+        showSuccess(context, 'Приглашение принято');
       }
     } catch (err) {
       if (!mounted) return;
@@ -137,29 +135,13 @@ class _EmptyInvitesView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.mail_outline_rounded,
-            size: 72,
-            color: colors.primary.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text('Приглашений нет', style: texts.titleLarge, textAlign: TextAlign.center),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Когда друг позовёт вас слушать музыку вместе, приглашение появится здесь.',
-            textAlign: TextAlign.center,
-            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-          ),
-        ],
-      ),
+    return EmptyState(
+      icon: Icons.mail_outline_rounded,
+      title: 'Приглашений пока нет',
+      message: 'Друг позовёт, приглашение появится здесь. Можно и не ждать: '
+          'начните сессию сами.',
+      actionLabel: 'Начать сессию',
+      onAction: () => Navigator.of(context).pushNamed('/session/create'),
     );
   }
 }

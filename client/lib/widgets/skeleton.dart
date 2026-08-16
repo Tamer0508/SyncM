@@ -6,7 +6,6 @@ class Skeleton extends StatefulWidget {
   const Skeleton({super.key, required this.child, this.enabled = true});
 
   final Widget child;
-
   final bool enabled;
 
   @override
@@ -46,21 +45,20 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
   Widget build(BuildContext context) {
     if (!widget.enabled) return widget.child;
 
+    if (context.reduceMotion) return widget.child;
+
     final colors = context.colors;
-    final base = colors.surfaceContainerHighest;
-    final highlight = colors.surfaceContainerHigh;
+    final base = colors.surfaceContainerHigh;
+    final highlight = colors.surfaceContainerHighest;
 
     return RepaintBoundary(
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
+          final slide = _controller.value * 2 - 0.5;
           return ShaderMask(
             blendMode: BlendMode.srcATop,
             shaderCallback: (bounds) {
-              // Полоса света проходит слева направо. Диапазон шире границ,
-              // чтобы блик успевал полностью уйти за край и не «мигал» на
-              // стыке циклов.
-              final slide = _controller.value * 2 - 0.5;
               return LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
@@ -88,11 +86,14 @@ class SkeletonBox extends StatelessWidget {
     this.width,
     this.height = 16,
     this.borderRadius,
+    this.circle = false,
   });
 
   final double? width;
   final double height;
   final BorderRadius? borderRadius;
+
+  final bool circle;
 
   @override
   Widget build(BuildContext context) {
@@ -100,8 +101,10 @@ class SkeletonBox extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: context.colors.surfaceContainerHighest,
-        borderRadius: borderRadius ?? BorderRadius.circular(AppRadius.xs),
+        color: context.colors.surfaceContainerHigh,
+        shape: circle ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius:
+            circle ? null : (borderRadius ?? BorderRadius.circular(AppRadius.xs)),
       ),
     );
   }
@@ -128,17 +131,15 @@ class SkeletonListTile extends StatelessWidget {
           SkeletonBox(
             width: avatarRadius * 2,
             height: avatarRadius * 2,
-            borderRadius: BorderRadius.circular(avatarRadius),
+            circle: true,
           ),
           const SizedBox(width: AppSpacing.sm + 4),
-          Expanded(
+          const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Ширины намеренно разные и не круглые: одинаковые полосы
-                // выглядят как таблица, а не как имена разной длины.
-                const SkeletonBox(width: 140, height: 14),
-                const SizedBox(height: AppSpacing.sm),
+                SkeletonBox(width: 140, height: 14),
+                SizedBox(height: AppSpacing.sm),
                 SkeletonBox(width: 90, height: 11),
               ],
             ),
@@ -149,18 +150,69 @@ class SkeletonListTile extends StatelessWidget {
   }
 }
 
-/// Список заглушек-строк.
+class SkeletonTrackTile extends StatelessWidget {
+  const SkeletonTrackTile({
+    super.key,
+    this.titleWidth = 180,
+    this.artistWidth = 110,
+  });
+
+  final double titleWidth;
+  final double artistWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm + 2,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceContainerLow,
+        borderRadius: AppRadius.medium,
+      ),
+      child: Row(
+        children: [
+          SkeletonBox(width: 48, height: 48, borderRadius: AppRadius.small),
+          const SizedBox(width: AppSpacing.sm + 4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonBox(width: titleWidth, height: 14),
+                const SizedBox(height: AppSpacing.sm),
+                SkeletonBox(width: artistWidth, height: 11),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          const SkeletonBox(width: 32, height: 11),
+          const SizedBox(width: AppSpacing.md),
+          const SkeletonBox(width: 20, height: 20, circle: true),
+          const SizedBox(width: AppSpacing.sm + 4),
+          const SkeletonBox(width: 4, height: 18),
+        ],
+      ),
+    );
+  }
+}
+
 class SkeletonList extends StatelessWidget {
   const SkeletonList({
     super.key,
     this.itemCount = 5,
     this.padding,
     this.avatarRadius = 24,
+    this.itemBuilder,
+    this.spacing = AppSpacing.xs,
   });
 
   final int itemCount;
   final EdgeInsetsGeometry? padding;
   final double avatarRadius;
+  final double spacing;
+
+  final Widget Function(BuildContext context, int index)? itemBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -171,12 +223,138 @@ class SkeletonList extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var i = 0; i < itemCount; i++) ...[
-              if (i > 0) const SizedBox(height: AppSpacing.xs),
-              SkeletonListTile(avatarRadius: avatarRadius),
+              if (i > 0) SizedBox(height: spacing),
+              itemBuilder?.call(context, i) ??
+                  SkeletonListTile(avatarRadius: avatarRadius),
             ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class SkeletonTrackList extends StatelessWidget {
+  const SkeletonTrackList({super.key, this.itemCount = 8, this.padding});
+
+  final int itemCount;
+  final EdgeInsetsGeometry? padding;
+
+  static const _titleWidths = [180.0, 132.0, 214.0, 156.0, 198.0];
+  static const _artistWidths = [110.0, 84.0, 138.0, 96.0, 120.0];
+
+  @override
+  Widget build(BuildContext context) {
+    return SkeletonList(
+      itemCount: itemCount,
+      padding: padding,
+      itemBuilder: (context, i) => SkeletonTrackTile(
+        titleWidth: _titleWidths[i % _titleWidths.length],
+        artistWidth: _artistWidths[i % _artistWidths.length],
+      ),
+    );
+  }
+}
+
+class SkeletonSessionCard extends StatelessWidget {
+  const SkeletonSessionCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: context.colors.surfaceContainerLow,
+          borderRadius: AppRadius.large,
+        ),
+        child: Column(
+          children: [
+            // Два круга внахлёст — тот же знак, что появится.
+            const SizedBox(
+              height: 44,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(right: 34),
+                    child: SkeletonBox(width: 44, height: 44, circle: true),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.only(left: 34),
+                    child: SkeletonBox(width: 44, height: 44, circle: true),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            const SkeletonBox(width: 168, height: 18),
+            const SizedBox(height: AppSpacing.sm + 2),
+            const SkeletonBox(width: 280, height: 12),
+            const SizedBox(height: AppSpacing.lg),
+            SkeletonBox(
+              width: 176,
+              height: AppSizes.buttonHeight,
+              borderRadius: BorderRadius.circular(AppRadius.full),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SkeletonProfileHeader extends StatelessWidget {
+  const SkeletonProfileHeader({super.key, this.avatarRadius = 48});
+
+  final double avatarRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Row(
+          children: [
+            SkeletonBox(
+              width: avatarRadius * 2,
+              height: avatarRadius * 2,
+              circle: true,
+            ),
+            const SizedBox(width: AppSpacing.lg),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(width: 64, height: 11),
+                  SizedBox(height: AppSpacing.sm + 2),
+                  SkeletonBox(width: 210, height: 28),
+                  SizedBox(height: AppSpacing.sm + 2),
+                  SkeletonBox(width: 148, height: 12),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SkeletonSectionHeader extends StatelessWidget {
+  const SkeletonSectionHeader({super.key, this.titleWidth = 156});
+
+  final double titleWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SkeletonBox(width: titleWidth, height: 20),
+        const SizedBox(height: AppSpacing.sm),
+        const SkeletonBox(width: 108, height: 11),
+      ],
     );
   }
 }

@@ -20,6 +20,8 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../theme.dart';
+import '../../models/sync_phase.dart';
+import '../../widgets/sync_mark.dart';
 import '../../utils/local_store.dart';
 import '../../widgets/animated_notification_button.dart';
 import '../../utils/error_utils.dart';
@@ -258,7 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
 
                 if (prov.loading && sessions.isEmpty)
-                  const SkeletonList(itemCount: 1, avatarRadius: 22, padding: EdgeInsets.zero)
+                  const SkeletonSessionCard()
                 else if (sessions.isEmpty)
                   _StartSessionCard(onStart: startSession)
                 else ...[
@@ -675,7 +677,7 @@ class _HomeScreenState extends State<HomeScreen> {
           AppIconButton(
             icon: Icons.add_rounded,
             onPressed: () => _openOverlay(() => _creatingSession = true),
-            tooltip: 'Создать сессию',
+            tooltip: 'Начать сессию',
           ),
         ],
         AppIconButton(
@@ -1063,7 +1065,6 @@ class _StartSessionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final texts = context.texts;
-    final roles = context.roles;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -1074,26 +1075,9 @@ class _StartSessionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Два круга, соприкасающиеся краями, — весь смысл приложения одной
-          // картинкой: двое слушают одно. Тёплый круг «мой», холодный —
-          // собеседника; те же цвета закреплены за ролями по всему
-          // приложению, так что этот знак учит их читать.
-          SizedBox(
-            height: 56,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Transform.translate(
-                  offset: const Offset(-16, 0),
-                  child: _Dot(color: roles.mine),
-                ),
-                Transform.translate(
-                  offset: const Offset(16, 0),
-                  child: _Dot(color: roles.theirs),
-                ),
-              ],
-            ),
-          ),
+          // Знак состояния сессии. Здесь он в покое: карточка показывается
+          // ровно тогда, когда активной сессии нет.
+          const Center(child: SyncMark(state: SyncPhase.idle)),
           const SizedBox(height: AppSpacing.md),
           Text(
             'Слушайте вместе',
@@ -1108,30 +1092,14 @@ class _StartSessionCard extends StatelessWidget {
             style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpacing.lg),
-          FilledButton.icon(
-            onPressed: onStart,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Начать сессию'),
+          Center(
+            child: FilledButton.icon(
+              onPressed: onStart,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Начать сессию'),
+            ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _Dot extends StatelessWidget {
-  const _Dot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color.withValues(alpha: 0.9),
       ),
     );
   }

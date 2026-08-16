@@ -151,7 +151,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final mutualCount = _profileData?['mutualFriendsCount'] as int? ?? 0;
 
     final body = _loading && _profileData == null
-        ? const SingleChildScrollView(child: SkeletonList(itemCount: 4))
+        ? const SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonProfileHeader(),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.sm,
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                  ),
+                  child: SkeletonSectionHeader(titleWidth: 186),
+                ),
+                SkeletonTrackList(
+                  itemCount: 3,
+                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.lg,
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                  ),
+                  child: SkeletonSectionHeader(titleWidth: 148),
+                ),
+                SkeletonTrackList(
+                  itemCount: 4,
+                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                ),
+              ],
+            ),
+          )
         : _ProfileContent(
             key: ValueKey(_displayId),
             isOwnProfile: isOwnProfile,
@@ -399,7 +432,7 @@ class _ProfileContentState extends State<_ProfileContent> {
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: SkeletonList(itemCount: 3, padding: EdgeInsets.zero),
+              child: SkeletonTrackList(itemCount: 3, padding: EdgeInsets.zero),
             ),
           )
         else ...[

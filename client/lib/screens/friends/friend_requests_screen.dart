@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/screen_chrome.dart';
@@ -161,29 +162,13 @@ class _EmptyRequestsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.mark_email_read_rounded,
-            size: 72,
-            color: colors.primary.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text('Заявок нет', style: texts.titleLarge, textAlign: TextAlign.center),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Когда кто-то захочет добавить вас в друзья, заявка появится здесь.',
-            textAlign: TextAlign.center,
-            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-          ),
-        ],
-      ),
+    return EmptyState(
+      icon: Icons.mail_outline_rounded,
+      title: 'Заявок пока нет',
+      message: 'Здесь появятся приглашения в друзья. Отправить свою быстрее, '
+          'чем ждать.',
+      actionLabel: 'Найти друзей',
+      onAction: () => Navigator.of(context).pushNamed('/friends/search'),
     );
   }
 }

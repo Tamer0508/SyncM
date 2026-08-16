@@ -10,6 +10,7 @@ import '../../utils/error_utils.dart';
 import '../../widgets/animated_notification_button.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../widgets/friend_tile.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/skeleton.dart';
 
 class FriendsScreen extends StatefulWidget {
@@ -242,42 +243,12 @@ class _EmptyFriendsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.people_outline_rounded,
-            size: 88,
-            color: colors.primary.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text(
-            'Пока никого нет',
-            style: texts.headlineSmall,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Найдите друзей, чтобы вместе слушать музыку в общих сессиях.',
-            textAlign: TextAlign.center,
-            style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          FilledButton.icon(
-            onPressed: onFindFriends,
-            icon: const Icon(Icons.person_add_rounded),
-            label: const Text('Найти друзей'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(220, 52),
-            ),
-          ),
-        ],
-      ),
+    return EmptyState(
+      icon: Icons.people_outline_rounded,
+      title: 'Добавьте друзей',
+      message: 'С другом можно слушать музыку одновременно где бы вы ни были.',
+      actionLabel: 'Найти друзей',
+      onAction: onFindFriends,
     );
   }
 }
