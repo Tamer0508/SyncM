@@ -47,9 +47,7 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
 
     if (context.reduceMotion) return widget.child;
 
-    final colors = context.colors;
-    final base = colors.surfaceContainerHigh;
-    final highlight = colors.surfaceContainerHighest;
+    final highlight = context.colors.onSurface.withValues(alpha: 0.07);
 
     return RepaintBoundary(
       child: AnimatedBuilder(
@@ -62,11 +60,15 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
               return LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                colors: [base, highlight, base],
+                colors: [
+                  Colors.transparent,
+                  highlight,
+                  Colors.transparent,
+                ],
                 stops: [
-                  (slide - 0.3).clamp(0.0, 1.0),
+                  (slide - 0.25).clamp(0.0, 1.0),
                   slide.clamp(0.0, 1.0),
-                  (slide + 0.3).clamp(0.0, 1.0),
+                  (slide + 0.25).clamp(0.0, 1.0),
                 ],
               ).createShader(bounds);
             },
@@ -79,7 +81,6 @@ class _SkeletonState extends State<Skeleton> with SingleTickerProviderStateMixin
   }
 }
 
-/// Прямоугольник-заглушка.
 class SkeletonBox extends StatelessWidget {
   const SkeletonBox({
     super.key,
@@ -101,7 +102,7 @@ class SkeletonBox extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: context.colors.surfaceContainerHigh,
+        color: context.colors.surfaceContainerHighest,
         shape: circle ? BoxShape.circle : BoxShape.rectangle,
         borderRadius:
             circle ? null : (borderRadius ?? BorderRadius.circular(AppRadius.xs)),
@@ -117,14 +118,10 @@ class SkeletonListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm + 4,
         vertical: AppSpacing.sm + 2,
-      ),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceContainerLow,
-        borderRadius: AppRadius.large,
       ),
       child: Row(
         children: [
@@ -162,14 +159,10 @@ class SkeletonTrackTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm + 2,
         vertical: AppSpacing.sm,
-      ),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceContainerLow,
-        borderRadius: AppRadius.medium,
       ),
       child: Row(
         children: [
@@ -262,12 +255,8 @@ class SkeletonSessionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Skeleton(
-      child: Container(
+      child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: context.colors.surfaceContainerLow,
-          borderRadius: AppRadius.large,
-        ),
         child: Column(
           children: [
             // Два круга внахлёст — тот же знак, что появится.
@@ -305,37 +294,116 @@ class SkeletonSessionCard extends StatelessWidget {
 }
 
 class SkeletonProfileHeader extends StatelessWidget {
-  const SkeletonProfileHeader({super.key, this.avatarRadius = 48});
+  const SkeletonProfileHeader({super.key});
 
-  final double avatarRadius;
+  static const double _narrowWidth = 700;
 
   @override
   Widget build(BuildContext context) {
-    return Skeleton(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Row(
-          children: [
-            SkeletonBox(
-              width: avatarRadius * 2,
-              height: avatarRadius * 2,
-              circle: true,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < _narrowWidth;
+        final avatarSize = isNarrow ? 96.0 : 200.0;
+        final nameHeight = isNarrow ? 30.0 : 72.0;
+        final nameWidth = isNarrow ? 190.0 : 420.0;
+
+        return Skeleton(
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(
+              isNarrow ? AppSpacing.md : AppSpacing.xl,
+              MediaQuery.paddingOf(context).top + 64,
+              AppSpacing.lg,
+              AppSpacing.lg,
             ),
-            const SizedBox(width: AppSpacing.lg),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SkeletonBox(width: 64, height: 11),
-                  SizedBox(height: AppSpacing.sm + 2),
-                  SkeletonBox(width: 210, height: 28),
-                  SizedBox(height: AppSpacing.sm + 2),
-                  SkeletonBox(width: 148, height: 12),
-                ],
-              ),
+            child: Row(
+              crossAxisAlignment:
+                  isNarrow ? CrossAxisAlignment.center : CrossAxisAlignment.end,
+              children: [
+                SkeletonBox(width: avatarSize, height: avatarSize, circle: true),
+                SizedBox(width: isNarrow ? AppSpacing.md : AppSpacing.xl),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SkeletonBox(width: 62, height: 12),
+                      const SizedBox(height: AppSpacing.xs + 2),
+                      SkeletonBox(width: nameWidth, height: nameHeight),
+                      const SizedBox(height: AppSpacing.xs + 4),
+                      const SkeletonBox(width: 132, height: 13),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class SkeletonProfileTrackRow extends StatelessWidget {
+  const SkeletonProfileTrackRow({
+    super.key,
+    this.titleWidth = 180,
+    this.artistWidth = 110,
+  });
+
+  final double titleWidth;
+  final double artistWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 22,
+            child: Center(child: SkeletonBox(width: 8, height: 11)),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          SkeletonBox(width: 44, height: 44, borderRadius: AppRadius.small),
+          const SizedBox(width: AppSpacing.sm + 4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonBox(width: titleWidth, height: 13),
+                const SizedBox(height: AppSpacing.sm),
+                SkeletonBox(width: artistWidth, height: 11),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SkeletonProfileTrackList extends StatelessWidget {
+  const SkeletonProfileTrackList({super.key, this.itemCount = 4, this.padding});
+
+  final int itemCount;
+  final EdgeInsetsGeometry? padding;
+
+  static const _titleWidths = [188.0, 134.0, 220.0, 158.0, 202.0];
+  static const _artistWidths = [104.0, 86.0, 142.0, 98.0, 122.0];
+
+  @override
+  Widget build(BuildContext context) {
+    return SkeletonList(
+      itemCount: itemCount,
+      padding: padding ?? EdgeInsets.zero,
+      spacing: 0,
+      itemBuilder: (context, i) => SkeletonProfileTrackRow(
+        titleWidth: _titleWidths[i % _titleWidths.length],
+        artistWidth: _artistWidths[i % _artistWidths.length],
       ),
     );
   }

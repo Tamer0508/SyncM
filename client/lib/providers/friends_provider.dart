@@ -253,6 +253,18 @@ class FriendsProvider with ChangeNotifier {
     );
   }
 
+  void clear() {
+    _friends = [];
+    _friendRequests = [];
+    _friendsNextCursor = null;
+    _incomingNextCursor = null;
+    _friendsHasMore = true;
+    _incomingHasMore = true;
+    _friendsLoading = false;
+    _incomingLoading = false;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _detachSocket();

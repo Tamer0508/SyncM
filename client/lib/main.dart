@@ -166,6 +166,21 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
     Provider.of<SessionProvider>(context, listen: false).fetchInvites();
   }
 
+  void _resetSessionState() {
+    try {
+      context.read<PlaybackProvider>().resetForLogout();
+    } catch (err) {
+      debugPrint('Не удалось остановить воспроизведение при выходе: $err');
+    }
+    SocketService().disconnect();
+    try {
+      context.read<SessionProvider>().clear();
+      context.read<FriendsProvider>().clear();
+    } catch (err) {
+      debugPrint('Не удалось очистить списки при выходе: $err');
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -201,7 +216,13 @@ class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
           }
           return const HomeScreen();
         }
-        _socketInitialized = false;
+        if (_socketInitialized) {
+          _socketInitialized = false;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _resetSessionState();
+          });
+        }
         return const LoginScreen();
       },
     );

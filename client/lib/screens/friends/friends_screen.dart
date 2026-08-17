@@ -246,7 +246,7 @@ class _EmptyFriendsView extends StatelessWidget {
     return EmptyState(
       icon: Icons.people_outline_rounded,
       title: 'Добавьте друзей',
-      message: 'С другом можно слушать музыку одновременно где бы вы ни были.',
+      message: 'С другом можно слушать музыку одновременно, где бы вы ни были.',
       actionLabel: 'Найти друзей',
       onAction: onFindFriends,
     );
@@ -285,7 +285,7 @@ class _FriendsListView extends StatelessWidget {
         AppSpacing.xl,
       ),
       itemCount: friends.length + (showFooter ? 1 : 0),
-      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
+      separatorBuilder: (_, _) => const SizedBox(height: 3),
       itemBuilder: (context, i) {
         if (i >= friends.length) {
           if (isLoadingMore) {

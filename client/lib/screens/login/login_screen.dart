@@ -89,6 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final resp = await api.googleLogin(idToken);
         final user = resp['user'] as Map<String, dynamic>?;
         if (user != null) {
+          if (!mounted) return;
           final auth = Provider.of<AuthProvider>(context, listen: false);
           auth.setUser(auth.userFromMap(user));
           final issued = resp['authToken'] as String?;

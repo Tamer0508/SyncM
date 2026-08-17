@@ -954,8 +954,11 @@ class PlaybackProvider extends ChangeNotifier {
     }
   }
 
+  StreamSubscription<PlayerState>? _playerStateSub;
+
   void _subscribeToPlayerState() {
-    SpotifySdk.subscribePlayerState().listen((PlayerState state) async {
+    _playerStateSub?.cancel();
+    _playerStateSub = SpotifySdk.subscribePlayerState().listen((PlayerState state) async {
       _isPlaying = !state.isPaused;
       _durationMs = state.track?.duration ?? 0;
       _positionMs = state.playbackPosition;
@@ -1564,6 +1567,29 @@ class PlaybackProvider extends ChangeNotifier {
     stop();
   }
 
+  Future<void> resetForLogout() async {
+    await _playerStateSub?.cancel();
+    _playerStateSub = null;
+
+    stop();
+
+    try {
+      await SpotifySdk.disconnect();
+    } catch (err) {
+      // Связи могло и не быть — это не повод мешать выходу из аккаунта.
+      debugPrint('[Spotify] Отключение при выходе не удалось: $err');
+    }
+
+    _isConnected = false;
+    _durationMs = 0;
+    _positionMs = 0;
+    _lastActivePositionMs = 0;
+    _lastActiveDurationMs = 0;
+    _positionAnchorAt = null;
+    paletteCache.clear();
+    notifyListeners();
+  }
+
   void stop() {
     _pollingTimer?.cancel();
     _trackChangeTimer?.cancel();
@@ -1769,6 +1795,7 @@ class PlaybackProvider extends ChangeNotifier {
     // _socketService, которое stop() успевал обнулить, и до этого места
     // отписка просто не доходила.
     _sessionSubscriptions.cancelAll();
+    _playerStateSub?.cancel();
 
     super.dispose();
   }

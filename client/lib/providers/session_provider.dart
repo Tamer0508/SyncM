@@ -97,12 +97,6 @@ class SessionProvider with ChangeNotifier {
     }
   }
 
-  /// Загружает приглашения.
-  ///
-  /// Параметра `refresh` здесь нет намеренно: список приглашений всегда
-  /// перезаписывается целиком, страниц у него нет, и «обновить» — это
-  /// единственное, что метод умеет. Раньше параметр был, но не использовался,
-  /// и вызывающий код рассчитывал на поведение, которого не существовало.
   Future<void> fetchInvites() async {
     if (_invitesLoading) return;
     _invitesLoading = true;
@@ -268,6 +262,17 @@ class SessionProvider with ChangeNotifier {
       }
     }
     return null;
+  }
+
+  void clear() {
+    _sessions = [];
+    _invites = [];
+    _endedResults = null;
+    _openSessionRequest = null;
+    _selfEndedSessions.clear();
+    _loading = false;
+    _invitesLoading = false;
+    notifyListeners();
   }
 
   @override

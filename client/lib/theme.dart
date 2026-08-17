@@ -8,16 +8,22 @@ class AppMotion {
 
   static const Duration press = Duration(milliseconds: 140);
 
+  /// Подсказки, переключение иконок, смена цвета.
   static const Duration short = Duration(milliseconds: 180);
 
+  /// Раскрытие, всплывающие панели, появление карточек.
   static const Duration medium = Duration(milliseconds: 240);
 
+  /// Крупные элементы внутри экрана: диалоги, разъезжающиеся уведомления.
   static const Duration long = Duration(milliseconds: 320);
 
+  /// Смена экрана целиком. Единственное, чему позволено выходить за 300 мс.
   static const Duration page = Duration(milliseconds: 420);
 
+  /// Появление: начинается резко, замедляется к концу.
   static const Curve enter = Cubic(0.23, 1.0, 0.32, 1.0);
 
+  /// Перемещение по экрану: разгон и торможение симметричны.
   static const Curve move = Cubic(0.77, 0.0, 0.175, 1.0);
 
   static const Curve exit = Cubic(0.3, 0.0, 0.8, 0.15);
@@ -26,6 +32,7 @@ class AppMotion {
 
   static const Curve bounce = Cubic(0.34, 1.16, 0.64, 1.0);
 
+  // Прежние имена — чтобы не переписывать десятки мест разом.
   static const Curve emphasized = move;
   static const Curve emphasizedDecelerate = enter;
   static const Curve emphasizedAccelerate = exit;
@@ -43,6 +50,8 @@ class AppRadius {
   static const double lg = 20;
   static const double xl = 28;
   static const double full = 999;
+
+  static const double row = 4;
 
   static BorderRadius get small => BorderRadius.circular(sm);
   static BorderRadius get medium => BorderRadius.circular(md);
@@ -218,7 +227,10 @@ class AppTheme {
       canvasColor: scheme.surface,
       textTheme: text,
       visualDensity: density,
-      splashFactory: reduceMotion ? NoSplash.splashFactory : InkSparkle.splashFactory,
+      splashFactory: NoSplash.splashFactory,
+      splashColor: Colors.transparent,
+      highlightColor: scheme.onSurface.withValues(alpha: 0.07),
+      hoverColor: scheme.onSurface.withValues(alpha: 0.04),
       extensions: <ThemeExtension<dynamic>>[
         roles,
         AppMotionSettings(reduceMotion: reduceMotion),
@@ -321,10 +333,11 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: scheme.onSurface,
+          backgroundColor: Colors.transparent,
           minimumSize: const Size(96, AppSizes.buttonHeightDense),
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           textStyle: text.labelLarge,
-          side: BorderSide(color: scheme.outlineVariant),
+          side: BorderSide(color: scheme.outline.withValues(alpha: 0.55)),
           shape: const StadiumBorder(),
         ),
       ),

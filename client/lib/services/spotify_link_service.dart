@@ -71,6 +71,14 @@ Future<void> connectSpotify(BuildContext context) async {
     MaterialPageRoute(builder: (_) => buildSpotifyWebView(authUrl)),
   );
   if (result != null) {
+    final error = result['error'] as String?;
+    if (error != null && error.isNotEmpty) {
+      if (context.mounted) {
+        showAppNotification(context, message: error, type: NotificationType.error);
+      }
+      return;
+    }
+
     final token = result['token'] as String?;
     final cookie = result['cookie'] as String?;
     if (token != null && token.isNotEmpty) {

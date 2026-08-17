@@ -26,14 +26,14 @@ class FriendTile extends StatelessWidget {
 
     return Material(
       color: colors.surfaceContainerLow,
-      borderRadius: AppRadius.large,
+      borderRadius: BorderRadius.circular(AppRadius.row),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onViewProfile,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.sm + 4,
-            vertical: AppSpacing.sm + 2,
+            vertical: AppSpacing.xs + 2,
           ),
           child: Row(
             children: [
@@ -122,7 +122,7 @@ class _AvatarWithPresence extends StatelessWidget {
       children: [
         TappableAvatar(
           imageUrl: friend.avatarUrl,
-          radius: 24,
+          radius: 21,
           title: friend.name,
           heroTag: 'friend-${friend.id}',
         ),

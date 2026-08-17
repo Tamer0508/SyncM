@@ -31,6 +31,7 @@ class _SpotifyWebViewState extends State<_SpotifyWebView> {
             Navigator.of(context).pop({
               'cookie': uri.queryParameters['cookie'] ?? '',
               'token': uri.queryParameters['token'] ?? '',
+              'error': uri.queryParameters['error'],
             });
             return NavigationDecision.prevent;
           }

@@ -32,6 +32,42 @@ const invalidateSessionsListForMembers = (members) =>
 const PENDING_AUTH_TTL_SECONDS = 5 * 60;
 
 const APP_SCHEMES = ['myapp://', 'syncm://'];
+
+function finishSpotifyLink(res, returnTo, params) {
+  if (returnTo) {
+    const joiner = returnTo.includes('?') ? '&' : '?';
+    const isAppScheme = APP_SCHEMES.some((scheme) => returnTo.startsWith(scheme));
+    const query = new URLSearchParams(params).toString();
+    const prefix = isAppScheme ? '' : 'auth_done=1&';
+    return res.redirect(`${returnTo}${joiner}${prefix}${query}`);
+  }
+
+  if (params.error) {
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(
+      `<!doctype html><html lang="ru"><head><meta charset="utf-8">` +
+        `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+        `<title>Подключение Spotify</title></head>` +
+        `<body style="margin:0;display:flex;min-height:100vh;align-items:center;` +
+        `justify-content:center;background:#121212;color:#ededed;` +
+        `font:16px/1.5 system-ui,sans-serif">` +
+        `<p style="max-width:26em;padding:24px;text-align:center">` +
+        `${escapeHtml(params.error)}</p></body></html>`
+    );
+  }
+
+  return null;
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[ch]);
+}
 const allowedOrigins = (process.env.CLIENT_ORIGINS || '')
   .split(',')
   .map((o) => o.trim())
@@ -226,11 +262,27 @@ const callback = asyncHandler(async (req, res) => {
     return res.status(502).json({ error: 'Не удалось получить токен Spotify' });
   }
 
-  const profileResponse = await axios.get('https://api.spotify.com/v1/me', {
-    headers: { Authorization: `Bearer ${access_token}` },
-    timeout: 10000,
-  });
-  const profile = profileResponse.data;
+  let profile;
+  try {
+    const profileResponse = await axios.get('https://api.spotify.com/v1/me', {
+      headers: { Authorization: `Bearer ${access_token}` },
+      timeout: 10000,
+    });
+    profile = profileResponse.data;
+  } catch (err) {
+    const status = err.response?.status;
+    logger.error(
+      { status, data: err.response?.data },
+      'Spotify /v1/me failed during callback'
+    );
+
+    const message =
+      status === 403
+        ? 'Этот аккаунт Spotify пока не допущен к приложению. Оно работает в режиме разработки, и подключиться могут только аккаунты из списка разработчика.'
+        : 'Spotify не отдал данные аккаунта. Попробуйте подключиться ещё раз.';
+
+    return finishSpotifyLink(res, returnTo, { error: message });
+  }
 
   const existing = await prisma.spotifyUser.findUnique({
     where: { spotifyId: profile.id },
@@ -291,13 +343,8 @@ const callback = asyncHandler(async (req, res) => {
   const authToken = await issueAuthToken(finalUserId);
   const cookie = `connect.sid=${req.sessionID}`;
 
-  if (returnTo) {
-    const joiner = returnTo.includes('?') ? '&' : '?';
-    const redirectUrl = APP_SCHEMES.some((s) => returnTo.startsWith(s))
-      ? `${returnTo}${joiner}token=${authToken}&cookie=${encodeURIComponent(cookie)}`
-      : `${returnTo}${joiner}auth_done=1&token=${authToken}&cookie=${encodeURIComponent(cookie)}`;
-    return res.redirect(redirectUrl);
-  }
+  const finished = finishSpotifyLink(res, returnTo, { token: authToken, cookie });
+  if (finished !== null) return finished;
 
   res.json({
     message: 'Spotify подключен успешно',

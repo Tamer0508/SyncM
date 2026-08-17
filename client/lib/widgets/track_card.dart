@@ -20,7 +20,7 @@ class TrackCard extends StatefulWidget {
     this.onLike,
     this.onMore,
     this.showLike = true,
-    this.showMore = true,
+    this.showMore = false,
     this.trailing,
     this.footer,
     this.selected = false,
@@ -50,6 +50,8 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
   late bool _isLiked;
   late final AnimationController _bounceController;
   late final Animation<double> _bounce;
+
+  bool _pressed = false;
 
   @override
   void initState() {
@@ -95,13 +97,31 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
     final isPlaying = context.select<PlaybackProvider, bool>((pb) => pb.isPlaying);
     final highlighted = widget.selected || widget.isActive;
 
-    return Material(
-      color: highlighted ? colors.primaryContainer : colors.surfaceContainerLow,
-      borderRadius: AppRadius.medium,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: widget.onPlay,
-        child: Padding(
+    final Color background;
+    if (highlighted) {
+      background = colors.primaryContainer;
+    } else if (_pressed) {
+      background = colors.surfaceContainerHigh;
+    } else {
+      background = Colors.transparent;
+    }
+
+    return AnimatedScale(
+      scale: _pressed && !context.reduceMotion ? 0.985 : 1.0,
+      duration: AppMotion.press,
+      curve: AppMotion.enter,
+      child: Material(
+        color: background,
+        animationDuration: AppMotion.press,
+        borderRadius: BorderRadius.circular(AppRadius.row),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: widget.onPlay,
+          onHighlightChanged: (value) {
+            if (_pressed == value) return;
+            setState(() => _pressed = value);
+          },
+          child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.sm + 2,
             vertical: AppSpacing.sm,
@@ -165,6 +185,10 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
                     const SizedBox(width: AppSpacing.sm),
                     Text(
                       _formatDuration(widget.durationMs!),
+                      // context.timecode вместо ручной настройки цифр:
+                      // длительность — это время, а у времени в приложении
+                      // теперь свой голос. Табличные цифры внутри стиля, так
+                      // что колонка по-прежнему не дрожит при прокрутке.
                       style: context.timecode(
                         color: highlighted
                             ? colors.onPrimaryContainer.withValues(alpha: 0.75)
@@ -188,7 +212,7 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
                       ),
                     ),
                   ],
-                  if (widget.showMore)
+                  if (widget.showMore && widget.onMore != null)
                     IconButton(
                       onPressed: widget.onMore,
                       visualDensity: VisualDensity.compact,
@@ -207,6 +231,7 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
                 widget.footer!,
               ],
             ],
+            ),
           ),
         ),
       ),

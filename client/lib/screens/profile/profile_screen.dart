@@ -156,32 +156,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SkeletonProfileHeader(),
+                // Ряд кнопок под шапкой — круглая шестерёнка и троеточие.
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    AppSpacing.sm,
-                    AppSpacing.lg,
                     AppSpacing.md,
+                    AppSpacing.md,
+                    AppSpacing.md,
+                    AppSpacing.lg,
                   ),
+                  child: Row(
+                    children: [
+                      SkeletonBox(width: 44, height: 44, circle: true),
+                      SizedBox(width: AppSpacing.md),
+                      SkeletonBox(width: 28, height: 28, circle: true),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
                   child: SkeletonSectionHeader(titleWidth: 186),
                 ),
-                SkeletonTrackList(
-                  itemCount: 3,
-                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                ),
+                SizedBox(height: AppSpacing.sm),
+                SkeletonProfileTrackList(itemCount: 3),
+                SizedBox(height: AppSpacing.lg),
                 Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    AppSpacing.lg,
-                    AppSpacing.lg,
-                    AppSpacing.md,
-                  ),
+                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
                   child: SkeletonSectionHeader(titleWidth: 148),
                 ),
-                SkeletonTrackList(
-                  itemCount: 4,
-                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                ),
+                SizedBox(height: AppSpacing.sm),
+                SkeletonProfileTrackList(itemCount: 4),
               ],
             ),
           )
@@ -432,7 +435,7 @@ class _ProfileContentState extends State<_ProfileContent> {
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: SkeletonTrackList(itemCount: 3, padding: EdgeInsets.zero),
+              child: SkeletonProfileTrackList(itemCount: 3),
             ),
           )
         else ...[
@@ -535,7 +538,7 @@ class _Hero extends StatelessWidget {
         isNarrow ? AppSpacing.md : AppSpacing.xl,
         MediaQuery.paddingOf(context).top + 64,
         AppSpacing.lg,
-        AppSpacing.lg,
+        isNarrow ? AppSpacing.lg : 96,
       ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -546,7 +549,7 @@ class _Hero extends StatelessWidget {
             Color.lerp(color, colors.surface, 0.55)!,
             colors.surface,
           ],
-          stops: const [0.0, 0.65, 1.0],
+          stops: isNarrow ? const [0.0, 0.65, 1.0] : const [0.0, 0.55, 1.0],
         ),
       ),
       child: Row(

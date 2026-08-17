@@ -258,8 +258,8 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       slivers: [
         sliverAppBar,
         if (_loading)
-          SliverFillRemaining(
-            child: const SkeletonTrackList(itemCount: 8),
+          const SliverToBoxAdapter(
+            child: SkeletonTrackList(itemCount: 8),
           )
         else if (_unavailable)
           SliverFillRemaining(
@@ -294,7 +294,10 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
           )
         else
           SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.sm + 4,
+            ),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, i) {

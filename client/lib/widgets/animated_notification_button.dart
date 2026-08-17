@@ -36,7 +36,7 @@ class _AnimatedNotificationButtonState extends State<AnimatedNotificationButton>
     _scale = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.35), weight: 30),
       TweenSequenceItem(tween: Tween(begin: 1.35, end: 1.0), weight: 70),
-    ]).animate(CurvedAnimation(parent: _controller, curve: AppMotion.bounce));
+    ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
     if (widget.count > 0) _controller.forward(from: 0);
   }
