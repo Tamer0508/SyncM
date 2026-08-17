@@ -165,9 +165,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
     Widget content;
     if (prov.friendsLoading && prov.friends.isEmpty) {
-      content = const SingleChildScrollView(
-        physics: AlwaysScrollableScrollPhysics(),
-        child: SkeletonList(itemCount: 6),
+      content = const SizedBox.expand(
+        child: SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(),
+          child: SkeletonList(itemCount: 6),
+        ),
       );
     } else if (prov.friends.isEmpty) {
       content = ListView(
@@ -188,6 +190,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
     final body = AnimatedSwitcher(
       duration: AppMotion.short,
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        alignment: Alignment.topCenter,
+        children: [
+          ...previousChildren,
+          if (currentChild != null) currentChild,
+        ],
+      ),
       child: enablePullToRefresh
           ? RefreshIndicator(onRefresh: prov.refreshFriends, child: content)
           : content,
@@ -246,7 +255,7 @@ class _EmptyFriendsView extends StatelessWidget {
     return EmptyState(
       icon: Icons.people_outline_rounded,
       title: 'Добавьте друзей',
-      message: 'С другом можно слушать музыку одновременно, где бы вы ни были.',
+      message: 'С другом можно слушать музыку одновременно — где бы вы ни были.',
       actionLabel: 'Найти друзей',
       onAction: onFindFriends,
     );

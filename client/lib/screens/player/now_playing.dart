@@ -171,7 +171,45 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   /// Номер текущего запроса палитры — для отбрасывания устаревших результатов.
   int _paletteRequest = 0;
 
+  bool _entered = false;
+
+  VoidCallback? _pendingPalette;
+
+  Animation<double>? _routeAnimation;
+
   double _dragOffset = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final animation = ModalRoute.of(context)?.animation;
+    if (identical(animation, _routeAnimation)) return;
+
+    _routeAnimation?.removeStatusListener(_onRouteAnimation);
+    _routeAnimation = animation;
+
+    if (animation == null || animation.isCompleted) {
+      _markEntered();
+      return;
+    }
+    animation.addStatusListener(_onRouteAnimation);
+  }
+
+  void _onRouteAnimation(AnimationStatus status) {
+    if (status == AnimationStatus.completed) _markEntered();
+  }
+
+  void _markEntered() {
+    if (_entered || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _entered) return;
+      setState(() => _entered = true);
+      final pending = _pendingPalette;
+      _pendingPalette = null;
+      pending?.call();
+    });
+  }
 
   void _onDragUpdate(DragUpdateDetails details) {
     final next = _dragOffset + details.delta.dy;
@@ -219,6 +257,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   void dispose() {
     // Снимаем флаг: мини-плеер внизу должен вернуться после закрытия.
     _timer?.cancel();
+    _routeAnimation?.removeStatusListener(_onRouteAnimation);
     _colorAnimController.dispose();
     super.dispose();
   }
@@ -309,6 +348,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     if (cacheKey != null && provider.paletteCache.containsKey(cacheKey)) {
       final p = provider.paletteCache[cacheKey]!;
       _applyPalette(p, trackUri, provider);
+      return;
+    }
+
+    if (!_entered) {
+      _pendingPalette = () => _updatePalette(
+            imageBytes: imageBytes,
+            imageUrl: imageUrl,
+            trackUri: trackUri,
+          );
       return;
     }
 
@@ -484,10 +532,28 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
               // как проявление из ниоткуда.
               ColoredBox(color: context.colors.surface),
               if (context.watch<AppearanceProvider>().artworkBackground)
-                _AnimatedGlowBackground(
-                  dominantColor: _displayDominant,
-                  vibrantColor: _displayVibrant,
-                ),
+                if (_entered)
+                  _AnimatedGlowBackground(
+                    dominantColor: _displayDominant,
+                    vibrantColor: _displayVibrant,
+                  )
+                else
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: const Alignment(-0.3, -0.6),
+                          radius: 1.3,
+                          colors: [
+                            _displayVibrant.withValues(alpha: 0.30),
+                            _displayDominant.withValues(alpha: 0.18),
+                            Colors.transparent,
+                          ],
+                          stops: const [0.0, 0.55, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
 
               // Затемнение сверху и снизу — под шапку и под управление.
               // Без него светлая обложка делает белый текст нечитаемым.
