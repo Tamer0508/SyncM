@@ -1,4 +1,3 @@
-
 class Config {
   const Config._();
 
@@ -12,6 +11,12 @@ class Config {
   static const Duration uploadTimeout = Duration(seconds: 60);
 
   static const int pageSize = 20;
+
+  static const String appVersion = '1.0.0';
+
+  static const String privacyPolicyAsset = 'assets/legal/privacy_policy.md';
+
+  static const String termsAsset = 'assets/legal/terms_of_use.md';
 
   static bool get isLocal =>
       baseUrl.contains('localhost') || baseUrl.contains('127.0.0.1') || baseUrl.contains('10.0.2.2');

@@ -13,6 +13,8 @@ import '../../services/socket_service.dart';
 import '../../theme.dart';
 import 'play_history_screen.dart';
 import 'blocked_users_screen.dart';
+import 'legal_document_screen.dart';
+import 'privacy_policy_screen.dart';
 import '../../widgets/settings_widgets.dart';
 import '../../utils/local_store.dart';
 import '../../config.dart';
@@ -75,13 +77,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
   /// воспроизведения, как и любой полноэкранный переход на десктопе.
   String? _openSectionTitle;
 
-  /// Как построить содержимое раздела.
-  ///
-  /// Именно функция, а не готовый список виджетов. Со списком раздел
-  /// собирался один раз при открытии и больше не менялся: переключатели
-  /// внутри читают провайдеры, но снимок уже сделан — нажатие меняло
-  /// значение в хранилище, а на экране оставалось прежнее до перезагрузки.
-  /// Функция вызывается при каждой перерисовке и всегда даёт свежие данные.
   List<Widget> Function(BuildContext context)? _openSectionBuilder;
 
   Widget Function(BuildContext context, VoidCallback onBack)? _openChildScreen;
@@ -210,8 +205,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
       );
     }
 
-    // Раздел открыт — показываем его вместо списка, оставаясь в центральной
-    // части главного экрана.
     if (_openSectionBuilder != null) {
       return SettingsSectionScreen(
         embedded: true,
@@ -240,11 +233,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
         ),
         const SizedBox(height: AppSpacing.lg),
 
-        // Разделы вместо одного длинного списка.
-        //
-        // Раньше все настройки лежали на одном экране: он рос с каждой новой
-        // функцией, и найти нужное можно было только прокруткой. Подпись под
-        // названием показывает содержимое раздела до открытия.
         SettingsSectionTile(
           icon: Icons.person_outline_rounded,
           title: 'Аккаунт',
@@ -285,7 +273,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
         SettingsSectionTile(
           icon: Icons.info_outline_rounded,
           title: 'О приложении',
-          summary: 'Версия • Соединение',
+          summary: 'Версия • Приватность • Условия',
           onTap: () => openSection('О приложении', _aboutSection),
         ),
 
@@ -305,7 +293,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
     );
   }
 
-  /// Краткая сводка приватности для подписи раздела.
   String _privacySummary(User? user) {
     final hidden = [
       if (user?.isFriendsHidden == true) 'друзья',
@@ -316,27 +303,47 @@ class _SettingsBodyState extends State<_SettingsBody> {
     return 'Скрыто: ${hidden.join(', ')}';
   }
 
-  // ─── Разделы ─────────────────────────────────────────────────────────────
-
   List<Widget> _accountSection(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final connected = auth.user?.spotifyConnected == true;
+    final user = auth.user;
+    final connected = user?.spotifyConnected == true;
+
     return [
       SettingsGroup(
+        title: 'Профиль',
         children: [
-          _NameEditor(
-            currentName: auth.user?.displayName ?? '',
-            onSaved: (newName) async {
-              try {
-                await auth.updateProfile(username: newName.trim());
-                if (!mounted) return;
-                showSuccess(context, 'Имя обновлено');
-              } catch (err) {
-                if (!mounted) return;
-                showError(context, err);
-              }
-            },
+          SettingsAction(
+            icon: Icons.badge_outlined,
+            title: 'Имя',
+            subtitle: (user?.displayName.isNotEmpty ?? false)
+                ? user!.displayName
+                : 'Не задано',
+            trailing: Icon(Icons.edit_outlined,
+                size: 18, color: context.colors.onSurfaceVariant),
+            onTap: () => _editName(context),
           ),
+          if (user?.email != null && user!.email!.isNotEmpty)
+            SettingsAction(
+              icon: Icons.alternate_email_rounded,
+              title: 'Почта',
+              subtitle: user.email!,
+              trailing: Icon(Icons.lock_outline_rounded,
+                  size: 18, color: context.colors.onSurfaceVariant),
+              onTap: _noop,
+            ),
+          if (user != null)
+            SettingsAction(
+              icon: Icons.tag_rounded,
+              title: 'Идентификатор',
+              subtitle: user.id,
+              trailing: Icon(Icons.copy_rounded,
+                  size: 18, color: context.colors.onSurfaceVariant),
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: user.id));
+                if (!mounted) return;
+                showSuccess(context, 'Идентификатор скопирован');
+              },
+            ),
         ],
       ),
       SettingsGroup(
@@ -421,9 +428,24 @@ class _SettingsBodyState extends State<_SettingsBody> {
     final appearance = context.watch<AppearanceProvider>();
 
     return [
-      const SettingsGroup(
+      SettingsGroup(
         title: 'Синхронизация звука',
-        children: [_AudioLatencyTile()],
+        children: [
+          _AudioLatencyTile(),
+          SettingsAction(
+            icon: Icons.sync_rounded,
+            title: 'Сверить часы с сервером',
+            subtitle: _clockSyncSummary(),
+            onTap: () {
+              SocketService().resyncNow();
+              showAppNotification(
+                context,
+                message: 'Часы синхронизируются заново',
+                type: NotificationType.info,
+              );
+            },
+          ),
+        ],
       ),
       SettingsGroup(
         title: 'Фоновый режим',
@@ -658,48 +680,73 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   List<Widget> _aboutSection(BuildContext context) {
-    final connected = context.read<AuthProvider>().user != null;
-
     return [
       SettingsGroup(
         children: [
-          const SettingsAction(
+          SettingsAction(
             icon: Icons.graphic_eq_rounded,
             title: 'SyncM',
-            subtitle: 'Слушайте музыку вместе, где бы вы ни были',
+            subtitle: 'Версия ${Config.appVersion}',
             onTap: _noop,
           ),
         ],
       ),
       SettingsGroup(
-        title: 'Соединение',
+        title: 'Данные и правила',
         children: [
           SettingsAction(
-            icon: Icons.cloud_outlined,
-            title: 'Сервер',
-            subtitle: Config.baseUrl,
-            trailing: Icon(
-              connected ? Icons.check_circle_rounded : Icons.error_outline_rounded,
-              size: 18,
-              color: connected ? context.roles.online : context.colors.error,
+            icon: Icons.shield_outlined,
+            title: 'Данные и приватность',
+            subtitle: 'Что приложение хранит и как это удалить',
+            onTap: () => _openChild(
+              context,
+              (ctx, onBack) => PrivacyPolicyScreen(
+                embedded: ctx.isWideWindow,
+                onBack: onBack,
+                onOpenFullText: () => _openChild(
+                  context,
+                  (innerCtx, innerBack) => LegalDocumentScreen(
+                    title: 'Политика конфиденциальности',
+                    assetPath: Config.privacyPolicyAsset,
+                    embedded: innerCtx.isWideWindow,
+                    // Возврат ведёт обратно к краткому пересказу, а не сразу
+                    // в список разделов: человек пришёл оттуда.
+                    onBack: () => _openChild(
+                      context,
+                      (c, b) => PrivacyPolicyScreen(
+                        embedded: c.isWideWindow,
+                        onBack: b,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
-            onTap: _noop,
           ),
           SettingsAction(
-            icon: Icons.sync_rounded,
-            title: 'Синхронизация часов',
-            // Реальное значение, а не заглушка: расхождение часов напрямую
-            // влияет на то, насколько точно совпадает воспроизведение, и
-            // при жалобах на рассинхрон это первое, что стоит посмотреть.
-            subtitle: _clockSyncSummary(),
-            onTap: () {
-              SocketService().resyncNow();
-              showAppNotification(
-                context,
-                message: 'Часы синхронизируются заново',
-                type: NotificationType.info,
-              );
-            },
+            icon: Icons.gavel_rounded,
+            title: 'Условия использования',
+            subtitle: 'Правила пользования приложением',
+            onTap: () => _openChild(
+              context,
+              (ctx, onBack) => LegalDocumentScreen(
+                title: 'Условия использования',
+                assetPath: Config.termsAsset,
+                embedded: ctx.isWideWindow,
+                onBack: onBack,
+              ),
+            ),
+          ),
+          SettingsAction(
+            icon: Icons.description_outlined,
+            title: 'Открытые лицензии',
+            subtitle: 'Библиотеки, на которых работает приложение',
+            onTap: () => showLicensePage(
+              context: context,
+              applicationName: 'SyncM',
+              applicationVersion: Config.appVersion,
+              applicationLegalese: 'Слушайте музыку вместе, где бы вы ни были',
+            ),
           ),
         ],
       ),
@@ -715,6 +762,27 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   static void _noop() {}
+
+  Future<void> _editName(BuildContext context) async {
+    final auth = context.read<AuthProvider>();
+    final current = auth.user?.displayName ?? '';
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => _NameDialog(initialName: current),
+    );
+
+    if (result == null || !mounted || result == current) return;
+
+    try {
+      await auth.updateProfile(username: result);
+      if (!mounted) return;
+      showSuccess(context, 'Имя обновлено');
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
+    }
+  }
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
     final confirmed = await showDialog<bool>(
@@ -1009,141 +1077,6 @@ class _AudioLatencyTile extends StatelessWidget {
   }
 }
 
-class _NameEditor extends StatefulWidget {
-  final String currentName;
-  final Future<void> Function(String) onSaved;
-
-  const _NameEditor(
-      {required this.currentName, required this.onSaved});
-
-  @override
-  State<_NameEditor> createState() => _NameEditorState();
-}
-
-class _NameEditorState extends State<_NameEditor> {
-  late TextEditingController _controller;
-  bool _editing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.currentName);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final newName = _controller.text.trim();
-    if (newName.isEmpty || newName == widget.currentName) {
-      setState(() => _editing = false);
-      return;
-    }
-    if (newName.length < 2) {
-      showAppNotification(context,
-          message: 'Имя должно содержать минимум 2 символа',
-          type: NotificationType.error);
-      return;
-    }
-    if (newName.length > 50) {
-      showAppNotification(context,
-          message: 'Имя должно содержать не более 50 символов',
-          type: NotificationType.error);
-      return;
-    }
-    if (RegExp(r'^\s+$').hasMatch(newName)) {
-      showAppNotification(context,
-          message: 'Имя не может состоять только из пробелов',
-          type: NotificationType.error);
-      return;
-    }
-    if (!RegExp(r'^[\p{L}\p{N} _\-\.]+$', unicode: true).hasMatch(newName)) {
-      showAppNotification(context,
-          message: 'Имя содержит недопустимые символы',
-          type: NotificationType.error);
-      return;
-    }
-
-    await widget.onSaved(newName);
-    setState(() => _editing = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: _editing
-          ? Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    autofocus: true,
-                    maxLength: 50,
-                    maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      counterText: '',
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    style: theme.textTheme.bodyLarge,
-                    onSubmitted: (_) => _save(),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                IconButton(
-                  icon: const Icon(Icons.check, color: Colors.green),
-                  onPressed: _save,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.redAccent),
-                  onPressed: () {
-                    _controller.text = widget.currentName;
-                    setState(() => _editing = false);
-                  },
-                ),
-              ],
-            )
-          : InkWell(
-              onTap: () => setState(() => _editing = true),
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.edit,
-                        size: 18, color: theme.colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Редактировать имя',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-}
-
-/// Выбор цвета акцента.
-///
-/// Кружки, а не выпадающий список: цвет — визуальное свойство, и выбирать
-/// его по названию («Слива», «Янтарь») значит гадать, как он выглядит.
 class _AccentPicker extends StatelessWidget {
   const _AccentPicker({required this.current});
 
@@ -1290,6 +1223,106 @@ class _TextScaleTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+class _NameDialog extends StatefulWidget {
+  const _NameDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_NameDialog> createState() => _NameDialogState();
+}
+
+class _NameDialogState extends State<_NameDialog> {
+  late final TextEditingController _controller;
+  String? _error;
+
+  static const int _minLength = 2;
+  static const int _maxLength = 50;
+
+  static final _allowed = RegExp(r'^[\p{L}\p{N} _\-\.]+$', unicode: true);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+    _controller.addListener(_validate);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String? _errorFor(String value) {
+    final name = value.trim();
+    if (name.isEmpty) return 'Введите имя';
+    if (name.length < _minLength) return 'Минимум $_minLength символа';
+    if (name.length > _maxLength) return 'Не более $_maxLength символов';
+    if (!_allowed.hasMatch(name)) {
+      return 'Только буквы, цифры, пробел и знаки . _ -';
+    }
+    return null;
+  }
+
+  void _validate() {
+    final next = _errorFor(_controller.text);
+    if (next == _error) return;
+    setState(() => _error = next);
+  }
+
+  bool get _canSave => _errorFor(_controller.text) == null;
+
+  void _submit() {
+    if (!_canSave) return;
+    Navigator.of(context).pop(_controller.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      icon: const Icon(Icons.badge_outlined),
+      title: const Text('Как вас зовут?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            textCapitalization: TextCapitalization.words,
+            maxLength: _maxLength,
+            maxLengthEnforcement: MaxLengthEnforcement.enforced,
+            decoration: InputDecoration(
+              labelText: 'Имя',
+              counterText:
+                  _controller.text.length > _maxLength - 15 ? null : '',
+              errorText: _error,
+            ),
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Это имя видят друзья в списке, в сессиях и в приглашениях.',
+            style: context.texts.bodySmall
+                ?.copyWith(color: context.colors.onSurfaceVariant),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: _canSave ? _submit : null,
+          child: const Text('Сохранить'),
+        ),
+      ],
     );
   }
 }
