@@ -30,6 +30,13 @@ class AppMotion {
 
   static const Curve drawer = Cubic(0.32, 0.72, 0.0, 1.0);
 
+  static final AnimationStyle menu = AnimationStyle(
+    curve: enter,
+    duration: short,
+    reverseCurve: exit,
+    reverseDuration: press,
+  );
+
   static const Curve bounce = Cubic(0.34, 1.16, 0.64, 1.0);
 
   // Прежние имена — чтобы не переписывать десятки мест разом.

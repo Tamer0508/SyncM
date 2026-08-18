@@ -17,11 +17,14 @@ class CreateSessionScreen extends StatefulWidget {
     this.embedded = false,
     this.onCancel,
     this.onSessionCreated,
+    this.onFindFriends,
   });
 
   final bool embedded;
   final VoidCallback? onCancel;
   final ValueChanged<Map<String, dynamic>>? onSessionCreated;
+
+  final VoidCallback? onFindFriends;
 
   @override
   State<CreateSessionScreen> createState() => _CreateSessionScreenState();
@@ -32,6 +35,9 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
   static const _maxNameLength = 100;
 
   final _nameController = TextEditingController();
+
+  final _friendSearchController = TextEditingController();
+  String _friendQuery = '';
   Friend? _selectedFriend;
   bool _creating = false;
 
@@ -54,10 +60,20 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _friendSearchController.dispose();
     super.dispose();
   }
 
   String get _name => _nameController.text.trim();
+
+  void _openFriendSearch() {
+    final custom = widget.onFindFriends;
+    if (custom != null) {
+      custom();
+      return;
+    }
+    Navigator.of(context).pushNamed('/friends/search');
+  }
 
   String? get _nameError {
     if (!_nameTouched) return null;
@@ -110,6 +126,11 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
   @override
   Widget build(BuildContext context) {
     final friends = context.watch<FriendsProvider>().friends;
+    final visibleFriends = _friendQuery.isEmpty
+        ? friends
+        : friends
+            .where((f) => f.name.toLowerCase().contains(_friendQuery.toLowerCase()))
+            .toList();
     final colors = context.colors;
     final texts = context.texts;
 
@@ -138,9 +159,6 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
           ],
           decoration: InputDecoration(
             labelText: 'Название сессии',
-            // Счётчик показывается только у длинных названий: постоянное
-            // «0/100» под пустым полем ничего не сообщает, но создаёт
-            // ощущение ограничения.
             counterText: _name.length > _maxNameLength - 20 ? null : '',
             errorText: _nameError,
           ),
@@ -153,21 +171,57 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
         const SizedBox(height: AppSpacing.sm + 4),
 
         if (friends.isEmpty)
-          const _NoFriendsHint()
-        else
-          ...friends.map(
-            (friend) => Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: _FriendSelectTile(
-                friend: friend,
-                selected: _selectedFriend?.id == friend.id,
-                onTap: () => setState(() {
-                  // Повторное нажатие снимает выбор.
-                  _selectedFriend = _selectedFriend?.id == friend.id ? null : friend;
-                }),
+          _NoFriendsHint(onFindFriends: _openFriendSearch)
+        else ...[
+          if (friends.length > 6) ...[
+            TextField(
+              controller: _friendSearchController,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'Поиск среди друзей',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _friendQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        tooltip: 'Очистить',
+                        onPressed: () {
+                          _friendSearchController.clear();
+                          setState(() => _friendQuery = '');
+                        },
+                      ),
               ),
+              onChanged: (value) => setState(() => _friendQuery = value.trim()),
             ),
-          ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+
+          if (visibleFriends.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: Text(
+                'Никого с таким именем',
+                style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            )
+          else
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: [
+                for (final friend in visibleFriends)
+                  _FriendChip(
+                    friend: friend,
+                    selected: _selectedFriend?.id == friend.id,
+                    onTap: () => setState(() {
+                      // Повторное нажатие снимает выбор.
+                      _selectedFriend =
+                          _selectedFriend?.id == friend.id ? null : friend;
+                    }),
+                  ),
+              ],
+            ),
+        ],
 
         const SizedBox(height: AppSpacing.lg),
         Center(
@@ -210,7 +264,9 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
 }
 
 class _NoFriendsHint extends StatelessWidget {
-  const _NoFriendsHint();
+  const _NoFriendsHint({required this.onFindFriends});
+
+  final VoidCallback onFindFriends;
 
   @override
   Widget build(BuildContext context) {
@@ -242,7 +298,7 @@ class _NoFriendsHint extends StatelessWidget {
           // Раньше здесь было просто «Нет друзей» без выхода из ситуации:
           // пользователь упирался в тупик и должен был сам догадаться, куда идти.
           FilledButton.tonalIcon(
-            onPressed: () => Navigator.of(context).pushNamed('/friends/search'),
+            onPressed: onFindFriends,
             icon: const Icon(Icons.person_add_rounded),
             label: const Text('Найти друзей'),
           ),
@@ -252,8 +308,8 @@ class _NoFriendsHint extends StatelessWidget {
   }
 }
 
-class _FriendSelectTile extends StatelessWidget {
-  const _FriendSelectTile({
+class _FriendChip extends StatefulWidget {
+  const _FriendChip({
     required this.friend,
     required this.selected,
     required this.onTap,
@@ -264,68 +320,77 @@ class _FriendSelectTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_FriendChip> createState() => _FriendChipState();
+}
+
+class _FriendChipState extends State<_FriendChip> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final texts = context.texts;
+    final friend = widget.friend;
 
-    return Material(
-      color: selected ? colors.primaryContainer : colors.surfaceContainerLow,
-      borderRadius: AppRadius.large,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: AppMotion.short,
-          curve: AppMotion.emphasized,
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm + 4,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: AppRadius.large,
-            border: Border.all(
-              color: selected ? colors.primary : Colors.transparent,
-              width: 2,
+    final background = widget.selected
+        ? colors.primaryContainer
+        : (_pressed ? colors.surfaceContainerHighest : colors.surfaceContainerHigh);
+    final foreground =
+        widget.selected ? colors.onPrimaryContainer : colors.onSurface;
+
+    return AnimatedScale(
+      scale: _pressed && !context.reduceMotion ? 0.96 : 1.0,
+      duration: AppMotion.press,
+      curve: AppMotion.enter,
+      child: Material(
+        color: background,
+        animationDuration: AppMotion.press,
+        shape: const StadiumBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: widget.onTap,
+          onHighlightChanged: (value) {
+            if (_pressed == value) return;
+            setState(() => _pressed = value);
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xs + 2,
+              AppSpacing.xs + 2,
+              AppSpacing.md,
+              AppSpacing.xs + 2,
             ),
-          ),
-          child: Row(
-            children: [
-              TappableAvatar(
-                imageUrl: friend.avatarUrl,
-                radius: 22,
-                title: friend.name,
-                heroTag: 'create-session-${friend.id}',
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      friend.name,
-                      style: texts.titleSmall?.copyWith(
-                        color: selected ? colors.onPrimaryContainer : colors.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    // Статус присутствия важен именно здесь: звать в сессию
-                    // того, кто не в сети, обычно бессмысленно.
-                    if (friend.showsPresence && friend.isOnline) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'В сети',
-                        style: texts.bodySmall?.copyWith(color: context.brand.online),
-                      ),
-                    ],
-                  ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TappableAvatar(
+                  imageUrl: friend.avatarUrl,
+                  radius: 16,
+                  title: friend.name,
+                  onTapOverride: widget.onTap,
                 ),
-              ),
-              Icon(
-                selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                color: selected ? colors.primary : colors.onSurfaceVariant,
-              ),
-            ],
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  friend.name,
+                  style: texts.labelLarge?.copyWith(color: foreground),
+                ),
+                if (friend.showsPresence && friend.isOnline) ...[
+                  const SizedBox(width: AppSpacing.sm),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: context.brand.online,
+                    ),
+                  ),
+                ],
+                if (widget.selected) ...[
+                  const SizedBox(width: AppSpacing.sm),
+                  Icon(Icons.check_rounded, size: 18, color: foreground),
+                ],
+              ],
+            ),
           ),
         ),
       ),

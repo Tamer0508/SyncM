@@ -4,7 +4,7 @@ import '../models/friend.dart';
 import '../theme.dart';
 import 'tappable_avatar.dart';
 
-class FriendTile extends StatelessWidget {
+class FriendTile extends StatefulWidget {
   const FriendTile({
     super.key,
     required this.friend,
@@ -20,17 +20,47 @@ class FriendTile extends StatelessWidget {
   final VoidCallback? onBlock;
 
   @override
+  State<FriendTile> createState() => _FriendTileState();
+}
+
+class _FriendTileState extends State<FriendTile> {
+  bool _pressed = false;
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final texts = context.texts;
+    final friend = widget.friend;
 
-    return Material(
-      color: colors.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(AppRadius.row),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onViewProfile,
-        child: Padding(
+    final Color background;
+    if (_pressed) {
+      background = colors.surfaceContainerHigh;
+    } else if (_hovered) {
+      background = colors.surfaceContainerLow;
+    } else {
+      background = Colors.transparent;
+    }
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        scale: _pressed && !context.reduceMotion ? 0.99 : 1.0,
+        duration: AppMotion.press,
+        curve: AppMotion.enter,
+        child: Material(
+          color: background,
+          animationDuration: AppMotion.press,
+          borderRadius: BorderRadius.circular(AppRadius.row),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: widget.onViewProfile,
+            onHighlightChanged: (value) {
+              if (_pressed == value) return;
+              setState(() => _pressed = value);
+            },
+            child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.sm + 4,
             vertical: AppSpacing.xs + 2,
@@ -56,13 +86,14 @@ class FriendTile extends StatelessWidget {
                 ),
               ),
               PopupMenuButton<_FriendAction>(
+                popUpAnimationStyle: AppMotion.menu,
                 icon: Icon(Icons.more_vert_rounded, color: colors.onSurfaceVariant),
                 tooltip: 'Действия',
                 shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
                 onSelected: (action) => switch (action) {
-                  _FriendAction.profile => onViewProfile(),
-                  _FriendAction.remove => onRemoveFriend(),
-                  _FriendAction.block => onBlock?.call(),
+                  _FriendAction.profile => widget.onViewProfile(),
+                  _FriendAction.remove => widget.onRemoveFriend(),
+                  _FriendAction.block => widget.onBlock?.call(),
                 },
                 itemBuilder: (context) => [
                   const PopupMenuItem(
@@ -73,7 +104,7 @@ class FriendTile extends StatelessWidget {
                       title: Text('Открыть профиль'),
                     ),
                   ),
-                  if (onBlock != null)
+                  if (widget.onBlock != null)
                     PopupMenuItem(
                       value: _FriendAction.block,
                       child: ListTile(
@@ -99,9 +130,11 @@ class FriendTile extends StatelessWidget {
                 ],
               ),
             ],
+            ),
           ),
         ),
       ),
+    ),
     );
   }
 }

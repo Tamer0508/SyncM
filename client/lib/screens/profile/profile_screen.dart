@@ -640,6 +640,7 @@ class _ActionsRow extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.sm),
           PopupMenuButton<String>(
+            popUpAnimationStyle: AppMotion.menu,
             icon: const Icon(Icons.more_horiz_rounded),
             tooltip: 'Ещё',
             shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),

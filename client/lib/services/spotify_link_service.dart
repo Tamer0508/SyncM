@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/auth_provider.dart';
+import '../theme.dart';
 import '../utils/error_utils.dart';
 import '../utils/notifications.dart';
 import 'oauth_loopback.dart';
@@ -92,44 +93,46 @@ Future<void> connectSpotify(BuildContext context) async {
 }
 
 Future<void> disconnectSpotify(BuildContext context) async {
-  final theme = Theme.of(context);
-  showDialog(
+  final confirmed = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: Row(
-        children: [
-          Icon(Icons.link_off, color: theme.colorScheme.error),
-          const SizedBox(width: 12),
-          Text('Отключить Spotify', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-        ],
+      icon: Icon(Icons.link_off_rounded, color: ctx.colors.error),
+      title: const Text('Отключить Spotify?'),
+      content: const Text(
+        'Плейлисты и совместное прослушивание перестанут работать, '
+        'пока вы не подключите его снова.',
       ),
-      content: const Text('Вы уверены, что хотите отключить Spotify аккаунт?'),
       actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Отмена')),
-        ElevatedButton(
-          onPressed: () async {
-            Navigator.of(ctx).pop();
-            try {
-              final api = Provider.of<AuthProvider>(context, listen: false).api;
-              await api.disconnectSpotify();
-              final auth = Provider.of<AuthProvider>(context, listen: false);
-              await auth.fetchMe();
-              if (context.mounted) {
-                showAppNotification(context, message: 'Spotify отключён', type: NotificationType.success);
-              }
-            } catch (e) {
-              if (context.mounted) showError(context, e);
-            }
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.colorScheme.error,
-            foregroundColor: theme.colorScheme.onError,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: ctx.colors.error,
+            foregroundColor: ctx.colors.onError,
           ),
           child: const Text('Отключить'),
         ),
       ],
     ),
   );
+
+  if (confirmed != true || !context.mounted) return;
+
+  try {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    await auth.api.disconnectSpotify();
+    await auth.fetchMe();
+    if (context.mounted) {
+      showAppNotification(
+        context,
+        message: 'Spotify отключён',
+        type: NotificationType.success,
+      );
+    }
+  } catch (err) {
+    if (context.mounted) showError(context, err);
+  }
 }

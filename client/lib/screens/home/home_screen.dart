@@ -21,6 +21,7 @@ import '../../widgets/tappable_avatar.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../theme.dart';
 import '../../models/sync_phase.dart';
+import '../../widgets/pill_selector.dart';
 import '../../widgets/sync_mark.dart';
 import '../../utils/local_store.dart';
 import '../../widgets/animated_notification_button.dart';
@@ -80,6 +81,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _activeSession;
 
   Map<String, dynamic>? _sessionResults;
+
+  int _musicTabIndex = 0;
 
   /// Открыт ли список приглашений в центральной части.
   bool _showingInvites = false;
@@ -318,25 +321,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// внутри вертикального списка. Собственная вкладка снимает это
   /// ограничение — плейлисты показываются сеткой во всю высоту.
   Widget _buildMusicTab() {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        children: [
-          const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [Tab(text: 'Мои'), Tab(text: 'Spotify')],
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _buildPlaylistsTab(true),
-                _buildPlaylistsTab(false),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return Column(
+      children: [
+        PillSelector(
+          labels: const ['Мои', 'Spotify'],
+          selectedIndex: _musicTabIndex,
+          onSelected: (index) => setState(() => _musicTabIndex = index),
+        ),
+        Expanded(child: _buildPlaylistsTab(_musicTabIndex == 0)),
+      ],
     );
   }
 
@@ -922,6 +915,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       // не создав её.
                                       onCancel: () => setState(
                                           () => _creatingSession = false),
+                                      onFindFriends: () => _openOverlay(
+                                          () => _activeFriendView = 'search'),
                                       onSessionCreated: (session) =>
                                           setState(() {
                                             _creatingSession = false;
