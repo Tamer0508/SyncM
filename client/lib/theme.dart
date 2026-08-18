@@ -74,6 +74,11 @@ class AppSizes {
 
   static const double buttonHeightDense = 40;
 
+  static const EdgeInsets menuPadding = EdgeInsets.symmetric(
+    horizontal: AppSpacing.xs + 2,
+    vertical: AppSpacing.xs + 2,
+  );
+
   static const double readableWidth = 560;
 }
 
@@ -398,6 +403,14 @@ class AppTheme {
         ),
       ),
 
+      popupMenuTheme: PopupMenuThemeData(
+        color: scheme.surfaceContainerHigh,
+        surfaceTintColor: Colors.transparent,
+        elevation: 8,
+        shadowColor: scheme.shadow.withValues(alpha: 0.4),
+        shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
+      ),
+
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surfaceContainerHigh,
         surfaceTintColor: Colors.transparent,
@@ -455,11 +468,12 @@ class AppTheme {
     );
   }
 
-  static ColorScheme get _lightScheme => ColorScheme.fromSeed(
-        seedColor: _olive,
-        brightness: Brightness.light,
-      ).copyWith(
-        primary: _olive,
+  static ColorScheme _schemeFor(Color accent, Brightness brightness) {
+    final base = ColorScheme.fromSeed(seedColor: accent, brightness: brightness);
+
+    if (brightness == Brightness.light) {
+      return base.copyWith(
+        primary: accent,
         surface: const Color(0xFFFAFAFA),
         surfaceContainerLowest: const Color(0xFFFFFFFF),
         surfaceContainerLow: const Color(0xFFF4F4F4),
@@ -471,23 +485,26 @@ class AppTheme {
         outline: const Color(0xFF8A8A8A),
         outlineVariant: const Color(0xFFD6D6D6),
       );
+    }
 
-  static ColorScheme get _darkScheme => ColorScheme.fromSeed(
-        seedColor: _lime,
-        brightness: Brightness.dark,
-      ).copyWith(
-        primary: _lime,
-        surface: const Color(0xFF121212),
-        surfaceContainerLowest: const Color(0xFF0B0B0B),
-        surfaceContainerLow: const Color(0xFF191919),
-        surfaceContainer: const Color(0xFF1F1F1F),
-        surfaceContainerHigh: const Color(0xFF272727),
-        surfaceContainerHighest: const Color(0xFF303030),
-        onSurface: const Color(0xFFEDEDED),
-        onSurfaceVariant: const Color(0xFFA6A6A6),
-        outline: const Color(0xFF6E6E6E),
-        outlineVariant: const Color(0xFF3A3A3A),
-      );
+    return base.copyWith(
+      primary: accent,
+      surface: const Color(0xFF121212),
+      surfaceContainerLowest: const Color(0xFF0B0B0B),
+      surfaceContainerLow: const Color(0xFF191919),
+      surfaceContainer: const Color(0xFF1F1F1F),
+      surfaceContainerHigh: const Color(0xFF272727),
+      surfaceContainerHighest: const Color(0xFF303030),
+      onSurface: const Color(0xFFEDEDED),
+      onSurfaceVariant: const Color(0xFFA6A6A6),
+      outline: const Color(0xFF6E6E6E),
+      outlineVariant: const Color(0xFF3A3A3A),
+    );
+  }
+
+  static ColorScheme get _lightScheme => _schemeFor(_olive, Brightness.light);
+
+  static ColorScheme get _darkScheme => _schemeFor(_lime, Brightness.dark);
 
   static const AppRoleColors _lightRoles = AppRoleColors(
     mine: _olive,
@@ -519,14 +536,12 @@ class AppTheme {
     final isDark = brightness == Brightness.dark;
     final accentColor = accent.forBrightness(brightness);
 
-    final scheme = (isDark ? _darkScheme : _lightScheme).copyWith(
-      primary: accentColor,
-    );
+    final scheme = _schemeFor(accentColor, brightness);
 
     final baseRoles = isDark ? _darkRoles : _lightRoles;
     final roles = baseRoles.copyWith(
       mine: accentColor,
-      onMine: isDark ? const Color(0xFF14100F) : Colors.white,
+      onMine: scheme.onPrimary,
     );
 
     return _build(

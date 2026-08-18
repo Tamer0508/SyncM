@@ -333,10 +333,9 @@ class _FriendChipState extends State<_FriendChip> {
     final friend = widget.friend;
 
     final background = widget.selected
-        ? colors.primaryContainer
+        ? colors.onSurface
         : (_pressed ? colors.surfaceContainerHighest : colors.surfaceContainerHigh);
-    final foreground =
-        widget.selected ? colors.onPrimaryContainer : colors.onSurface;
+    final foreground = widget.selected ? colors.surface : colors.onSurface;
 
     return AnimatedScale(
       scale: _pressed && !context.reduceMotion ? 0.96 : 1.0,

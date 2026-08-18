@@ -9,6 +9,7 @@ import '../../services/spotify_link_service.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/mini_player.dart';
+import '../../widgets/app_menu.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
 import '../settings/play_history_screen.dart';
@@ -639,33 +640,24 @@ class _ActionsRow extends StatelessWidget {
             tooltip: 'Настройки',
           ),
           const SizedBox(width: AppSpacing.sm),
-          PopupMenuButton<String>(
-            popUpAnimationStyle: AppMotion.menu,
-            icon: const Icon(Icons.more_horiz_rounded),
+          AppMenuButton<String>(
+            icon: Icons.more_horiz_rounded,
             tooltip: 'Ещё',
-            shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
             onSelected: (value) {
               if (value == 'spotify') {
                 spotifyConnected ? onDisconnect() : onConnect();
               }
             },
-            itemBuilder: (context) => [
-              PopupMenuItem(
+            entries: [
+              AppMenuEntry(
                 value: 'spotify',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    spotifyConnected
-                        ? Icons.link_off_rounded
-                        : Icons.link_rounded,
-                    color: spotify,
-                  ),
-                  title: Text(
-                    spotifyConnected
-                        ? 'Отключить Spotify'
-                        : 'Подключить Spotify',
-                  ),
-                ),
+                icon: spotifyConnected
+                    ? Icons.link_off_rounded
+                    : Icons.link_rounded,
+                label: spotifyConnected
+                    ? 'Отключить Spotify'
+                    : 'Подключить Spotify',
+                iconColor: spotify,
               ),
             ],
           ),

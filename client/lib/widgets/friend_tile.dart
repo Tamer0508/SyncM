@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/friend.dart';
 import '../theme.dart';
+import 'app_menu.dart';
 import 'tappable_avatar.dart';
 
 class FriendTile extends StatefulWidget {
@@ -85,47 +86,32 @@ class _FriendTileState extends State<FriendTile> {
                   ],
                 ),
               ),
-              PopupMenuButton<_FriendAction>(
-                popUpAnimationStyle: AppMotion.menu,
-                icon: Icon(Icons.more_vert_rounded, color: colors.onSurfaceVariant),
+              AppMenuButton<_FriendAction>(
+                iconColor: colors.onSurfaceVariant,
                 tooltip: 'Действия',
-                shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
                 onSelected: (action) => switch (action) {
                   _FriendAction.profile => widget.onViewProfile(),
                   _FriendAction.remove => widget.onRemoveFriend(),
                   _FriendAction.block => widget.onBlock?.call(),
                 },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
+                entries: [
+                  const AppMenuEntry(
                     value: _FriendAction.profile,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.person_outline_rounded),
-                      title: Text('Открыть профиль'),
-                    ),
+                    icon: Icons.person_outline_rounded,
+                    label: 'Открыть профиль',
                   ),
                   if (widget.onBlock != null)
-                    PopupMenuItem(
+                    const AppMenuEntry(
                       value: _FriendAction.block,
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.block_rounded, color: colors.error),
-                        title: Text(
-                          'Заблокировать',
-                          style: TextStyle(color: colors.error),
-                        ),
-                      ),
+                      icon: Icons.block_rounded,
+                      label: 'Заблокировать',
+                      danger: true,
                     ),
-                  PopupMenuItem(
+                  const AppMenuEntry(
                     value: _FriendAction.remove,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.person_remove_outlined, color: colors.error),
-                      title: Text(
-                        'Удалить из друзей',
-                        style: TextStyle(color: colors.error),
-                      ),
-                    ),
+                    icon: Icons.person_remove_outlined,
+                    label: 'Удалить из друзей',
+                    danger: true,
                   ),
                 ],
               ),
