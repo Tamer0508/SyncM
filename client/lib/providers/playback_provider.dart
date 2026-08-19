@@ -1332,6 +1332,68 @@ class PlaybackProvider extends ChangeNotifier {
     });
   }
 
+  Color? _artworkColor;
+  Color? get artworkColor => _artworkColor;
+
+  String? _artworkColorKey;
+
+  void ensureArtworkColor() {
+    final track = _currentTrack;
+    if (track == null) {
+      if (_artworkColor != null) {
+        _artworkColor = null;
+        _artworkColorKey = null;
+      }
+      return;
+    }
+
+    final url = track['imageUrl'] as String?;
+    final key = (url != null && url.isNotEmpty) ? url : track['uri'] as String?;
+    if (key == null || key == _artworkColorKey) return;
+
+    _artworkColorKey = key;
+    unawaited(_computeArtworkColor(key, url, _currentImageBytes));
+  }
+
+  Future<void> _computeArtworkColor(
+    String key,
+    String? url,
+    Uint8List? bytes,
+  ) async {
+    final ImageProvider provider;
+    if (bytes != null) {
+      provider = MemoryImage(bytes);
+    } else if (url != null && url.isNotEmpty) {
+      provider = NetworkImage(url);
+    } else {
+      return;
+    }
+
+    try {
+      final palette = _paletteCache[key] ??
+          await PaletteGenerator.fromImageProvider(
+            provider,
+            size: const Size(64, 64),
+            maximumColorCount: 8,
+          );
+      _paletteCache[key] = palette;
+
+      if (key != _artworkColorKey) return;
+
+      final base = palette.dominantColor?.color;
+      if (base == null) return;
+
+      final hsl = HSLColor.fromColor(base);
+      _artworkColor = hsl
+          .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.6))
+          .withLightness(0.28)
+          .toColor();
+      notifyListeners();
+    } catch (err) {
+      debugPrint('Не удалось получить цвет обложки: $err');
+    }
+  }
+
   Future<void> _preloadPalette(String imageUrl) async {
     try {
       final palette = await PaletteGenerator.fromImageProvider(

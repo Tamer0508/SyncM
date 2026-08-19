@@ -40,32 +40,47 @@ class MiniPlayer extends StatelessWidget {
     final imageBytes = pb.currentImageBytes;
     final imageUrl = track['imageUrl'] as String?;
     final isCompact = !context.isWideWindow;
-    final artSize = isCompact ? 44.0 : 52.0;
+    final artSize = isCompact ? 48.0 : 52.0;
+
+    pb.ensureArtworkColor();
+    final artworkColor = pb.artworkColor;
+    final background = artworkColor ?? colors.surfaceContainerHigh;
+
+    final onBackground = artworkColor != null ? Colors.white : colors.onSurface;
+    final onBackgroundMuted = artworkColor != null
+        ? Colors.white.withValues(alpha: 0.7)
+        : colors.onSurfaceVariant;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.sm + 4,
+        AppSpacing.sm,
         0,
-        AppSpacing.sm + 4,
+        AppSpacing.sm,
         AppSpacing.xs,
       ),
-      child: Material(
-        color: colors.surfaceContainerHigh,
-        elevation: 0,
-        borderRadius: AppRadius.medium,
+      child: AnimatedContainer(
+        duration: AppMotion.medium,
+        curve: AppMotion.enter,
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
         clipBehavior: Clip.antiAlias,
-        child: Column(
+        child: Material(
+          color: Colors.transparent,
+          elevation: 0,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              height: isCompact ? 68 : 76,
+              height: isCompact ? 60 : 68,
               child: Row(
                 children: [
                   Expanded(
                     child: InkWell(
                       onTap: () => _openPlayer(context, track, imageUrl),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 4),
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs + 2),
                         child: Row(
                           children: [
                             _Artwork(
@@ -74,7 +89,7 @@ class MiniPlayer extends StatelessWidget {
                               url: imageUrl,
                               colors: colors,
                             ),
-                            const SizedBox(width: AppSpacing.sm + 4),
+                            const SizedBox(width: AppSpacing.sm + 2),
                             Expanded(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -82,14 +97,17 @@ class MiniPlayer extends StatelessWidget {
                                 children: [
                                   Text(
                                     track['title'] as String? ?? 'Неизвестный трек',
-                                    style: texts.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                                    style: texts.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: onBackground,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
                                     track['artist'] as String? ?? '',
-                                    style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                                    style: texts.bodySmall?.copyWith(color: onBackgroundMuted),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -107,25 +125,31 @@ class MiniPlayer extends StatelessWidget {
                       Icons.skip_previous_rounded,
                       semanticLabel: 'Предыдущий трек',
                     ),
-                    iconSize: isCompact ? 26 : 30,
-                    color: colors.onSurface,
+                    iconSize: isCompact ? 24 : 28,
+                    color: onBackground,
                   ),
-                  _PlayButton(isPlaying: pb.isPlaying, onPressed: pb.togglePlay, colors: colors),
+                  _PlayButton(
+                    isPlaying: pb.isPlaying,
+                    onPressed: pb.togglePlay,
+                    colors: colors,
+                    onColored: artworkColor != null,
+                  ),
                   IconButton(
                     onPressed: pb.skipNext,
                     icon: const Icon(
                       Icons.skip_next_rounded,
                       semanticLabel: 'Следующий трек',
                     ),
-                    iconSize: isCompact ? 26 : 30,
-                    color: colors.onSurface,
+                    iconSize: isCompact ? 24 : 28,
+                    color: onBackground,
                   ),
                   const SizedBox(width: AppSpacing.xs),
                 ],
               ),
             ),
-            _MiniProgress(colors: colors),
+            _MiniProgress(colors: colors, onColored: artworkColor != null),
           ],
+          ),
         ),
       ),
     );
@@ -133,19 +157,27 @@ class MiniPlayer extends StatelessWidget {
 }
 
 class _PlayButton extends StatelessWidget {
-  const _PlayButton({required this.isPlaying, required this.onPressed, required this.colors});
+  const _PlayButton({
+    required this.isPlaying,
+    required this.onPressed,
+    required this.colors,
+    this.onColored = false,
+  });
 
   final bool isPlaying;
   final VoidCallback onPressed;
   final ColorScheme colors;
+
+  final bool onColored;
 
   @override
   Widget build(BuildContext context) {
     return IconButton.filled(
       onPressed: onPressed,
       style: IconButton.styleFrom(
-        backgroundColor: colors.primaryContainer,
-        foregroundColor: colors.onPrimaryContainer,
+        backgroundColor: onColored ? Colors.white : colors.primaryContainer,
+        foregroundColor:
+            onColored ? Colors.black : colors.onPrimaryContainer,
       ),
       icon: AnimatedSwitcher(
         duration: AppMotion.short,
@@ -209,9 +241,10 @@ class _Artwork extends StatelessWidget {
 }
 
 class _MiniProgress extends StatefulWidget {
-  const _MiniProgress({required this.colors});
+  const _MiniProgress({required this.colors, this.onColored = false});
 
   final ColorScheme colors;
+  final bool onColored;
 
   @override
   State<_MiniProgress> createState() => _MiniProgressState();
@@ -246,8 +279,12 @@ class _MiniProgressState extends State<_MiniProgress> {
       height: 3,
       child: LinearProgressIndicator(
         value: progress,
-        backgroundColor: colors.surfaceContainerHighest,
-        valueColor: AlwaysStoppedAnimation<Color>(colors.primary),
+        backgroundColor: widget.onColored
+            ? Colors.white.withValues(alpha: 0.2)
+            : colors.surfaceContainerHighest,
+        valueColor: AlwaysStoppedAnimation<Color>(
+          widget.onColored ? Colors.white : colors.primary,
+        ),
       ),
     );
   }
