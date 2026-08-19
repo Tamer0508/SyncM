@@ -413,16 +413,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
                 PillSelector(
                   padding: EdgeInsets.zero,
                   labels: const ['Сейчас', 'Музыка', 'Друзья'],
-                  selectedIndex: LocalStore.readDouble(
-                    StoreKeys.startTab,
-                    defaultValue: 0,
-                  ).round().clamp(0, 2),
-                  onSelected: (index) async {
-                    await LocalStore.saveDouble(
-                        StoreKeys.startTab, index.toDouble());
-                    if (!mounted) return;
-                    setState(() {});
-                  },
+                  selectedIndex: appearance.startTab,
+                  onSelected: context.read<AppearanceProvider>().setStartTab,
                 ),
               ],
             ),
@@ -461,11 +453,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.restart_alt_rounded,
             title: 'Сбросить оформление',
             subtitle: 'Вернуть тему, цвет, текст, плотность и стартовую вкладку',
-            onTap: () async {
+            onTap: () {
               context.read<AppearanceProvider>().resetAll();
-              await LocalStore.saveDouble(StoreKeys.startTab, 0);
-              if (!mounted) return;
-              setState(() {});
               showSuccess(context, 'Оформление сброшено');
             },
           ),

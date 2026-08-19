@@ -64,39 +64,25 @@ class _SessionScreenState extends State<SessionScreen> {
 
   void _openPlayerIfMobile(Map<String, dynamic> track) async {
     if (!mounted || _isPlayerOpen) return;
+    // На широкой раскладке плеер и так виден в правой панели, а маршрут
+    // закрыл бы её вместе с боковой навигацией.
     if (context.isWideWindow) return;
+    // Настройка «Открывать плеер при запуске». Раньше она писалась в
+    // хранилище и не читалась нигде — переключатель выглядел рабочим, но
+    // ничего не менял.
     if (!LocalStore.readBool(StoreKeys.autoOpenPlayer, defaultValue: true)) {
       return;
     }
     _isPlayerOpen = true;
 
 
-    await Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) {
-          return NowPlayingScreen(
-            title: track['title'] as String?,
-            artist: track['artist'] as String?,
-            artworkUrl: track['imageUrl'] as String?,
-          );
-        },
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Slide transition from bottom
-          const begin = Offset(0.0, 1.0);
-          const end = Offset.zero;
-          const curve = Curves.easeInOut;
-
-          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-          var offsetAnimation = animation.drive(tween);
-
-          return SlideTransition(
-            position: offsetAnimation,
-            child: child,
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 500),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
-      ),
+    // Панелью, а не маршрутом: экран сессии с очередью остаётся под ней и
+    // продолжает получать события, а свайп вниз сворачивает плеер обратно.
+    await NowPlayingScreen.open(
+      context,
+      title: track['title'] as String?,
+      artist: track['artist'] as String?,
+      artworkUrl: track['imageUrl'] as String?,
     );
     _isPlayerOpen = false;
   }
@@ -198,6 +184,13 @@ class _SessionScreenState extends State<SessionScreen> {
   final List<SocketSubscription> _subscriptions = [];
 
   void _setupSessionSocketListeners(SocketService socket) {
+    // session_ended здесь НЕ обрабатывается — намеренно.
+    //
+    // Обработчик живёт в SessionProvider: он переживает пересоздание экрана и
+    // знает, показать ли итоги встроенно или маршрутом. Дублирующий
+    // обработчик здесь вёл к гонке (кто первым перейдёт — зависело от порядка
+    // подписки) и переставал работать сразу после выхода из сессии, оставляя
+    // участников в закрытой сессии.
 
     _subscriptions.addAll([
       socket.on('user_joined', (_) {
@@ -385,6 +378,9 @@ class _SessionScreenState extends State<SessionScreen> {
               members: members,
               onlineUserIds: _onlineUserIds,
               trackCount: tracks.length,
+              // Ждём второго, пока он не в сети: провайдер про состав сессии
+              // не знает, а экран знает — и вправе показать ожидание по
+              // своей причине.
               waitingForOthers: members
                   .where((m) => m['status'] == 'accepted')
                   .any((m) => !_onlineUserIds.contains(m['userId'])),
@@ -537,6 +533,9 @@ class _SessionHeader extends StatelessWidget {
 
     final accepted = members.where((m) => m['status'] == 'accepted').toList();
 
+    // Фазу считает провайдер — он один видит и режим сессии, и паузу, и
+    // подстройку. Экран лишь добавляет то, чего провайдер знать не может:
+    // что второй участник ещё не в сети.
     final phase = context.select<PlaybackProvider, SyncPhase>((pb) => pb.syncPhase);
     final shown = waitingForOthers && phase == SyncPhase.synced
         ? SyncPhase.waiting
@@ -552,6 +551,9 @@ class _SessionHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Знак и подпись под ним — единственное место экрана, где состояние
+          // синхронизации видно целиком. Раньше о нём можно было догадываться
+          // только по тому, совпадает ли музыка в наушниках.
           Center(
             child: Column(
               children: [
@@ -596,6 +598,10 @@ class _SessionHeader extends StatelessWidget {
     );
   }
 
+  /// Подпись под знаком.
+  ///
+  /// Называет то, что человек видит, а не то, как устроен механизм: не
+  /// «якорь установлен», а «звучит одновременно».
   static String _labelFor(SyncPhase phase) => switch (phase) {
         SyncPhase.idle => 'Сессия не запущена',
         SyncPhase.waiting => 'Ждём второго',
@@ -669,7 +675,7 @@ class _EmptyTracksView extends StatelessWidget {
     return EmptyState(
       icon: Icons.library_music_outlined,
       title: 'Очередь пуста',
-      message: 'Добавьте треки из своих плейлистов, их услышат все участники.',
+      message: 'Добавьте треки из своих плейлистов — их услышат все участники.',
       actionLabel: 'Добавить треки',
       onAction: onAddTracks,
     );

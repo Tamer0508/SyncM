@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'app_bottom_sheet.dart';
 
 class AppMenuEntry<T> {
   const AppMenuEntry({
@@ -19,7 +20,6 @@ class AppMenuEntry<T> {
 
   final Color? iconColor;
 }
-
 class AppMenuButton<T> extends StatelessWidget {
   const AppMenuButton({
     super.key,
@@ -38,6 +38,30 @@ class AppMenuButton<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!context.isWideWindow) {
+      return IconButton(
+        icon: Icon(icon, color: iconColor),
+        tooltip: tooltip,
+        onPressed: () => showAppSheet<void>(
+          context: context,
+          title: tooltip,
+          builder: (ctx) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final entry in entries)
+                AppSheetAction(
+                  icon: entry.icon,
+                  label: entry.label,
+                  danger: entry.danger,
+                  iconColor: entry.iconColor,
+                  onTap: () => onSelected(entry.value),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final theme = Theme.of(context);
 
     return Theme(

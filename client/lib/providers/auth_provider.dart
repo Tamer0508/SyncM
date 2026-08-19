@@ -50,17 +50,34 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> updateSettings(Map<String, bool> settings) async {
-    final updated = await api.updatePrivacySettings(settings);
-    final current = _user;
-    if (current == null) return;
+    final before = _user;
+    if (before == null) return;
 
-    _user = current.copyWith(
-      isFriendsHidden: updated['isFriendsHidden'],
-      isActivityHidden: updated['isActivityHidden'],
-      isOnlineHidden: updated['isOnlineHidden'],
-      isSearchHidden: updated['isSearchHidden'],
+    _user = before.copyWith(
+      isFriendsHidden: settings['isFriendsHidden'],
+      isActivityHidden: settings['isActivityHidden'],
+      isOnlineHidden: settings['isOnlineHidden'],
+      isSearchHidden: settings['isSearchHidden'],
     );
     notifyListeners();
+
+    try {
+      final updated = await api.updatePrivacySettings(settings);
+      final current = _user;
+      if (current == null) return;
+
+      _user = current.copyWith(
+        isFriendsHidden: updated['isFriendsHidden'],
+        isActivityHidden: updated['isActivityHidden'],
+        isOnlineHidden: updated['isOnlineHidden'],
+        isSearchHidden: updated['isSearchHidden'],
+      );
+      notifyListeners();
+    } catch (err) {
+      _user = before;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> updateProfile({String? username, String? customAvatarUrl}) async {

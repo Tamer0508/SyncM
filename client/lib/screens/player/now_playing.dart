@@ -138,7 +138,44 @@ class NowPlayingScreen extends StatefulWidget {
   final String? artist;
   final String? artworkUrl;
 
-  const NowPlayingScreen({super.key, this.title, this.artist, this.artworkUrl});
+  final bool insideSheet;
+
+  const NowPlayingScreen({
+    super.key,
+    this.title,
+    this.artist,
+    this.artworkUrl,
+    this.insideSheet = false,
+  });
+
+  static Future<void> open(
+    BuildContext context, {
+    String? title,
+    String? artist,
+    String? artworkUrl,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      constraints: const BoxConstraints.expand(),
+      barrierColor: Colors.black.withValues(alpha: 0.4),
+      showDragHandle: false,
+      useSafeArea: false,
+      builder: (_) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppRadius.xl),
+        ),
+        child: NowPlayingScreen(
+          title: title,
+          artist: artist,
+          artworkUrl: artworkUrl,
+          insideSheet: true,
+        ),
+      ),
+    );
+  }
 
   @override
   State<NowPlayingScreen> createState() => _NowPlayingScreenState();
@@ -177,7 +214,38 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   Animation<double>? _routeAnimation;
 
+  late final AnimationController _entrance;
+
   double _dragOffset = 0;
+
+  Animation<double> _stagger(double delay) => CurvedAnimation(
+        parent: _entrance,
+        curve: Interval(delay, 1, curve: AppMotion.enter),
+      );
+
+  Widget _rise({
+    required Widget child,
+    required double delay,
+    double offset = 28,
+  }) {
+    if (context.reduceMotion) return child;
+
+    final animation = _stagger(delay);
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, inner) {
+        final t = animation.value;
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, (1 - t) * offset),
+            child: inner,
+          ),
+        );
+      },
+      child: child,
+    );
+  }
 
   @override
   void didChangeDependencies() {
@@ -234,6 +302,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     final pb = Provider.of<PlaybackProvider>(context, listen: false);
     _positionMs = pb.positionMs;
 
+    _entrance = AnimationController(vsync: this, duration: AppMotion.page)
+      ..forward();
+
     _startTimer();
 
     _colorAnimController = AnimationController(
@@ -258,6 +329,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     // Снимаем флаг: мини-плеер внизу должен вернуться после закрытия.
     _timer?.cancel();
     _routeAnimation?.removeStatusListener(_onRouteAnimation);
+    _entrance.dispose();
     _colorAnimController.dispose();
     super.dispose();
   }
@@ -512,8 +584,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final dragProgress = (_dragOffset / screenHeight).clamp(0.0, 1.0);
 
         return GestureDetector(
-          onVerticalDragUpdate: _onDragUpdate,
-          onVerticalDragEnd: _onDragEnd,
+          onVerticalDragUpdate: widget.insideSheet ? null : _onDragUpdate,
+          onVerticalDragEnd: widget.insideSheet ? null : _onDragEnd,
           child: Transform.translate(
             offset: Offset(0, _dragOffset),
             child: Opacity(
@@ -587,22 +659,37 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
                     return Column(
                       children: [
-                        _Header(onClose: () => Navigator.of(context).pop()),
+                        _Header(
+                          onClose: () => Navigator.of(context).pop(),
+                          topInset: widget.insideSheet
+                              ? MediaQueryData.fromView(View.of(context))
+                                      .viewPadding
+                                      .top +
+                                  AppSpacing.sm
+                              : 0,
+                        ),
                         Expanded(
                           child: Center(
                             child: SingleChildScrollView(
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  _Artwork(
-                                    size: artSize,
-                                    glowColor: _displayDominant,
-                                    imageBytes: imageBytes,
-                                    imageUrl: imageUrl,
-                                    trackKey: '$currentUri|${imageBytes?.length ?? 0}',
+                                  _rise(
+                                    delay: 0,
+                                    offset: 40,
+                                    child: _Artwork(
+                                      size: artSize,
+                                      glowColor: _displayDominant,
+                                      imageBytes: imageBytes,
+                                      imageUrl: imageUrl,
+                                      trackKey: '$currentUri|${imageBytes?.length ?? 0}',
+                                    ),
                                   ),
                                   const SizedBox(height: AppSpacing.xl),
-                                  _TrackInfo(title: title, artist: artist),
+                                  _rise(
+                                    delay: 0.12,
+                                    child: _TrackInfo(title: title, artist: artist),
+                                  ),
                                 ],
                               ),
                             ),
@@ -618,7 +705,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _NowPlayingProgressBar(
+                              _rise(
+                                delay: 0.2,
+                                offset: 20,
+                                child: _NowPlayingProgressBar(
                                 positionMs: _positionMs,
                                 durationMs: duration,
                                 accentColor: _displayVibrant,
@@ -631,9 +721,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                   });
                                   pb.seekTo(v);
                                 },
+                                ),
                               ),
                               const SizedBox(height: AppSpacing.md),
-                              _Controls(
+                              _rise(
+                                delay: 0.28,
+                                offset: 16,
+                                child: _Controls(
                                 isPlaying: pb.isPlaying,
                                 accentColor: _displayVibrant,
                                 onPrevious: pb.skipPrevious,
@@ -643,6 +737,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                 repeatMode: pb.repeatMode,
                                 onShuffle: () => pb.setShuffle(!pb.shuffleActive),
                                 onRepeat: pb.cycleRepeatMode,
+                                ),
                               ),
                             ],
                           ),
@@ -665,14 +760,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.onClose});
+  const _Header({required this.onClose, this.topInset = 0});
 
   final VoidCallback onClose;
+
+  final double topInset;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.sm,
+        topInset,
+        AppSpacing.sm,
+        0,
+      ),
       child: Row(
         children: [
           IconButton(

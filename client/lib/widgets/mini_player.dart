@@ -15,27 +15,16 @@ class MiniPlayer extends StatelessWidget {
   void _openPlayer(BuildContext context, Map<String, dynamic> track, String? imageUrl) {
     if (context.isWideWindow) return;
 
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (_, _, _) => NowPlayingScreen(
-          title: track['title'] as String?,
-          artist: track['artist'] as String?,
-          artworkUrl: imageUrl,
-        ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: AppMotion.emphasizedDecelerate,
-            reverseCurve: AppMotion.emphasizedAccelerate,
-          );
-          return SlideTransition(
-            position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero).animate(curved),
-            child: child,
-          );
-        },
-        transitionDuration: AppMotion.page,
-        reverseTransitionDuration: AppMotion.long,
-      ),
+    if (imageUrl != null && imageUrl.isNotEmpty && !imageUrl.startsWith('data:')) {
+      precacheImage(CachedNetworkImageProvider(imageUrl), context)
+          .catchError((_) {});
+    }
+
+    NowPlayingScreen.open(
+      context,
+      title: track['title'] as String?,
+      artist: track['artist'] as String?,
+      artworkUrl: imageUrl,
     );
   }
 

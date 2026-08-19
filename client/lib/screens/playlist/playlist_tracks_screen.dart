@@ -164,32 +164,11 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         LocalStore.readBool(StoreKeys.autoOpenPlayer, defaultValue: true);
 
     if (!context.isWideWindow && autoOpen) {
-      Navigator.of(context).push(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) {
-            return NowPlayingScreen(
-              title: track['name'] as String?,
-              artist: track['artist'] as String?,
-              artworkUrl: track['imageUrl'] as String?,
-            );
-          },
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            // Slide transition from bottom
-            const begin = Offset(0.0, 1.0);
-            const end = Offset.zero;
-            const curve = Curves.easeInOut;
-
-            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-            var offsetAnimation = animation.drive(tween);
-
-            return SlideTransition(
-              position: offsetAnimation,
-              child: child,
-            );
-          },
-          transitionDuration: const Duration(milliseconds: 500),
-          reverseTransitionDuration: const Duration(milliseconds: 300),
-        ),
+      NowPlayingScreen.open(
+        context,
+        title: track['name'] as String?,
+        artist: track['artist'] as String?,
+        artworkUrl: track['imageUrl'] as String?,
       );
     }
   }

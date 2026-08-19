@@ -69,6 +69,17 @@ class AppearanceProvider extends ChangeNotifier {
     LocalStore.saveBool(StoreKeys.artworkBackground, value);
     notifyListeners();
   }
+  int _startTab = 0;
+  int get startTab => _startTab;
+
+  void setStartTab(int value) {
+    final next = value.clamp(0, 2);
+    if (next == _startTab) return;
+    _startTab = next;
+    LocalStore.saveDouble(StoreKeys.startTab, next.toDouble());
+    notifyListeners();
+  }
+
   final Map<String, bool> _flags = {};
 
   bool flag(String key, {bool defaultValue = false}) =>
@@ -88,6 +99,10 @@ class AppearanceProvider extends ChangeNotifier {
     _artworkBackground =
         LocalStore.readBool(StoreKeys.artworkBackground, defaultValue: true);
 
+    _startTab = LocalStore.readDouble(StoreKeys.startTab, defaultValue: 0)
+        .round()
+        .clamp(0, 2);
+
     final saved = LocalStore.readString(StoreKeys.accentColor);
     _accent = AccentColor.values.firstWhere(
       (a) => a.name == saved,
@@ -102,7 +117,9 @@ class AppearanceProvider extends ChangeNotifier {
     _accent = AccentColor.olive;
     _reduceMotion = false;
     _artworkBackground = true;
+    _startTab = 0;
 
+    LocalStore.saveDouble(StoreKeys.startTab, 0);
     LocalStore.saveDouble(StoreKeys.textScale, 1.0);
     LocalStore.saveBool(StoreKeys.compactMode, false);
     LocalStore.saveString(StoreKeys.accentColor, AccentColor.olive.name);
