@@ -1337,22 +1337,31 @@ class PlaybackProvider extends ChangeNotifier {
 
   String? _artworkColorKey;
 
+  String? _artworkColorPending;
+
   void ensureArtworkColor() {
     final track = _currentTrack;
     if (track == null) {
       if (_artworkColor != null) {
         _artworkColor = null;
         _artworkColorKey = null;
+        _artworkColorPending = null;
       }
       return;
     }
 
     final url = track['imageUrl'] as String?;
     final key = (url != null && url.isNotEmpty) ? url : track['uri'] as String?;
-    if (key == null || key == _artworkColorKey) return;
+    if (key == null) return;
 
-    _artworkColorKey = key;
-    unawaited(_computeArtworkColor(key, url, _currentImageBytes));
+    if (key == _artworkColorKey || key == _artworkColorPending) return;
+
+    final bytes = _currentImageBytes;
+    final hasSource = bytes != null || (url != null && url.isNotEmpty);
+    if (!hasSource) return;
+
+    _artworkColorPending = key;
+    unawaited(_computeArtworkColor(key, url, bytes));
   }
 
   Future<void> _computeArtworkColor(
@@ -1378,10 +1387,12 @@ class PlaybackProvider extends ChangeNotifier {
           );
       _paletteCache[key] = palette;
 
-      if (key != _artworkColorKey) return;
+      if (key != _artworkColorPending) return;
 
       final base = palette.dominantColor?.color;
       if (base == null) return;
+
+      _artworkColorKey = key;
 
       final hsl = HSLColor.fromColor(base);
       _artworkColor = hsl
@@ -1391,6 +1402,8 @@ class PlaybackProvider extends ChangeNotifier {
       notifyListeners();
     } catch (err) {
       debugPrint('Не удалось получить цвет обложки: $err');
+    } finally {
+      if (key == _artworkColorPending) _artworkColorPending = null;
     }
   }
 

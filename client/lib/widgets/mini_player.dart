@@ -40,7 +40,6 @@ class MiniPlayer extends StatelessWidget {
     if (track == null) return const SizedBox.shrink();
 
     final colors = context.colors;
-    final texts = context.texts;
     final imageBytes = pb.currentImageBytes;
     final imageUrl = track['imageUrl'] as String?;
     final isCompact = !context.isWideWindow;
@@ -50,11 +49,6 @@ class MiniPlayer extends StatelessWidget {
     final artworkColor = pb.artworkColor;
     final background = artworkColor ?? colors.surfaceContainerHigh;
 
-    final onBackground = artworkColor != null ? Colors.white : colors.onSurface;
-    final onBackgroundMuted = artworkColor != null
-        ? Colors.white.withValues(alpha: 0.7)
-        : colors.onSurfaceVariant;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.sm,
@@ -62,14 +56,70 @@ class MiniPlayer extends StatelessWidget {
         AppSpacing.sm,
         AppSpacing.xs,
       ),
-      child: AnimatedContainer(
-        duration: AppMotion.medium,
-        curve: AppMotion.enter,
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-        ),
-        clipBehavior: Clip.antiAlias,
+      child: TweenAnimationBuilder<Color?>(
+        tween: ColorTween(end: background),
+        duration: AppMotion.tint,
+        curve: AppMotion.move,
+        builder: (context, animated, child) {
+          final bg = animated ?? background;
+
+          final light = ThemeData.estimateBrightnessForColor(bg) == Brightness.light;
+          final onBackground = light ? Colors.black : Colors.white;
+          final onBackgroundMuted = onBackground.withValues(alpha: 0.7);
+
+          return _MiniPlayerBody(
+            track: track,
+            imageUrl: imageUrl,
+            imageBytes: imageBytes,
+            isCompact: isCompact,
+            artSize: artSize,
+            background: bg,
+            onBackground: onBackground,
+            onBackgroundMuted: onBackgroundMuted,
+            onOpen: () => _openPlayer(context, track, imageUrl),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MiniPlayerBody extends StatelessWidget {
+  const _MiniPlayerBody({
+    required this.track,
+    required this.imageUrl,
+    required this.imageBytes,
+    required this.isCompact,
+    required this.artSize,
+    required this.background,
+    required this.onBackground,
+    required this.onBackgroundMuted,
+    required this.onOpen,
+  });
+
+  final Map<String, dynamic> track;
+  final String? imageUrl;
+  final Uint8List? imageBytes;
+  final bool isCompact;
+  final double artSize;
+  final Color background;
+  final Color onBackground;
+  final Color onBackgroundMuted;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final pb = context.watch<PlaybackProvider>();
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         child: Material(
           color: Colors.transparent,
           elevation: 0,
@@ -82,7 +132,7 @@ class MiniPlayer extends StatelessWidget {
                 children: [
                   Expanded(
                     child: InkWell(
-                      onTap: () => _openPlayer(context, track, imageUrl),
+                      onTap: onOpen,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs + 2),
                         child: Row(
@@ -135,8 +185,10 @@ class MiniPlayer extends StatelessWidget {
                   _PlayButton(
                     isPlaying: pb.isPlaying,
                     onPressed: pb.togglePlay,
-                    colors: colors,
-                    onColored: artworkColor != null,
+                    // Кнопка берёт цвета от подложки: на цветной она белая с
+                    // тёмной иконкой, на обычной — акцентная.
+                    background: onBackground,
+                    foreground: background,
                   ),
                   IconButton(
                     onPressed: pb.skipNext,
@@ -151,7 +203,7 @@ class MiniPlayer extends StatelessWidget {
                 ],
               ),
             ),
-            _MiniProgress(colors: colors, onColored: artworkColor != null),
+            _MiniProgress(color: onBackground),
           ],
           ),
         ),
@@ -164,24 +216,24 @@ class _PlayButton extends StatelessWidget {
   const _PlayButton({
     required this.isPlaying,
     required this.onPressed,
-    required this.colors,
-    this.onColored = false,
+    required this.background,
+    required this.foreground,
   });
 
   final bool isPlaying;
   final VoidCallback onPressed;
-  final ColorScheme colors;
 
-  final bool onColored;
+  final Color background;
+
+  final Color foreground;
 
   @override
   Widget build(BuildContext context) {
     return IconButton.filled(
       onPressed: onPressed,
       style: IconButton.styleFrom(
-        backgroundColor: onColored ? Colors.white : colors.primaryContainer,
-        foregroundColor:
-            onColored ? Colors.black : colors.onPrimaryContainer,
+        backgroundColor: background,
+        foregroundColor: foreground,
       ),
       icon: AnimatedSwitcher(
         duration: AppMotion.short,
@@ -243,10 +295,9 @@ class _Artwork extends StatelessWidget {
 }
 
 class _MiniProgress extends StatefulWidget {
-  const _MiniProgress({required this.colors, this.onColored = false});
+  const _MiniProgress({required this.color});
 
-  final ColorScheme colors;
-  final bool onColored;
+  final Color color;
 
   @override
   State<_MiniProgress> createState() => _MiniProgressState();
@@ -271,7 +322,6 @@ class _MiniProgressState extends State<_MiniProgress> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = widget.colors;
     final pb = context.read<PlaybackProvider>();
     final duration = pb.durationMs;
     final progress =
@@ -281,12 +331,8 @@ class _MiniProgressState extends State<_MiniProgress> {
       height: 3,
       child: LinearProgressIndicator(
         value: progress,
-        backgroundColor: widget.onColored
-            ? Colors.white.withValues(alpha: 0.2)
-            : colors.surfaceContainerHighest,
-        valueColor: AlwaysStoppedAnimation<Color>(
-          widget.onColored ? Colors.white : colors.primary,
-        ),
+        backgroundColor: widget.color.withValues(alpha: 0.2),
+        valueColor: AlwaysStoppedAnimation<Color>(widget.color),
       ),
     );
   }

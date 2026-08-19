@@ -17,6 +17,8 @@ class AppMotion {
   /// Крупные элементы внутри экрана: диалоги, разъезжающиеся уведомления.
   static const Duration long = Duration(milliseconds: 320);
 
+  static const Duration tint = Duration(milliseconds: 500);
+
   /// Смена экрана целиком. Единственное, чему позволено выходить за 300 мс.
   static const Duration page = Duration(milliseconds: 420);
 

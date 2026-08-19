@@ -2,20 +2,26 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
+class AppCacheManager extends CacheManager with ImageCacheManager {
+  static const String key = 'syncmImages';
+
+  static final AppCacheManager _instance = AppCacheManager._();
+  factory AppCacheManager() => _instance;
+
+  AppCacheManager._()
+      : super(
+          Config(
+            key,
+            stalePeriod: const Duration(days: 7),
+            maxNrOfCacheObjects: 200,
+          ),
+        );
+}
+
 class AppImageCache {
   const AppImageCache._();
 
-  static const Duration _stalePeriod = Duration(days: 7);
-
-  static const int _maxObjects = 200;
-
-  static final CacheManager manager = CacheManager(
-    Config(
-      'syncmImages',
-      stalePeriod: _stalePeriod,
-      maxNrOfCacheObjects: _maxObjects,
-    ),
-  );
+  static final AppCacheManager manager = AppCacheManager();
 
   static void configure() {
     final cache = PaintingBinding.instance.imageCache;
@@ -48,34 +54,33 @@ class AppNetworkImage extends StatelessWidget {
   final BoxFit fit;
   final Widget? placeholder;
 
-  static const List<int> _buckets = [128, 256, 512];
+  static const List<int> _steps = [128, 192, 256, 384, 512, 768];
+
+  static int _round(int pixels) {
+    for (final step in _steps) {
+      if (pixels <= step) return step;
+    }
+    return pixels;
+  }
 
   @override
   Widget build(BuildContext context) {
     final ratio = MediaQuery.devicePixelRatioOf(context);
-    final pixelWidth = (width * ratio).round();
-    final pixelHeight = (height * ratio).round();
+    final pixelWidth = _round((width * ratio).round());
+    final pixelHeight = _round((height * ratio).round());
 
     final fallback = placeholder ?? const SizedBox.shrink();
 
-    final bucket = _buckets.firstWhere(
-      (size) => pixelWidth <= size,
-      orElse: () => -1,
-    );
-
-    final full = bucket == -1;
-
     return CachedNetworkImage(
       imageUrl: url,
-      cacheKey: full ? url : '$url|$bucket',
       cacheManager: AppImageCache.manager,
       width: width,
       height: height,
       fit: fit,
       memCacheWidth: pixelWidth,
       memCacheHeight: pixelHeight,
-      maxWidthDiskCache: full ? null : bucket,
-      maxHeightDiskCache: full ? null : bucket,
+      maxWidthDiskCache: pixelWidth,
+      maxHeightDiskCache: pixelHeight,
       placeholder: (_, _) => fallback,
       errorWidget: (_, _, _) => fallback,
     );
