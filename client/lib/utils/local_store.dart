@@ -179,5 +179,7 @@ class StoreKeys {
 
   static const railWidth = 'settings:rail_width';
 
+  static const startTab = 'settings:start_tab';
+
   static const all = [friends, friendRequests, sessions, invites];
 }

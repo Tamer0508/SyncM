@@ -45,7 +45,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
+  int _currentIndex = LocalStore.readDouble(StoreKeys.startTab, defaultValue: 0)
+      .round()
+      .clamp(0, 2);
   List<dynamic> _customPlaylists = [];
   List<dynamic> _spotifyPlaylists = [];
   bool _loadingCustom = false;

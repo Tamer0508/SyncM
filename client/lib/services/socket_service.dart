@@ -16,6 +16,8 @@ class SocketService {
 
   int get masterOffsetMs => _masterOffset;
 
+  int get rttMs => _lastCalculatedRtt;
+
   int _lastCalculatedRtt = 100; // Храним последний RTT для отправки на бэк
   bool _isSyncing = false;
   Timer? _heartbeatTimer;

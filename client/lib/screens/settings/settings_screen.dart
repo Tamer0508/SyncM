@@ -1,10 +1,13 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
+import '../../widgets/pill_selector.dart';
 import '../../widgets/screen_chrome.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/appearance_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/session_provider.dart';
 // hide Config: пакет экспортирует свой класс с таким же именем, и он
 // сталкивается с нашим config.dart. Скрываем чужой, а не прячем свой за
 // префиксом — Config.baseUrl используется по всему приложению без него.
@@ -249,13 +252,13 @@ class _SettingsBodyState extends State<_SettingsBody> {
         SettingsSectionTile(
           icon: Icons.play_circle_outline_rounded,
           title: 'Воспроизведение',
-          summary: 'Задержка звука • Фоновый режим',
+          summary: 'Подключения • Задержка звука • Фон',
           onTap: () => openSection('Воспроизведение', _playbackSection),
         ),
         SettingsSectionTile(
           icon: Icons.headphones_outlined,
           title: 'Сессии',
-          summary: 'Кто может звать • Приглашения',
+          summary: 'Активные • Приглашения • Кто может звать',
           onTap: () => openSection('Сессии', _sessionsSection),
         ),
         SettingsSectionTile(
@@ -267,7 +270,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
         SettingsSectionTile(
           icon: Icons.storage_outlined,
           title: 'Данные',
-          summary: 'Кэш • Удаление аккаунта',
+          summary: 'Сохранённое • Удаление аккаунта',
           onTap: () => openSection('Данные', _dataSection),
         ),
         SettingsSectionTile(
@@ -294,14 +297,25 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   String _privacySummary(User? user) {
+    switch (_currentPreset(user)) {
+      case 'open':
+        return 'Открытый профиль';
+      case 'friends':
+        return 'Только свои — вас не найдут в поиске';
+      case 'hidden':
+        return 'Скрытый профиль';
+    }
+
     final hidden = [
-      if (user?.isFriendsHidden == true) 'друзья',
-      if (user?.isActivityHidden == true) 'активность',
+      if (user?.isSearchHidden == true) 'поиск',
       if (user?.isOnlineHidden == true) 'статус',
+      if (user?.isActivityHidden == true) 'активность',
+      if (user?.isFriendsHidden == true) 'друзья',
     ];
     if (hidden.isEmpty) return 'Ничего не скрыто';
     return 'Скрыто: ${hidden.join(', ')}';
   }
+
 
   List<Widget> _accountSection(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -383,6 +397,39 @@ class _SettingsBodyState extends State<_SettingsBody> {
         children: [_TextScaleTile(scale: appearance.textScale)],
       ),
       SettingsGroup(
+        title: 'С чего начинать',
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Вкладка, которая открывается при запуске',
+                  style: context.texts.bodySmall
+                      ?.copyWith(color: context.colors.onSurfaceVariant),
+                ),
+                const SizedBox(height: AppSpacing.sm + 4),
+                PillSelector(
+                  padding: EdgeInsets.zero,
+                  labels: const ['Сейчас', 'Музыка', 'Друзья'],
+                  selectedIndex: LocalStore.readDouble(
+                    StoreKeys.startTab,
+                    defaultValue: 0,
+                  ).round().clamp(0, 2),
+                  onSelected: (index) async {
+                    await LocalStore.saveDouble(
+                        StoreKeys.startTab, index.toDouble());
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      SettingsGroup(
         title: 'Плотность и движение',
         children: [
           SettingsSwitch(
@@ -413,9 +460,12 @@ class _SettingsBodyState extends State<_SettingsBody> {
           SettingsAction(
             icon: Icons.restart_alt_rounded,
             title: 'Сбросить оформление',
-            subtitle: 'Вернуть тему, цвет, размер текста и плотность к исходным',
-            onTap: () {
+            subtitle: 'Вернуть тему, цвет, текст, плотность и стартовую вкладку',
+            onTap: () async {
               context.read<AppearanceProvider>().resetAll();
+              await LocalStore.saveDouble(StoreKeys.startTab, 0);
+              if (!mounted) return;
+              setState(() {});
               showSuccess(context, 'Оформление сброшено');
             },
           ),
@@ -425,11 +475,53 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   List<Widget> _playbackSection(BuildContext context) {
-    final appearance = context.watch<AppearanceProvider>();
+    final pb = context.watch<PlaybackProvider>();
+    final socket = SocketService();
 
     return [
       SettingsGroup(
-        title: 'Синхронизация звука',
+        title: 'Подключения',
+        children: [
+          SettingsAction(
+            icon: pb.isConnected
+                ? Icons.check_circle_outline_rounded
+                : Icons.error_outline_rounded,
+            title: 'Spotify на устройстве',
+            subtitle: pb.isConnected
+                ? 'Подключён — можно запускать треки'
+                : 'Не подключён. Нажмите, чтобы связаться с приложением Spotify',
+            trailing: pb.isConnected
+                ? null
+                : Icon(Icons.refresh_rounded,
+                    size: 18, color: context.colors.onSurfaceVariant),
+            onTap: pb.isConnected
+                ? _noop
+                : () async {
+                    final ok = await pb.connect();
+                    if (!mounted) return;
+                    if (ok) {
+                      showSuccess(context, 'Spotify подключён');
+                    } else {
+                      showError(context, 'Не удалось подключиться к Spotify',
+                          force: true);
+                    }
+                  },
+          ),
+          SettingsAction(
+            icon: socket.isConnected
+                ? Icons.cloud_done_outlined
+                : Icons.cloud_off_outlined,
+            title: 'Связь с сервером',
+            subtitle: socket.isConnected
+                ? 'На связи — события сессии приходят сразу'
+                : 'Нет связи. Проверьте интернет',
+            onTap: _noop,
+          ),
+        ],
+      ),
+
+      SettingsGroup(
+        title: 'Синхронизация',
         children: [
           const _AudioLatencyTile(),
           SettingsAction(
@@ -447,6 +539,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
           ),
         ],
       ),
+
       SettingsGroup(
         title: 'Фоновый режим',
         children: [
@@ -464,25 +557,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
           ),
         ],
       ),
-      SettingsGroup(
-        title: 'Поведение плеера',
-        children: [
-          SettingsSwitch(
-            icon: Icons.open_in_full_rounded,
-            title: 'Открывать плеер при запуске',
-            subtitle: 'Полноэкранный плеер появится сразу после нажатия на трек',
-            value: appearance.flag(StoreKeys.autoOpenPlayer, defaultValue: true),
-            onChanged: (v) => appearance.setFlag(StoreKeys.autoOpenPlayer, v),
-          ),
-          SettingsSwitch(
-            icon: Icons.screen_lock_portrait_rounded,
-            title: 'Не гасить экран в сессии',
-            subtitle: 'Пока идёт совместное прослушивание, экран остаётся включённым',
-            value: appearance.flag(StoreKeys.keepScreenOn, defaultValue: true),
-            onChanged: (v) => appearance.setFlag(StoreKeys.keepScreenOn, v),
-          ),
-        ],
-      ),
+
       SettingsGroup(
         title: 'Качество звука',
         children: [
@@ -503,8 +578,57 @@ class _SettingsBodyState extends State<_SettingsBody> {
 
   List<Widget> _sessionsSection(BuildContext context) {
     final appearance = context.watch<AppearanceProvider>();
+    final sessions = context.watch<SessionProvider>();
+
+    final active = sessions.sessions.where((s) => s.isActive).toList();
+    final invites = sessions.invites;
 
     return [
+      SettingsGroup(
+        title: active.isEmpty ? 'Активные сессии' : 'Активные сессии · ${active.length}',
+        children: [
+          if (active.isEmpty)
+            SettingsAction(
+              icon: Icons.headphones_outlined,
+              title: 'Сейчас ничего не идёт',
+              subtitle: 'Начатые сессии появятся здесь',
+              onTap: _noop,
+            )
+          else
+            for (final session in active)
+              SettingsAction(
+                icon: Icons.headphones_rounded,
+                title: session.name,
+                subtitle: 'Идёт сейчас',
+                trailing: TextButton(
+                  onPressed: () => _confirmEndSession(context, session.id, session.name),
+                  child: const Text('Завершить'),
+                ),
+                onTap: () {
+                  // Открываем сессию тем же путём, что и остальные экраны:
+                  // провайдер просит показать, а решает главный экран.
+                  sessions.requestOpenSession({'id': session.id, 'name': session.name});
+                  Navigator.of(context).maybePop();
+                },
+              ),
+        ],
+      ),
+
+      if (invites.isNotEmpty)
+        SettingsGroup(
+          title: 'Приглашения · ${invites.length}',
+          children: [
+            SettingsAction(
+              icon: Icons.mark_email_unread_rounded,
+              title: invites.length == 1
+                  ? 'Одно приглашение ждёт ответа'
+                  : '${invites.length} приглашения ждут ответа',
+              subtitle: 'Открыть список',
+              onTap: () => Navigator.of(context).pushNamed('/session/invites'),
+            ),
+          ],
+        ),
+
       SettingsGroup(
         title: 'Приглашения',
         children: [
@@ -517,9 +641,24 @@ class _SettingsBodyState extends State<_SettingsBody> {
           ),
         ],
       ),
+
       SettingsGroup(
-        title: 'Завершение',
+        title: 'Во время сессии',
         children: [
+          SettingsSwitch(
+            icon: Icons.open_in_full_rounded,
+            title: 'Открывать плеер при запуске',
+            subtitle: 'Полноэкранный плеер, когда трек пошёл',
+            value: appearance.flag(StoreKeys.autoOpenPlayer, defaultValue: true),
+            onChanged: (v) => appearance.setFlag(StoreKeys.autoOpenPlayer, v),
+          ),
+          SettingsSwitch(
+            icon: Icons.screen_lock_portrait_outlined,
+            title: 'Не гасить экран',
+            subtitle: 'Экран остаётся включённым, пока идёт сессия',
+            value: appearance.flag(StoreKeys.keepScreenOn, defaultValue: true),
+            onChanged: (v) => appearance.setFlag(StoreKeys.keepScreenOn, v),
+          ),
           SettingsSwitch(
             icon: Icons.help_outline_rounded,
             title: 'Спрашивать перед завершением',
@@ -529,6 +668,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
           ),
         ],
       ),
+
       SettingsGroup(
         title: 'Кто может звать',
         children: [
@@ -540,54 +680,10 @@ class _SettingsBodyState extends State<_SettingsBody> {
                 size: 18, color: context.colors.onSurfaceVariant),
             onTap: _noop,
           ),
-        ],
-      ),
-    ];
-  }
-
-  List<Widget> _privacySection(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final user = auth.user;
-    return [
-      SettingsGroup(
-        children: [
-          SettingsSwitch(
-            icon: Icons.people_outline_rounded,
-            title: 'Скрыть количество друзей',
-            subtitle: 'Никто не увидит количество ваших друзей и общих друзей',
-            value: user?.isFriendsHidden ?? false,
-            onChanged: (v) => _updatePrivacy({'isFriendsHidden': v}),
-          ),
-          SettingsSwitch(
-            icon: Icons.timeline_rounded,
-            title: 'Скрыть активность',
-            subtitle: 'Ваша активность в сессиях не будет видна другим',
-            value: user?.isActivityHidden ?? false,
-            onChanged: (v) => _updatePrivacy({'isActivityHidden': v}),
-          ),
-          SettingsSwitch(
-            icon: Icons.visibility_off_rounded,
-            title: 'Скрыть онлайн-статус',
-            subtitle: 'Друзья не увидят, когда вы в сети',
-            value: user?.isOnlineHidden ?? false,
-            onChanged: (v) => _updatePrivacy({'isOnlineHidden': v}),
-          ),
-          SettingsSwitch(
-            icon: Icons.person_search_outlined,
-            title: 'Скрыть из поиска',
-            subtitle: 'Новые люди не найдут вас по имени. Друзья — увидят',
-            value: user?.isSearchHidden ?? false,
-            onChanged: (v) => _updatePrivacy({'isSearchHidden': v}),
-          ),
-        ],
-      ),
-      SettingsGroup(
-        title: 'Чёрный список',
-        children: [
           SettingsAction(
             icon: Icons.block_rounded,
             title: 'Заблокированные',
-            subtitle: 'Не смогут найти вас, писать и звать в сессии',
+            subtitle: 'Они не смогут позвать вас в сессию',
             onTap: () => _openChild(
               context,
               (ctx, onBack) => BlockedUsersScreen(
@@ -601,12 +697,204 @@ class _SettingsBodyState extends State<_SettingsBody> {
     ];
   }
 
+  Future<void> _confirmEndSession(
+    BuildContext context,
+    String sessionId,
+    String name,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.stop_circle_outlined, color: ctx.colors.error),
+        title: const Text('Завершить сессию?'),
+        content: Text('«$name» закроется у всех участников.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: ctx.colors.error,
+              foregroundColor: ctx.colors.onError,
+            ),
+            child: const Text('Завершить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await context.read<SessionProvider>().endSession(sessionId);
+      if (!mounted) return;
+      showSuccess(context, 'Сессия завершена');
+    } catch (err) {
+      if (!mounted) return;
+      showError(context, err);
+    }
+  }
+
+  static const Map<String, Map<String, bool>> _privacyPresets = {
+    'open': {
+      'isFriendsHidden': false,
+      'isActivityHidden': false,
+      'isOnlineHidden': false,
+      'isSearchHidden': false,
+    },
+    'friends': {
+      'isFriendsHidden': false,
+      'isActivityHidden': false,
+      'isOnlineHidden': false,
+      'isSearchHidden': true,
+    },
+    'hidden': {
+      'isFriendsHidden': true,
+      'isActivityHidden': true,
+      'isOnlineHidden': true,
+      'isSearchHidden': true,
+    },
+  };
+
+  String? _currentPreset(User? user) {
+    if (user == null) return null;
+    final current = {
+      'isFriendsHidden': user.isFriendsHidden,
+      'isActivityHidden': user.isActivityHidden,
+      'isOnlineHidden': user.isOnlineHidden,
+      'isSearchHidden': user.isSearchHidden,
+    };
+
+    for (final entry in _privacyPresets.entries) {
+      if (mapEquals(entry.value, current)) return entry.key;
+    }
+    return null;
+  }
+
+  List<Widget> _privacySection(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final user = auth.user;
+    final preset = _currentPreset(user);
+
+    return [
+      SettingsGroup(
+        title: 'Что о вас видно',
+        children: [_PrivacySummary(user: user)],
+      ),
+
+      SettingsGroup(
+        title: 'Быстрый режим',
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: PillSelector(
+              padding: EdgeInsets.zero,
+              labels: const ['Открытый', 'Только свои', 'Скрытый'],
+              // -1, когда сочетание своё: ни одна таблетка не подсвечена.
+              selectedIndex: switch (preset) {
+                'open' => 0,
+                'friends' => 1,
+                'hidden' => 2,
+                _ => -1,
+              },
+              onSelected: (index) {
+                final key = ['open', 'friends', 'hidden'][index];
+                _updatePrivacy(_privacyPresets[key]!);
+              },
+            ),
+          ),
+        ],
+      ),
+
+      SettingsGroup(
+        title: 'Подробно',
+        children: [
+          SettingsSwitch(
+            icon: Icons.person_search_outlined,
+            title: 'Скрыть из поиска',
+            subtitle: 'Новые люди не найдут вас по имени. Друзья — увидят',
+            value: user?.isSearchHidden ?? false,
+            onChanged: (v) => _updatePrivacy({'isSearchHidden': v}),
+          ),
+          SettingsSwitch(
+            icon: Icons.visibility_off_rounded,
+            title: 'Скрыть статус в сети',
+            subtitle: 'Друзья не увидят, когда вы онлайн и когда были в последний раз',
+            value: user?.isOnlineHidden ?? false,
+            onChanged: (v) => _updatePrivacy({'isOnlineHidden': v}),
+          ),
+          SettingsSwitch(
+            icon: Icons.timeline_rounded,
+            title: 'Скрыть активность',
+            subtitle: 'Что вы слушаете в сессии, не будет видно в профиле',
+            value: user?.isActivityHidden ?? false,
+            onChanged: (v) => _updatePrivacy({'isActivityHidden': v}),
+          ),
+          SettingsSwitch(
+            icon: Icons.people_outline_rounded,
+            title: 'Скрыть друзей',
+            subtitle: 'Никто не увидит, сколько у вас друзей и кто из них общий',
+            value: user?.isFriendsHidden ?? false,
+            onChanged: (v) => _updatePrivacy({'isFriendsHidden': v}),
+          ),
+        ],
+      ),
+
+      SettingsGroup(
+        title: 'Чёрный список',
+        children: [_BlockedSummaryTile(onOpen: () => _openBlocked(context))],
+      ),
+
+      SettingsGroup(
+        title: 'Видно всегда',
+        children: [
+          SettingsAction(
+            icon: Icons.badge_outlined,
+            title: 'Имя и аватар',
+            subtitle: 'По ним друзья узнают вас в списке и в сессии',
+            trailing: Icon(Icons.lock_outline_rounded,
+                size: 18, color: context.colors.onSurfaceVariant),
+            onTap: _noop,
+          ),
+          SettingsAction(
+            icon: Icons.headphones_outlined,
+            title: 'Участие в общей сессии',
+            subtitle: 'Тот, с кем вы слушаете, видит вас и очередь треков',
+            trailing: Icon(Icons.lock_outline_rounded,
+                size: 18, color: context.colors.onSurfaceVariant),
+            onTap: _noop,
+          ),
+          SettingsAction(
+            icon: Icons.history_rounded,
+            title: 'История прослушанного',
+            // Не ограничение, а наоборот — гарантия. Стоит здесь же, потому
+            // что человек ищет ответ на тот же вопрос: «а это видно?»
+            subtitle: 'Видна только вам, даже друзьям — нет',
+            trailing: Icon(Icons.visibility_off_outlined,
+                size: 18, color: context.colors.onSurfaceVariant),
+            onTap: _noop,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  void _openBlocked(BuildContext context) => _openChild(
+        context,
+        (ctx, onBack) => BlockedUsersScreen(
+          embedded: ctx.isWideWindow,
+          onBack: onBack,
+        ),
+      );
+
   List<Widget> _dataSection(BuildContext context) {
     final appearance = context.watch<AppearanceProvider>();
 
     return [
       SettingsGroup(
-        title: 'Хранилище',
+        title: 'На этом устройстве',
         children: [
           SettingsSwitch(
             icon: Icons.bolt_outlined,
@@ -616,9 +904,38 @@ class _SettingsBodyState extends State<_SettingsBody> {
             onChanged: (v) => appearance.setFlag(StoreKeys.prefetchOnStart, v),
           ),
           SettingsAction(
+            icon: Icons.cleaning_services_outlined,
+            title: 'Сохранённые списки',
+            subtitle: _localCacheSummary(),
+            onTap: () async {
+              await LocalStore.clearAll();
+              if (!mounted) return;
+              setState(() {});
+              showSuccess(context, 'Списки очищены');
+            },
+          ),
+          SettingsAction(
+            icon: Icons.image_outlined,
+            title: 'Кэш изображений',
+            subtitle: _imageCacheSummary(),
+            onTap: () async {
+              PaintingBinding.instance.imageCache.clear();
+              PaintingBinding.instance.imageCache.clearLiveImages();
+              await DefaultCacheManager().emptyCache();
+              if (!mounted) return;
+              setState(() {});
+              showSuccess(context, 'Кэш изображений очищен');
+            },
+          ),
+        ],
+      ),
+      SettingsGroup(
+        title: 'На сервере',
+        children: [
+          SettingsAction(
             icon: Icons.history_rounded,
             title: 'История прослушанного',
-            subtitle: 'Последние треки, которые вы включали',
+            subtitle: 'Посмотреть и очистить',
             onTap: widget.onOpenHistory ??
                 () => _openChild(
                       context,
@@ -629,26 +946,16 @@ class _SettingsBodyState extends State<_SettingsBody> {
                     ),
           ),
           SettingsAction(
-            icon: Icons.cleaning_services_outlined,
-            title: 'Очистить кэш',
-            subtitle: 'Сохранённые списки друзей и сессий',
-            onTap: () async {
-              await LocalStore.clearAll();
-              if (!mounted) return;
-              showSuccess(context, 'Кэш очищен');
-            },
-          ),
-          SettingsAction(
-            icon: Icons.image_not_supported_outlined,
-            title: 'Очистить кэш изображений',
-            subtitle: 'Аватары и обложки будут загружены заново',
-            onTap: () async {
-              PaintingBinding.instance.imageCache.clear();
-              PaintingBinding.instance.imageCache.clearLiveImages();
-              await DefaultCacheManager().emptyCache();
-              if (!mounted) return;
-              showSuccess(context, 'Кэш изображений очищен');
-            },
+            icon: Icons.shield_outlined,
+            title: 'Что хранится о вас',
+            subtitle: 'Список данных и как их удалить',
+            onTap: () => _openChild(
+              context,
+              (ctx, onBack) => PrivacyPolicyScreen(
+                embedded: ctx.isWideWindow,
+                onBack: onBack,
+              ),
+            ),
           ),
         ],
       ),
@@ -665,6 +972,44 @@ class _SettingsBodyState extends State<_SettingsBody> {
         ],
       ),
     ];
+  }
+
+  String _localCacheSummary() {
+    final counts = <String>[];
+    final friends = LocalStore.readList(StoreKeys.friends).length;
+    final sessions = LocalStore.readList(StoreKeys.sessions).length;
+    if (friends > 0) counts.add('друзей: $friends');
+    if (sessions > 0) counts.add('сессий: $sessions');
+
+    if (counts.isEmpty) return 'Пока ничего не сохранено';
+
+    final stamps = [
+      LocalStore.savedAt(StoreKeys.friends),
+      LocalStore.savedAt(StoreKeys.sessions),
+    ].whereType<DateTime>().toList()
+      ..sort();
+
+    if (stamps.isEmpty) return counts.join(' · ');
+    return '${counts.join(' · ')} · ${_ago(stamps.last)}';
+  }
+
+  String _imageCacheSummary() {
+    final cache = PaintingBinding.instance.imageCache;
+    if (cache.currentSize == 0) return 'Пусто';
+
+    final mb = cache.currentSizeBytes / (1024 * 1024);
+    final size = mb >= 1
+        ? '${mb.toStringAsFixed(1)} МБ'
+        : '${(cache.currentSizeBytes / 1024).round()} КБ';
+    return 'В памяти: $size · обложек и аватаров: ${cache.currentSize}';
+  }
+
+  String _ago(DateTime moment) {
+    final diff = DateTime.now().difference(moment);
+    if (diff.inMinutes < 1) return 'обновлено только что';
+    if (diff.inMinutes < 60) return 'обновлено ${diff.inMinutes} мин. назад';
+    if (diff.inHours < 24) return 'обновлено ${diff.inHours} ч. назад';
+    return 'обновлено ${diff.inDays} д. назад';
   }
 
   List<Widget> _aboutSection(BuildContext context) {
@@ -736,8 +1081,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
     final socket = SocketService();
     final offset = socket.masterOffsetMs;
     if (offset == 0) return 'Ещё не измерено — нажмите, чтобы обновить';
+
     final sign = offset > 0 ? '+' : '';
-    return 'Расхождение с сервером: $sign$offset мс';
+    return 'Часы: $sign$offset мс · пинг: ${socket.rttMs} мс';
   }
 
   static void _noop() {}
@@ -1040,6 +1386,23 @@ class _AudioLatencyTile extends StatelessWidget {
             label: '$latency мс',
             onChanged: (v) => pb.setAudioLatency(v.round()),
           ),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.xs,
+            children: [
+              for (final preset in const [
+                (label: 'Провод', value: 0),
+                (label: 'Bluetooth', value: 175),
+                (label: 'Колонка', value: 300),
+              ])
+                ChoiceChip(
+                  label: Text(preset.label),
+                  selected: latency == preset.value,
+                  onSelected: (_) => pb.setAudioLatency(preset.value),
+                  showCheckmark: false,
+                ),
+            ],
+          ),
           // Кнопка сброса всегда занимает своё место, просто становится
           // неактивной: иначе при первом же движении ползунка она появлялась
           // и сдвигала содержимое карточки вниз.
@@ -1302,6 +1665,161 @@ class _NameDialogState extends State<_NameDialog> {
           child: const Text('Сохранить'),
         ),
       ],
+    );
+  }
+}
+
+class _PrivacySummary extends StatelessWidget {
+  const _PrivacySummary({required this.user});
+
+  final User? user;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+    final u = user;
+
+    if (u == null) return const SizedBox.shrink();
+
+    final friendsSee = <String>[
+      'имя и аватар',
+      if (!u.isOnlineHidden) 'когда вы в сети',
+      if (!u.isActivityHidden) 'что вы слушаете',
+      if (!u.isFriendsHidden) 'сколько у вас друзей',
+    ];
+
+    final strangersSee = u.isSearchHidden
+        ? 'Не найдут вас в поиске'
+        : 'Могут найти вас по имени и отправить заявку';
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SummaryLine(
+            icon: Icons.people_alt_rounded,
+            audience: 'Друзья видят',
+            value: friendsSee.join(', '),
+            color: colors.onSurface,
+          ),
+          const SizedBox(height: AppSpacing.sm + 4),
+          _SummaryLine(
+            icon: Icons.public_rounded,
+            audience: 'Остальные',
+            value: strangersSee,
+            color: colors.onSurfaceVariant,
+          ),
+          if (u.isOnlineHidden && u.isActivityHidden && u.isFriendsHidden) ...[
+            const SizedBox(height: AppSpacing.sm + 4),
+            Text(
+              'При полностью скрытом профиле друзьям сложнее понять, '
+              'когда вас звать слушать вместе.',
+              style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryLine extends StatelessWidget {
+  const _SummaryLine({
+    required this.icon,
+    required this.audience,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String audience;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final texts = context.texts;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 18, color: context.colors.onSurfaceVariant),
+        ),
+        const SizedBox(width: AppSpacing.sm + 4),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                audience,
+                style: texts.labelMedium
+                    ?.copyWith(color: context.colors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 2),
+              Text(value, style: texts.bodyMedium?.copyWith(color: color)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BlockedSummaryTile extends StatefulWidget {
+  const _BlockedSummaryTile({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  State<_BlockedSummaryTile> createState() => _BlockedSummaryTileState();
+}
+
+class _BlockedSummaryTileState extends State<_BlockedSummaryTile> {
+  int? _count;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final list = await context.read<AuthProvider>().api.getBlockedUsers();
+      if (!mounted) return;
+      setState(() => _count = list.length);
+    } catch (err) {
+      debugPrint('Не удалось получить число заблокированных: $err');
+    }
+  }
+
+  String get _subtitle {
+    final count = _count;
+    if (count == null) return 'Не смогут найти вас, писать и звать в сессии';
+    if (count == 0) return 'Никого нет';
+
+    final mod100 = count % 100;
+    final word = (mod100 >= 11 && mod100 <= 14)
+        ? 'человек'
+        : switch (count % 10) {
+            1 => 'человек',
+            2 || 3 || 4 => 'человека',
+            _ => 'человек',
+          };
+    return '$count $word';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsAction(
+      icon: Icons.block_rounded,
+      title: 'Заблокированные',
+      subtitle: _subtitle,
+      onTap: widget.onOpen,
     );
   }
 }
