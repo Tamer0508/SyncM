@@ -2,8 +2,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../utils/image_cache.dart';
 
-/// Карточка плейлиста для горизонтальных подборок.
 class PlaylistCard extends StatelessWidget {
   const PlaylistCard({
     super.key,
@@ -43,11 +43,11 @@ class PlaylistCard extends StatelessWidget {
             children: [
               Expanded(
                 child: hasImage
-                    ? CachedNetworkImage(
-                        imageUrl: imageUrl!,
-                        fit: BoxFit.cover,
-                        placeholder: (_, _) => _Placeholder(colors: colors),
-                        errorWidget: (_, _, _) => _Placeholder(colors: colors),
+                    ? AppNetworkImage(
+                        url: imageUrl!,
+                        width: width,
+                        height: width,
+                        placeholder: _Placeholder(colors: colors),
                       )
                     : _Placeholder(colors: colors),
               ),
@@ -111,11 +111,11 @@ class PlaylistCard extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius: AppRadius.small,
                   child: hasImage
-                      ? CachedNetworkImage(
-                          imageUrl: imageUrl!,
-                          fit: BoxFit.cover,
-                          placeholder: (_, _) => _Placeholder(colors: colors),
-                          errorWidget: (_, _, _) => _Placeholder(colors: colors),
+                      ? AppNetworkImage(
+                          url: imageUrl!,
+                          width: 52,
+                          height: 52,
+                          placeholder: _Placeholder(colors: colors),
                         )
                       : _Placeholder(colors: colors),
                 ),

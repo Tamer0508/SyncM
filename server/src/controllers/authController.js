@@ -14,6 +14,7 @@ const { issueAuthToken, revokeAuthToken, revokeAllUserTokens } = require('../inf
 const { getIo } = require('../socket');
 const logger = require('../infrastructure/logger');
 const asyncHandler = require('../utils/asyncHandler');
+const { generateUniquePublicId } = require('../utils/publicId');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -322,6 +323,7 @@ const callback = asyncHandler(async (req, res) => {
     } else {
       const newUser = await prisma.user.create({
         data: {
+          publicId: await generateUniquePublicId(prisma),
           username: spotifyUser.displayName || spotifyUser.spotifyId,
           email: spotifyUser.email || `${spotifyUser.spotifyId}@spotify.user`,
           passwordHash: '',
@@ -381,6 +383,7 @@ const getMe = asyncHandler(async (req, res) => {
     if (user) {
       return {
         id: user.id,
+        publicId: user.publicId,
         displayName: user.username,
         email: user.email,
         avatarUrl: user.customAvatarUrl || user.spotifyUser?.avatarUrl || null,
@@ -402,6 +405,7 @@ const getMe = asyncHandler(async (req, res) => {
     if (spotifyUser) {
       return {
         id: spotifyUser.userId || spotifyUser.id,
+        publicId: spotifyUser.user?.publicId || null,
         displayName: spotifyUser.user?.username || spotifyUser.displayName,
         email: spotifyUser.user?.email || spotifyUser.email,
         avatarUrl: spotifyUser.avatarUrl,
@@ -451,6 +455,7 @@ async function upsertGoogleUser(payload) {
     where: { email: payload.email },
     update: shouldSyncName ? { username: payload.name } : {},
     create: {
+      publicId: await generateUniquePublicId(prisma),
       username: payload.name || payload.email.split('@')[0],
       email: payload.email,
       passwordHash: '',

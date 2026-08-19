@@ -5,6 +5,7 @@ import '../models/friend.dart';
 import '../providers/friends_provider.dart';
 import '../providers/session_provider.dart';
 import '../services/api_service.dart';
+import '../utils/image_cache.dart';
 
 class PrefetchService {
   PrefetchService({ApiService? api}) : _api = api ?? ApiService();
@@ -63,7 +64,10 @@ class PrefetchService {
 
     for (final url in urls) {
       if (!context.mounted) return;
-      await _safe(() => precacheImage(CachedNetworkImageProvider(url), context));
+      await _safe(() => precacheImage(
+            CachedNetworkImageProvider(url, cacheManager: AppImageCache.manager),
+            context,
+          ));
     }
   }
 

@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../providers/playback_provider.dart';
 import '../screens/player/now_playing.dart';
 import '../theme.dart';
+import '../utils/image_cache.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key});
@@ -16,7 +17,10 @@ class MiniPlayer extends StatelessWidget {
     if (context.isWideWindow) return;
 
     if (imageUrl != null && imageUrl.isNotEmpty && !imageUrl.startsWith('data:')) {
-      precacheImage(CachedNetworkImageProvider(imageUrl), context)
+      precacheImage(
+              CachedNetworkImageProvider(imageUrl,
+                  cacheManager: AppImageCache.manager),
+              context)
           .catchError((_) {});
     }
 
@@ -220,13 +224,11 @@ class _Artwork extends StatelessWidget {
     if (bytes != null) {
       image = Image.memory(bytes!, width: size, height: size, fit: BoxFit.cover);
     } else if (url != null && url!.isNotEmpty && !url!.startsWith('data:')) {
-      image = CachedNetworkImage(
-        imageUrl: url!,
+      image = AppNetworkImage(
+        url: url!,
         width: size,
         height: size,
-        fit: BoxFit.cover,
-        placeholder: (_, _) => placeholder,
-        errorWidget: (_, _, _) => placeholder,
+        placeholder: placeholder,
       );
     } else {
       image = placeholder;

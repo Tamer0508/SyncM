@@ -5,6 +5,7 @@ const { addNotificationJob } = require('../infrastructure/queue');
 const { withLock } = require('../infrastructure/lock');
 const logger = require('../infrastructure/logger');
 const asyncHandler = require('../utils/asyncHandler');
+const { normalizePublicId } = require('../utils/publicId');
 
 const invalidateFriendshipCaches = (userIdA, userIdB) =>
   Promise.all([
@@ -52,21 +53,29 @@ const searchUsers = asyncHandler(async (req, res) => {
 
   const { query } = searchQuerySchema.parse(req.query);
 
+  const publicId = normalizePublicId(query);
+
   const users = await getOrSet(`db:search-users:${userId}`, query.toLowerCase(), 120, async () => {
     const found = await prisma.user.findMany({
       where: {
-        username: { contains: query, mode: 'insensitive' },
+        ...(publicId
+          ? { publicId }
+          : { username: { contains: query, mode: 'insensitive' } }),
         id: { not: userId },
 
-        OR: [
-          { isSearchHidden: false },
-          {
-            OR: [
-              { sentRequests: { some: { receiverId: userId, status: 'accepted' } } },
-              { receivedRequests: { some: { senderId: userId, status: 'accepted' } } },
-            ],
-          },
-        ],
+        ...(publicId
+            ? {}
+            : {
+                OR: [
+                  { isSearchHidden: false },
+                  {
+                    OR: [
+                      { sentRequests: { some: { receiverId: userId, status: 'accepted' } } },
+                      { receivedRequests: { some: { senderId: userId, status: 'accepted' } } },
+                    ],
+                  },
+                ],
+              }),
 
         blocksMade: { none: { blockedId: userId } },
         blocksReceived: { none: { blockerId: userId } },
@@ -100,6 +109,7 @@ const searchUsers = asyncHandler(async (req, res) => {
       }
       return {
         id: u.id,
+        publicId: u.publicId,
         displayName: u.username,
         avatarUrl: u.customAvatarUrl || u.spotifyUser?.avatarUrl || null,
         friendshipStatus,

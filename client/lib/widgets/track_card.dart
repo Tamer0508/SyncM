@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/playback_provider.dart';
 import '../theme.dart';
+import '../utils/image_cache.dart';
 import 'animated_equalizer.dart';
 
 class TrackCard extends StatefulWidget {
@@ -260,13 +261,11 @@ class _Artwork extends StatelessWidget {
       child: ClipRRect(
         borderRadius: AppRadius.small,
         child: url != null && url!.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: url!,
+            ? AppNetworkImage(
+                url: url!,
                 width: size,
                 height: size,
-                fit: BoxFit.cover,
-                placeholder: (_, _) => placeholder,
-                errorWidget: (_, _, _) => placeholder,
+                placeholder: placeholder,
               )
             : placeholder,
       ),

@@ -8,6 +8,7 @@ import '../../providers/playback_provider.dart';
 import '../../services/api_service.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
+import '../../utils/image_cache.dart';
 import '../../utils/local_store.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/skeleton.dart';
@@ -204,6 +205,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
               if (widget.imageUrl != null && widget.imageUrl!.isNotEmpty)
                 CachedNetworkImage(
                   imageUrl: widget.imageUrl!,
+                  cacheManager: AppImageCache.manager,
                   fit: BoxFit.cover,
                   placeholder: (_, _) => ColoredBox(color: theme.colorScheme.primaryContainer),
                   errorWidget: (_, _, _) => ColoredBox(color: theme.colorScheme.primaryContainer),

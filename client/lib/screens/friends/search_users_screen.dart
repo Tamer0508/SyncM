@@ -115,7 +115,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
             autofocus: !widget.embedded,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Имя пользователя',
+              hintText: 'Имя или код',
               prefixIcon: const Icon(Icons.search_rounded),
               suffixIcon: _controller.text.isEmpty
                   ? null
@@ -167,7 +167,8 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
         key: const ValueKey('idle'),
         icon: Icons.person_search_rounded,
         title: 'Найдите друзей',
-        subtitle: 'Введите имя пользователя, чтобы начать поиск.',
+        subtitle: 'Введите имя или код из восьми символов. Свой код можно '
+            'посмотреть в настройках, в разделе «Аккаунт».',
       );
     }
 
@@ -176,7 +177,8 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
         key: const ValueKey('empty'),
         icon: Icons.search_off_rounded,
         title: 'Никого не нашлось',
-        subtitle: 'Проверьте написание имени или попробуйте другое.',
+        subtitle: 'Проверьте написание. По коду человек находится, даже если '
+            'скрыл себя из поиска.',
       );
     }
 

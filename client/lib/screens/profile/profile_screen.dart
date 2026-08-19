@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../services/spotify_link_service.dart';
 import '../../theme.dart';
+import '../../utils/image_cache.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/mini_player.dart';
 import '../../widgets/app_menu.dart';
@@ -312,7 +313,7 @@ class _ProfileContentState extends State<_ProfileContent> {
 
     try {
       final palette = await PaletteGenerator.fromImageProvider(
-        CachedNetworkImageProvider(url),
+        CachedNetworkImageProvider(url, cacheManager: AppImageCache.manager),
         size: const Size(48, 48),
         maximumColorCount: 8,
       );
@@ -901,6 +902,9 @@ class _TrackRow extends StatelessWidget {
               child: image != null && image.isNotEmpty
                   ? CachedNetworkImage(
                       imageUrl: image,
+                      cacheManager: AppImageCache.manager,
+                      memCacheWidth: 132,
+                      maxWidthDiskCache: 132,
                       fit: BoxFit.cover,
                       placeholder: (_, _) =>
                           ColoredBox(color: colors.surfaceContainerHigh),

@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../utils/image_cache.dart';
 
 class TappableAvatar extends StatelessWidget {
   const TappableAvatar({
@@ -86,11 +87,11 @@ class TappableAvatar extends StatelessWidget {
         width: radius * 2,
         height: radius * 2,
         child: _hasImage
-            ? CachedNetworkImage(
-                imageUrl: imageUrl!,
-                fit: BoxFit.cover,
-                placeholder: (_, _) => placeholder,
-                errorWidget: (_, _, _) => placeholder,
+            ? AppNetworkImage(
+                url: imageUrl!,
+                width: radius * 2,
+                height: radius * 2,
+                placeholder: placeholder,
               )
             : placeholder,
       ),
@@ -156,7 +157,11 @@ class _FlightImage extends StatelessWidget {
         final t = Curves.easeInOut.transform(animation.value);
         return ClipRRect(
           borderRadius: BorderRadius.circular(1000 * (1 - t) + AppRadius.lg * t),
-          child: CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover),
+          child: CachedNetworkImage(
+            imageUrl: imageUrl,
+            cacheManager: AppImageCache.manager,
+            fit: BoxFit.cover,
+          ),
         );
       },
     );
@@ -227,6 +232,7 @@ class _AvatarViewerState extends State<_AvatarViewer> {
                           child: ClipRRect(
                             borderRadius: AppRadius.large,
                             child: CachedNetworkImage(
+                              cacheManager: AppImageCache.manager,
                               imageUrl: widget.imageUrl,
                               fit: BoxFit.contain,
                               placeholder: (_, __) => const SizedBox(

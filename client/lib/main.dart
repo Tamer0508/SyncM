@@ -12,6 +12,7 @@ import 'services/socket_service.dart';
 import 'services/api_service.dart';
 import 'theme.dart';
 import 'config.dart';
+import 'utils/image_cache.dart';
 import 'utils/local_store.dart';
 import 'utils/app_globals.dart';
 import 'screens/login/login_screen.dart';
@@ -22,6 +23,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await LocalStore.init();
+
+  AppImageCache.configure();
 
   runApp(const MyApp());
 }

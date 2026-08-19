@@ -11,7 +11,6 @@ import '../../providers/session_provider.dart';
 // hide Config: пакет экспортирует свой класс с таким же именем, и он
 // сталкивается с нашим config.dart. Скрываем чужой, а не прячем свой за
 // префиксом — Config.baseUrl используется по всему приложению без него.
-import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide Config;
 import '../../services/socket_service.dart';
 import '../../theme.dart';
 import 'play_history_screen.dart';
@@ -19,6 +18,7 @@ import 'blocked_users_screen.dart';
 import 'legal_document_screen.dart';
 import 'privacy_policy_screen.dart';
 import '../../widgets/settings_widgets.dart';
+import '../../utils/image_cache.dart';
 import '../../utils/local_store.dart';
 import '../../config.dart';
 import '../../models/user.dart';
@@ -316,7 +316,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
     return 'Скрыто: ${hidden.join(', ')}';
   }
 
-
   List<Widget> _accountSection(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.user;
@@ -345,17 +344,17 @@ class _SettingsBodyState extends State<_SettingsBody> {
                   size: 18, color: context.colors.onSurfaceVariant),
               onTap: _noop,
             ),
-          if (user != null)
+          if (user?.publicId != null)
             SettingsAction(
               icon: Icons.tag_rounded,
-              title: 'Идентификатор',
-              subtitle: user.id,
+              title: 'Ваш код',
+              subtitle: _formatPublicId(user!.publicId!),
               trailing: Icon(Icons.copy_rounded,
                   size: 18, color: context.colors.onSurfaceVariant),
               onTap: () async {
-                await Clipboard.setData(ClipboardData(text: user.id));
+                await Clipboard.setData(ClipboardData(text: user.publicId!));
                 if (!mounted) return;
-                showSuccess(context, 'Идентификатор скопирован');
+                showSuccess(context, 'Код скопирован');
               },
             ),
         ],
@@ -908,9 +907,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             title: 'Кэш изображений',
             subtitle: _imageCacheSummary(),
             onTap: () async {
-              PaintingBinding.instance.imageCache.clear();
-              PaintingBinding.instance.imageCache.clearLiveImages();
-              await DefaultCacheManager().emptyCache();
+              await AppImageCache.clear();
               if (!mounted) return;
               setState(() {});
               showSuccess(context, 'Кэш изображений очищен');
@@ -1076,6 +1073,9 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   static void _noop() {}
+
+  static String _formatPublicId(String id) =>
+      id.length == 8 ? '${id.substring(0, 4)} ${id.substring(4)}' : id;
 
   Future<void> _editName(BuildContext context) async {
     final auth = context.read<AuthProvider>();
