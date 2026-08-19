@@ -1,5 +1,9 @@
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
@@ -10,14 +14,26 @@ class LegalDocumentScreen extends StatefulWidget {
     super.key,
     required this.title,
     required this.assetPath,
+    this.url,
     this.embedded = false,
     this.onBack,
   });
 
   final String title;
+
   final String assetPath;
+
+  final String? url;
+
   final bool embedded;
   final VoidCallback? onBack;
+
+  static bool get supportsWebView {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+  }
 
   @override
   State<LegalDocumentScreen> createState() => _LegalDocumentScreenState();
@@ -26,14 +42,51 @@ class LegalDocumentScreen extends StatefulWidget {
 class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
   String? _text;
   Object? _error;
+  WebViewController? _webView;
+
+  bool get _hasUrl => widget.url != null && widget.url!.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    _load();
+
+    if (_hasUrl && LegalDocumentScreen.supportsWebView) {
+      _openWebView();
+      return;
+    }
+    if (_hasUrl) {
+      _openInBrowser();
+    }
+    _loadAsset();
   }
 
-  Future<void> _load() async {
+  void _openWebView() {
+    setState(() {
+      _webView = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.disabled)
+        ..setNavigationDelegate(NavigationDelegate(
+          onWebResourceError: (_) {
+            // Страница не открылась — показываем копию из ресурсов.
+            if (!mounted) return;
+            setState(() => _webView = null);
+            _loadAsset();
+          },
+        ))
+        ..loadRequest(Uri.parse(widget.url!));
+    });
+  }
+
+  Future<void> _openInBrowser() async {
+    final uri = Uri.tryParse(widget.url!);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (err) {
+      debugPrint('Не удалось открыть документ в браузере: $err');
+    }
+  }
+
+  Future<void> _loadAsset() async {
     try {
       final text = await rootBundle.loadString(widget.assetPath);
       if (!mounted) return;
@@ -53,7 +106,7 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
         onBack: widget.onBack ??
             (widget.embedded ? null : () => Navigator.of(context).pop()),
         actions: [
-          if (_text != null)
+          if (_text != null && _webView == null)
             IconButton(
               icon: const Icon(Icons.copy_rounded),
               tooltip: 'Скопировать текст',
@@ -70,6 +123,9 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
   }
 
   Widget _buildBody(BuildContext context) {
+    final webView = _webView;
+    if (webView != null) return WebViewWidget(controller: webView);
+
     if (_error != null) {
       return Center(
         child: Padding(

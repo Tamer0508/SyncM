@@ -18,6 +18,9 @@ class Config {
 
   static const String termsAsset = 'assets/legal/terms_of_use.md';
 
+  static String get privacyPolicyUrl => '$baseUrl/legal/privacy';
+  static String get termsUrl => '$baseUrl/legal/terms';
+
   static bool get isLocal =>
       baseUrl.contains('localhost') || baseUrl.contains('127.0.0.1') || baseUrl.contains('10.0.2.2');
 }

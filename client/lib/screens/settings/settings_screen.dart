@@ -431,7 +431,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
       SettingsGroup(
         title: 'Синхронизация звука',
         children: [
-          _AudioLatencyTile(),
+          const _AudioLatencyTile(),
           SettingsAction(
             icon: Icons.sync_rounded,
             title: 'Сверить часы с сервером',
@@ -489,12 +489,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
           SettingsAction(
             icon: Icons.graphic_eq_rounded,
             title: 'Настройки Spotify',
-            // Честная ссылка вместо переключателя.
-            //
-            // Качество потока, кроссфейд и нормализация громкости задаются в
-            // самом Spotify: SDK ими не управляет. Переключатель здесь
-            // выглядел бы рабочим, но ни на что не влиял — это хуже, чем
-            // честно отправить туда, где настройка действительно есть.
             subtitle: 'Качество, кроссфейд и громкость задаются в приложении Spotify',
             onTap: () => showAppNotification(
               context,
@@ -541,9 +535,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
           SettingsAction(
             icon: Icons.people_outline_rounded,
             title: 'Только друзья',
-            // Не переключатель: ограничение действует на сервере и изменить
-            // его нельзя. Переключатель здесь выглядел бы настройкой, но
-            // ничего не менял — а строка честно сообщает правило.
             subtitle: 'Пригласить в сессию может только тот, кто у вас в друзьях',
             trailing: Icon(Icons.lock_outline_rounded,
                 size: 18, color: context.colors.onSurfaceVariant),
@@ -652,9 +643,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
             title: 'Очистить кэш изображений',
             subtitle: 'Аватары и обложки будут загружены заново',
             onTap: () async {
-              // Оба кэша: в памяти и на диске. Первый освобождает картинки
-              // прямо сейчас, второй убирает файлы, иначе они подтянутся
-              // обратно при первом же показе.
               PaintingBinding.instance.imageCache.clear();
               PaintingBinding.instance.imageCache.clearLiveImages();
               await DefaultCacheManager().emptyCache();
@@ -708,6 +696,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
                   (innerCtx, innerBack) => LegalDocumentScreen(
                     title: 'Политика конфиденциальности',
                     assetPath: Config.privacyPolicyAsset,
+                    url: Config.privacyPolicyUrl,
                     embedded: innerCtx.isWideWindow,
                     // Возврат ведёт обратно к краткому пересказу, а не сразу
                     // в список разделов: человек пришёл оттуда.
@@ -732,20 +721,10 @@ class _SettingsBodyState extends State<_SettingsBody> {
               (ctx, onBack) => LegalDocumentScreen(
                 title: 'Условия использования',
                 assetPath: Config.termsAsset,
+                url: Config.termsUrl,
                 embedded: ctx.isWideWindow,
                 onBack: onBack,
               ),
-            ),
-          ),
-          SettingsAction(
-            icon: Icons.description_outlined,
-            title: 'Открытые лицензии',
-            subtitle: 'Библиотеки, на которых работает приложение',
-            onTap: () => showLicensePage(
-              context: context,
-              applicationName: 'SyncM',
-              applicationVersion: Config.appVersion,
-              applicationLegalese: 'Слушайте музыку вместе, где бы вы ни были',
             ),
           ),
         ],
@@ -1307,7 +1286,7 @@ class _NameDialogState extends State<_NameDialog> {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Это имя видят друзья в списке, в сессиях и в приглашениях.',
+            'Это имя видят друзья — в списке, в сессиях и в приглашениях.',
             style: context.texts.bodySmall
                 ?.copyWith(color: context.colors.onSurfaceVariant),
           ),

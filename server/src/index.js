@@ -22,6 +22,7 @@ const sessionRoutes = require('./routes/sessions');
 const spotifyRoutes = require('./routes/spotify');
 const playlistRoutes = require('./routes/playlists');
 const healthRoutes = require('./routes/health');
+const legalRoutes = require('./routes/legal');
 const setupSocketModule = require('./socket');
 const { closeQueues, initQueues } = require('./infrastructure/queue');
 
@@ -155,6 +156,8 @@ app.use((req, res, next) => {
 });
 
 app.use('/health', healthRoutes);
+
+app.use('/legal', legalRoutes);
 
 app.use(rateLimitMiddleware(100, 60, {
   keyGenerator: (req) => {

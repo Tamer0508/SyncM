@@ -156,9 +156,10 @@ class PrivacyPolicyScreen extends StatelessWidget {
                     onPressed: onOpenFullText ??
                         () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => const LegalDocumentScreen(
+                                builder: (_) => LegalDocumentScreen(
                                   title: 'Политика конфиденциальности',
                                   assetPath: Config.privacyPolicyAsset,
+                                  url: Config.privacyPolicyUrl,
                                 ),
                               ),
                             ),
