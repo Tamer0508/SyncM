@@ -10,8 +10,31 @@ import '../screens/player/now_playing.dart';
 import '../theme.dart';
 import '../utils/image_cache.dart';
 
-class MiniPlayer extends StatelessWidget {
+class MiniPlayer extends StatefulWidget {
   const MiniPlayer({super.key});
+
+  @override
+  State<MiniPlayer> createState() => _MiniPlayerState();
+}
+
+class _MiniPlayerState extends State<MiniPlayer> {
+  final Set<String> _warmed = {};
+
+  void _warmUpcoming(List<String> urls) {
+    final fresh = urls.where((url) => _warmed.add(url)).toList();
+    if (fresh.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final url in fresh) {
+        precacheImage(
+          CachedNetworkImageProvider(url, cacheManager: AppImageCache.manager),
+          context,
+          onError: (_, _) {},
+        );
+      }
+    });
+  }
 
   void _openPlayer(BuildContext context, Map<String, dynamic> track, String? imageUrl) {
     if (context.isWideWindow) return;
@@ -46,6 +69,7 @@ class MiniPlayer extends StatelessWidget {
     final artSize = isCompact ? 48.0 : 52.0;
 
     pb.ensureArtworkColor();
+    _warmUpcoming(pb.upcomingArtworkUrls);
     final artworkColor = pb.artworkColor;
     final background = artworkColor ?? colors.surfaceContainerHigh;
 

@@ -1339,6 +1339,26 @@ class PlaybackProvider extends ChangeNotifier {
 
   String? _artworkColorPending;
 
+  List<String> get upcomingArtworkUrls {
+    final tracks = _currentPlaylistTracks;
+    if (tracks == null || tracks.isEmpty) return const [];
+
+    final index = _currentTrack?['index'] as int?;
+    if (index == null) return const [];
+
+    final urls = <String>[];
+    for (var offset = 1; offset <= 2; offset++) {
+      final next = index + offset;
+      if (next >= tracks.length) break;
+
+      final track = tracks[next];
+      final url = (track['imageUrl'] ?? track['album']?['images']?[0]?['url'])
+          as String?;
+      if (url != null && url.isNotEmpty) urls.add(url);
+    }
+    return urls;
+  }
+
   void ensureArtworkColor() {
     final track = _currentTrack;
     if (track == null) {

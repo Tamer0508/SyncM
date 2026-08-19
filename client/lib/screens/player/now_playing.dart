@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
 import '../../providers/appearance_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../theme.dart';
+import '../../utils/image_cache.dart';
 
 /// Приглушённый свет на заднем плане плеера, окрашенный обложкой трека.
 ///
@@ -268,6 +270,26 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     if (status == AnimationStatus.completed) _markEntered();
   }
 
+  final Set<String> _warmedArtwork = {};
+
+  void _warmUpcoming(List<String> urls) {
+    if (!_entered) return;
+
+    final fresh = urls.where((url) => _warmedArtwork.add(url)).toList();
+    if (fresh.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final url in fresh) {
+        precacheImage(
+          CachedNetworkImageProvider(url, cacheManager: AppImageCache.manager),
+          context,
+          onError: (_, _) {},
+        );
+      }
+    });
+  }
+
   void _markEntered() {
     if (_entered || !mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -505,6 +527,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final imageUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
         final currentUri = pb.currentTrack?['uri'];
 
+        _warmUpcoming(pb.upcomingArtworkUrls);
+
         if (!_dragging) {
           // Если секунда в провайдере изменилась (или трек переключился/применился seek)
           if (_lastSyncPosition != pb.positionMs) {
@@ -596,12 +620,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           body: Stack(
             fit: StackFit.expand,
             children: [
-              // Непрозрачная основа под свечением.
-              //
-              // У Scaffold здесь backgroundColor: Colors.transparent, а
-              // свечение рисуется полупрозрачными пятнами — без подложки
-              // сквозь экран просвечивал предыдущий, и выезд снизу выглядел
-              // как проявление из ниоткуда.
               ColoredBox(color: context.colors.surface),
               if (context.watch<AppearanceProvider>().artworkBackground)
                 if (_entered)
