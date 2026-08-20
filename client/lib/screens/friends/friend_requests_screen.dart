@@ -165,7 +165,7 @@ class _EmptyRequestsView extends StatelessWidget {
     return EmptyState(
       icon: Icons.mail_outline_rounded,
       title: 'Заявок пока нет',
-      message: 'Здесь появятся приглашения в друзья. Отправить свою быстрее, '
+      message: 'Здесь появятся приглашения в друзья. Отправить свою — быстрее, '
           'чем ждать.',
       actionLabel: 'Найти друзей',
       onAction: () => Navigator.of(context).pushNamed('/friends/search'),
@@ -199,13 +199,13 @@ class _RequestsList extends StatelessWidget {
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.sm,
         AppSpacing.xl,
       ),
       itemCount: requests.length + (showFooter ? 1 : 0),
-      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm + 4),
+      separatorBuilder: (_, _) => const SizedBox(height: 3),
       itemBuilder: (context, i) {
         if (i >= requests.length) {
           if (isLoadingMore) {
@@ -262,20 +262,23 @@ class _RequestCard extends StatelessWidget {
     final texts = context.texts;
 
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm + 4,
+        vertical: AppSpacing.xs + 2,
+      ),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
-        borderRadius: AppRadius.large,
+        borderRadius: BorderRadius.circular(AppRadius.row),
       ),
       child: Row(
         children: [
           TappableAvatar(
             imageUrl: avatarUrl,
-            radius: 26,
+            radius: 21,
             title: senderName,
             heroTag: 'request-$requestId',
           ),
-          const SizedBox(width: AppSpacing.md),
+          const SizedBox(width: AppSpacing.sm + 4),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,21 +308,18 @@ class _RequestCard extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Отклонение — второстепенное действие, поэтому контурная
-                // иконка, а принятие выделено заливкой. Раньше обе кнопки
-                // выглядели одинаково, и различить их можно было только по
-                // цвету, что плохо работает при дальтонизме.
                 IconButton(
                   onPressed: onDecline,
-                  icon: const Icon(Icons.close_rounded),
+                  icon: const Icon(Icons.close_rounded, size: 22),
                   tooltip: 'Отклонить',
                   color: colors.onSurfaceVariant,
+                  visualDensity: VisualDensity.compact,
                 ),
-                const SizedBox(width: AppSpacing.xs),
                 IconButton.filled(
                   onPressed: onAccept,
-                  icon: const Icon(Icons.check_rounded),
+                  icon: const Icon(Icons.check_rounded, size: 22),
                   tooltip: 'Принять',
+                  visualDensity: VisualDensity.compact,
                 ),
               ],
             ),

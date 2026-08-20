@@ -1339,19 +1339,85 @@ class PlaybackProvider extends ChangeNotifier {
 
   String? _artworkColorPending;
 
-  List<String> get upcomingArtworkUrls {
+  Map<String, dynamic>? get previousQueueTrack => _queueNeighbour(-1);
+  Map<String, dynamic>? get nextQueueTrack => _queueNeighbour(1);
+
+  int? get _queuePosition {
+    final tracks = _currentPlaylistTracks;
+    if (tracks == null || tracks.isEmpty) return null;
+
+    final uri = _currentTrack?['uri'] as String?;
+    if (uri != null) {
+      final found = tracks.indexWhere((t) => t['uri'] == uri);
+      if (found >= 0) return found;
+    }
+
+    final index = _currentTrack?['index'] as int?;
+    if (index != null && index >= 0 && index < tracks.length) return index;
+
+    return null;
+  }
+
+  Map<String, dynamic>? _queueNeighbour(int offset) {
+    final tracks = _currentPlaylistTracks;
+    if (tracks == null || tracks.isEmpty) return null;
+
+    final position = _queuePosition;
+    if (position == null) return null;
+
+    final target = position + offset;
+    if (target < 0 || target >= tracks.length) return null;
+
+    final track = tracks[target];
+    final map = track is Map<String, dynamic>
+        ? Map<String, dynamic>.from(track)
+        : Map<String, dynamic>.from(track as Map);
+
+    map['index'] = target;
+    return map;
+  }
+
+  Future<bool> playQueueNeighbour(int direction) async {
+    final track = direction > 0 ? nextQueueTrack : previousQueueTrack;
+    if (track == null) return false;
+
+    final tracks = _currentPlaylistTracks;
+    final playlistId = _currentPlaylistId;
+
+    await playTrack(track);
+
+    _currentPlaylistTracks = tracks;
+    _currentPlaylistId = playlistId;
+    notifyListeners();
+    return true;
+  }
+
+  Color? mutedColorForUrl(String? url) {
+    if (url == null || url.isEmpty) return null;
+
+    final base = _paletteCache[url]?.dominantColor?.color;
+    if (base == null) return null;
+
+    final hsl = HSLColor.fromColor(base);
+    return hsl
+        .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.6))
+        .withLightness(0.28)
+        .toColor();
+  }
+
+  List<String> get neighbourArtworkUrls {
     final tracks = _currentPlaylistTracks;
     if (tracks == null || tracks.isEmpty) return const [];
 
-    final index = _currentTrack?['index'] as int?;
-    if (index == null) return const [];
+    final position = _queuePosition;
+    if (position == null) return const [];
 
     final urls = <String>[];
-    for (var offset = 1; offset <= 2; offset++) {
-      final next = index + offset;
-      if (next >= tracks.length) break;
+    for (final offset in const [-1, 1, 2]) {
+      final target = position + offset;
+      if (target < 0 || target >= tracks.length) continue;
 
-      final track = tracks[next];
+      final track = tracks[target];
       final url = (track['imageUrl'] ?? track['album']?['images']?[0]?['url'])
           as String?;
       if (url != null && url.isNotEmpty) urls.add(url);
@@ -1427,12 +1493,19 @@ class PlaybackProvider extends ChangeNotifier {
     }
   }
 
+  void preloadPalettes(Iterable<String> urls) {
+    for (final url in urls) {
+      if (url.isEmpty || _paletteCache.containsKey(url)) continue;
+      unawaited(_preloadPalette(url));
+    }
+  }
+
   Future<void> _preloadPalette(String imageUrl) async {
     try {
       final palette = await PaletteGenerator.fromImageProvider(
         NetworkImage(imageUrl),
-        size: const Size(200, 200),
-        maximumColorCount: 16,
+        size: const Size(64, 64),
+        maximumColorCount: 8,
       );
       _paletteCache[imageUrl] = palette;
       notifyListeners();

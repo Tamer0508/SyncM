@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -9,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../providers/appearance_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../theme.dart';
+import 'artwork_pager.dart';
 import '../../utils/image_cache.dart';
 
 /// Приглушённый свет на заднем плане плеера, окрашенный обложкой трека.
@@ -21,120 +20,6 @@ import '../../utils/image_cache.dart';
 ///
 /// Здесь три пятна света, размытые по Гауссу и медленно смещающиеся. Цвета
 /// приходят из палитры обложки, поэтому фон меняется вместе с треком.
-class _AnimatedGlowBackground extends StatefulWidget {
-  const _AnimatedGlowBackground({
-    required this.dominantColor,
-    required this.vibrantColor,
-  });
-
-  final Color dominantColor;
-  final Color vibrantColor;
-
-  @override
-  State<_AnimatedGlowBackground> createState() => _AnimatedGlowBackgroundState();
-}
-
-class _AnimatedGlowBackgroundState extends State<_AnimatedGlowBackground>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    // Один контроллер вместо двух: прежний фон крутил отдельные анимации для
-    // частиц и для кругов, и обе перерисовывались независимо.
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 48),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          return ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(sigmaX: 100, sigmaY: 100),
-            child: CustomPaint(
-              painter: _GlowPainter(
-                progress: _controller.value,
-                dominant: widget.dominantColor,
-                vibrant: widget.vibrantColor,
-                // В тёмной теме свет заметнее из-за контраста с фоном,
-                // поэтому яркость там ниже — иначе пятна выглядят как
-                // подсветка, а не как рассеянный свет.
-                opacity: isDark ? 0.30 : 0.38,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _GlowPainter extends CustomPainter {
-  _GlowPainter({
-    required this.progress,
-    required this.dominant,
-    required this.vibrant,
-    required this.opacity,
-  });
-
-  final double progress;
-  final Color dominant;
-  final Color vibrant;
-  final double opacity;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final t = progress * 2 * math.pi;
-    final shortest = size.shortestSide;
-
-    void glow(Offset center, double radius, Color color) {
-      canvas.drawCircle(center, radius, Paint()..color = color.withValues(alpha: opacity));
-    }
-
-    // Периоды не кратны друг другу — картина не повторяется заметным циклом.
-    glow(
-      Offset(size.width * (0.22 + 0.12 * math.sin(t)),
-          size.height * (0.20 + 0.07 * math.cos(t * 0.8))),
-      shortest * 0.85,
-      dominant,
-    );
-    glow(
-      Offset(size.width * (0.82 + 0.10 * math.cos(t * 0.6)),
-          size.height * (0.42 + 0.10 * math.sin(t * 0.9))),
-      shortest * 0.70,
-      vibrant,
-    );
-    glow(
-      Offset(size.width * (0.50 + 0.14 * math.sin(t * 0.45 + 1.2)),
-          size.height * (0.88 + 0.06 * math.cos(t * 0.7))),
-      shortest * 0.75,
-      dominant,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_GlowPainter old) =>
-      old.progress != progress ||
-      old.opacity != opacity ||
-      old.dominant != dominant ||
-      old.vibrant != vibrant;
-}
-
-
 class NowPlayingScreen extends StatefulWidget {
   final String? title;
   final String? artist;
@@ -270,6 +155,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     if (status == AnimationStatus.completed) _markEntered();
   }
 
+  final ValueNotifier<double> _swipeProgress = ValueNotifier(0);
+
+  final GlobalKey<ArtworkPagerState> _pagerKey = GlobalKey();
+
   final Set<String> _warmedArtwork = {};
 
   void _warmUpcoming(List<String> urls) {
@@ -288,6 +177,30 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         );
       }
     });
+  }
+
+  ArtworkSource? _neighbourSource(Map<String, dynamic>? track) {
+    final url = track?['imageUrl'] as String?;
+    if (url == null || url.isEmpty) return null;
+    return ArtworkSource(url: url);
+  }
+
+  /// Доводит переход до соседнего трека.
+  Future<void> _commitNeighbour(PlaybackProvider pb, int direction) async {
+    final played = await pb.playQueueNeighbour(direction);
+    if (played) return;
+
+    if (direction > 0) {
+      pb.skipNext();
+    } else {
+      pb.skipPrevious();
+    }
+  }
+
+  void _slideTo(int direction, VoidCallback fallback) {
+    final pager = _pagerKey.currentState;
+    if (pager != null && pager.animateTo(direction)) return;
+    fallback();
   }
 
   void _markEntered() {
@@ -331,7 +244,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
     _colorAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: AppMotion.tint,
     );
     _colorDominantAnim = ColorTween(begin: _displayDominant, end: _displayDominant)
         .animate(_colorAnimController);
@@ -351,6 +264,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     // Снимаем флаг: мини-плеер внизу должен вернуться после закрытия.
     _timer?.cancel();
     _routeAnimation?.removeStatusListener(_onRouteAnimation);
+    _swipeProgress.dispose();
     _entrance.dispose();
     _colorAnimController.dispose();
     super.dispose();
@@ -527,7 +441,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final imageUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
         final currentUri = pb.currentTrack?['uri'];
 
-        _warmUpcoming(pb.upcomingArtworkUrls);
+        _warmUpcoming(pb.neighbourArtworkUrls);
 
         if (!_dragging) {
           // Если секунда в провайдере изменилась (или трек переключился/применился seek)
@@ -543,17 +457,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            // ВАЖНО: берём картинку СВЕЖЕЙ из провайдера прямо здесь, а не из
-            // imageBytes/imageUrl, захваченных в билде. При обычном (не-shuffle)
-            // переключении трека uri в провайдере меняется раньше, чем
-            // подгружаются новые байты обложки — поэтому захваченный imageBytes
-            // мог быть ещё от предыдущего трека или null, и палитра не
-            // обновлялась. В shuffle порядок обновления другой, там байты
-            // успевали, поэтому фон менялся — отсюда "меняется только в перемешку".
             final freshBytes = pb.currentImageBytes;
             final freshUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
 
-            // Ставим базовые нейтральные цвета на момент загрузки, если нет в кэше
             final cached = freshUrl != null ? pb.paletteCache[freshUrl] : null;
             if (cached != null) {
               _setTargetColors(
@@ -568,23 +474,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           });
         }
 
-        // Ловим ПОЗДНЮЮ загрузку обложки: uri мог смениться раньше, чем
-        // подгрузились байты картинки (типичный случай при обычном
-        // переключении трека на Android). Как только байты реально
-        // появились/сменились — пересчитываем палитру.
-        //
-        // ВАЖНО: сигнатура — хеш СОДЕРЖИМОГО обложки, а не её длина. У треков
-        // одного альбома (напр. несколько песен Skillet с одной обложкой
-        // альбома, либо разные обложки одинакового размера) длина байтов
-        // часто совпадает — из-за этого пересчёт по длине пропускался и фон
-        // застревал. Плюс привязываем к uri: даже если у двух треков обложка
-        // побайтово идентична, смена uri всё равно инициирует пересчёт.
-        // Если байтов обложки нет, опираемся на ССЫЛКУ.
-        //
-        // Раньше сигнатура считалась только по байтам, а на Windows и в вебе
-        // обложка приходит ссылкой — байтов не бывает вовсе. Сигнатура
-        // оставалась пустой, пересчёт не запускался ни разу после первого, и
-        // фон навсегда застывал в цветах трека, включённого первым.
         final imageUrlNow = pb.currentTrack?['imageUrl'] as String? ?? widget.artworkUrl;
         final int? imageSig = imageBytes != null
             ? _imageSignature(imageBytes, currentUri)
@@ -621,49 +510,47 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
             fit: StackFit.expand,
             children: [
               ColoredBox(color: context.colors.surface),
-              if (context.watch<AppearanceProvider>().artworkBackground)
-                if (_entered)
-                  _AnimatedGlowBackground(
-                    dominantColor: _displayDominant,
-                    vibrantColor: _displayVibrant,
-                  )
-                else
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: const Alignment(-0.3, -0.6),
-                          radius: 1.3,
-                          colors: [
-                            _displayVibrant.withValues(alpha: 0.30),
-                            _displayDominant.withValues(alpha: 0.18),
-                            Colors.transparent,
-                          ],
-                          stops: const [0.0, 0.55, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
 
-              // Затемнение сверху и снизу — под шапку и под управление.
-              // Без него светлая обложка делает белый текст нечитаемым.
-              const Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0x66000000),
-                        Colors.transparent,
-                        Colors.transparent,
-                        Color(0x8C000000),
-                      ],
-                      stops: [0.0, 0.25, 0.6, 1.0],
+              if (context.watch<AppearanceProvider>().artworkBackground)
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _swipeProgress,
+                      builder: (context, swipe, _) {
+                        final neighbour = swipe > 0
+                            ? pb.mutedColorForUrl(
+                                pb.nextQueueTrack?['imageUrl'] as String?)
+                            : pb.mutedColorForUrl(
+                                pb.previousQueueTrack?['imageUrl'] as String?);
+
+                        final base = neighbour == null
+                            ? _displayDominant
+                            : Color.lerp(
+                                _displayDominant,
+                                neighbour,
+                                swipe.abs().clamp(0.0, 1.0),
+                              )!;
+
+                        final surface = context.colors.surface;
+
+                        return DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color.lerp(base, surface, 0.25)!,
+                                Color.lerp(base, surface, 0.72)!,
+                                surface,
+                              ],
+                              stops: const [0.0, 0.5, 0.9],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
-              ),
 
               SafeArea(
                 child: LayoutBuilder(
@@ -695,12 +582,26 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                   _rise(
                                     delay: 0,
                                     offset: 40,
-                                    child: _Artwork(
-                                      size: artSize,
-                                      glowColor: _displayDominant,
-                                      imageBytes: imageBytes,
-                                      imageUrl: imageUrl,
-                                      trackKey: '$currentUri|${imageBytes?.length ?? 0}',
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      height: artSize,
+                                      child: ArtworkPager(
+                                        key: _pagerKey,
+                                        size: artSize,
+                                        currentKey: currentUri ?? '',
+                                        current: ArtworkSource(
+                                          bytes: imageBytes,
+                                          url: imageUrl as String?,
+                                        ),
+                                        previous: _neighbourSource(
+                                            pb.previousQueueTrack),
+                                        next: _neighbourSource(
+                                            pb.nextQueueTrack),
+                                        progress: _swipeProgress,
+                                        onNext: () => _commitNeighbour(pb, 1),
+                                        onPrevious: () =>
+                                            _commitNeighbour(pb, -1),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: AppSpacing.xl),
@@ -748,8 +649,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                 child: _Controls(
                                 isPlaying: pb.isPlaying,
                                 accentColor: _displayVibrant,
-                                onPrevious: pb.skipPrevious,
-                                onNext: pb.skipNext,
+                                onPrevious: () =>
+                                    _slideTo(-1, () => _commitNeighbour(pb, -1)),
+                                onNext: () =>
+                                    _slideTo(1, () => _commitNeighbour(pb, 1)),
                                 onToggle: pb.togglePlay,
                                 isShuffle: pb.shuffleActive,
                                 repeatMode: pb.repeatMode,
@@ -818,74 +721,6 @@ class _Header extends StatelessWidget {
           // оставалась строго по центру.
           const SizedBox(width: 48),
         ],
-      ),
-    );
-  }
-}
-
-class _Artwork extends StatelessWidget {
-  const _Artwork({
-    required this.size,
-    required this.glowColor,
-    required this.imageBytes,
-    required this.imageUrl,
-    required this.trackKey,
-  });
-
-  final double size;
-  final Color glowColor;
-  final Uint8List? imageBytes;
-  final String? imageUrl;
-  final String trackKey;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget image;
-    if (imageBytes != null) {
-      image = Image.memory(imageBytes!, fit: BoxFit.cover, gaplessPlayback: true);
-    } else if (imageUrl != null && imageUrl!.isNotEmpty) {
-      image = Image.network(imageUrl!, fit: BoxFit.cover);
-    } else {
-      image = ColoredBox(
-        color: Colors.white.withValues(alpha: 0.08),
-        child: const Icon(Icons.music_note_rounded, size: 64, color: Colors.white54),
-      );
-    }
-
-    return SizedBox(
-      width: size,
-      height: size,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: AppRadius.large,
-          boxShadow: [
-            // Свечение цветом обложки под ней самой — приём, который делает
-            // изображение «источником света» на экране.
-            BoxShadow(
-              color: glowColor.withValues(alpha: 0.45),
-              blurRadius: 48,
-              spreadRadius: 4,
-              offset: const Offset(0, 18),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: AppRadius.large,
-          child: AnimatedSwitcher(
-            duration: AppMotion.long,
-            switchInCurve: AppMotion.emphasizedDecelerate,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              // Лёгкое увеличение при появлении: смена обложки читается как
-              // движение, а не как подмена картинки.
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 1.04, end: 1.0).animate(animation),
-                child: child,
-              ),
-            ),
-            child: SizedBox(key: ValueKey(trackKey), child: image),
-          ),
-        ),
       ),
     );
   }

@@ -33,6 +33,8 @@ class _MiniPlayerState extends State<MiniPlayer> {
           onError: (_, _) {},
         );
       }
+
+      context.read<PlaybackProvider>().preloadPalettes(fresh);
     });
   }
 
@@ -69,7 +71,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     final artSize = isCompact ? 48.0 : 52.0;
 
     pb.ensureArtworkColor();
-    _warmUpcoming(pb.upcomingArtworkUrls);
+    _warmUpcoming(pb.neighbourArtworkUrls);
     final artworkColor = pb.artworkColor;
     final background = artworkColor ?? colors.surfaceContainerHigh;
 
