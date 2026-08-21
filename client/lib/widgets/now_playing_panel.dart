@@ -220,7 +220,7 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
                           AppIconButton(
                               icon: Icons.skip_previous,
                               onPressed: () {
-                                pb.skipPrevious();
+                                pb.goToPrevious();
                                 setState(() => _dragValue = 0);
                               },
                               size: 28,
@@ -240,7 +240,7 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
                           AppIconButton(
                               icon: Icons.skip_next,
                               onPressed: () {
-                                pb.skipNext();
+                                pb.goToNext();
                                 setState(() => _dragValue = 0);
                               },
                               size: 28,

@@ -154,6 +154,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   void _onRouteAnimation(AnimationStatus status) {
     if (status == AnimationStatus.completed) _markEntered();
   }
+  Map<String, dynamic>? _lastKnownTrack;
 
   final ValueNotifier<double> _swipeProgress = ValueNotifier(0);
 
@@ -185,16 +186,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     return ArtworkSource(url: url);
   }
 
-  /// Доводит переход до соседнего трека.
-  Future<void> _commitNeighbour(PlaybackProvider pb, int direction) async {
-    final played = await pb.playQueueNeighbour(direction);
-    if (played) return;
+  void _adoptNeighbourColor(PlaybackProvider pb, int direction) {
+    final track =
+        direction > 0 ? pb.nextQueueTrack : pb.previousQueueTrack;
+    final color = pb.dominantColorForUrl(track?['imageUrl'] as String?);
+    if (color == null) return;
 
-    if (direction > 0) {
-      pb.skipNext();
-    } else {
-      pb.skipPrevious();
-    }
+    _colorAnimController.stop();
+    setState(() {
+      _displayDominant = color;
+      _targetDominant = color;
+    });
   }
 
   void _slideTo(int direction, VoidCallback fallback) {
@@ -434,12 +436,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
     return Consumer<PlaybackProvider>(
       builder: (ctx, pb, _) {
-        final title = pb.currentTrack?['title'] ?? widget.title ?? 'Unknown Title';
-        final artist = pb.currentTrack?['artist'] ?? widget.artist ?? 'Unknown Artist';
+        final live = pb.currentTrack;
+        if (live != null) _lastKnownTrack = live;
+        final track = live ?? _lastKnownTrack;
+
+        final title = track?['title'] ?? widget.title ?? 'Unknown Title';
+        final artist = track?['artist'] ?? widget.artist ?? 'Unknown Artist';
         final duration = pb.durationMs;
         final imageBytes = pb.currentImageBytes;
-        final imageUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
-        final currentUri = pb.currentTrack?['uri'];
+        final imageUrl = track?['imageUrl'] ?? widget.artworkUrl;
+        final currentUri = track?['uri'];
 
         _warmUpcoming(pb.neighbourArtworkUrls);
 
@@ -460,6 +466,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
             final freshBytes = pb.currentImageBytes;
             final freshUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
 
+            // Ставим базовые нейтральные цвета на момент загрузки, если нет в кэше
             final cached = freshUrl != null ? pb.paletteCache[freshUrl] : null;
             if (cached != null) {
               _setTargetColors(
@@ -497,6 +504,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final dragProgress = (_dragOffset / screenHeight).clamp(0.0, 1.0);
 
         return GestureDetector(
+          // Внутри панели свайпом занимается она сама.
           onVerticalDragUpdate: widget.insideSheet ? null : _onDragUpdate,
           onVerticalDragEnd: widget.insideSheet ? null : _onDragEnd,
           child: Transform.translate(
@@ -517,21 +525,27 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     child: ValueListenableBuilder<double>(
                       valueListenable: _swipeProgress,
                       builder: (context, swipe, _) {
+                        final surface = context.colors.surface;
+
                         final neighbour = swipe > 0
-                            ? pb.mutedColorForUrl(
+                            ? pb.dominantColorForUrl(
                                 pb.nextQueueTrack?['imageUrl'] as String?)
-                            : pb.mutedColorForUrl(
+                            : pb.dominantColorForUrl(
                                 pb.previousQueueTrack?['imageUrl'] as String?);
 
-                        final base = neighbour == null
-                            ? _displayDominant
-                            : Color.lerp(
-                                _displayDominant,
-                                neighbour,
-                                swipe.abs().clamp(0.0, 1.0),
-                              )!;
-
-                        final surface = context.colors.surface;
+                        final progress = swipe.abs().clamp(0.0, 1.0);
+                        final Color base;
+                        if (neighbour == null) {
+                          // Соседа нет — просто гасим цвет к фону, чтобы
+                          // жест всё равно читался.
+                          base = Color.lerp(_displayDominant, surface, progress)!;
+                        } else if (progress < 0.5) {
+                          base = Color.lerp(
+                              _displayDominant, surface, progress * 2)!;
+                        } else {
+                          base = Color.lerp(
+                              surface, neighbour, (progress - 0.5) * 2)!;
+                        }
 
                         return DecoratedBox(
                           decoration: BoxDecoration(
@@ -598,9 +612,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                         next: _neighbourSource(
                                             pb.nextQueueTrack),
                                         progress: _swipeProgress,
-                                        onNext: () => _commitNeighbour(pb, 1),
-                                        onPrevious: () =>
-                                            _commitNeighbour(pb, -1),
+                                        onNext: () {
+                                          _adoptNeighbourColor(pb, 1);
+                                          pb.goToNext();
+                                        },
+                                        onPrevious: () {
+                                          _adoptNeighbourColor(pb, -1);
+                                          pb.goToPrevious();
+                                        },
                                       ),
                                     ),
                                   ),
@@ -649,10 +668,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                 child: _Controls(
                                 isPlaying: pb.isPlaying,
                                 accentColor: _displayVibrant,
-                                onPrevious: () =>
-                                    _slideTo(-1, () => _commitNeighbour(pb, -1)),
-                                onNext: () =>
-                                    _slideTo(1, () => _commitNeighbour(pb, 1)),
+                                onPrevious: () => _slideTo(-1, pb.goToPrevious),
+                                onNext: () => _slideTo(1, pb.goToNext),
                                 onToggle: pb.togglePlay,
                                 isShuffle: pb.shuffleActive,
                                 repeatMode: pb.repeatMode,

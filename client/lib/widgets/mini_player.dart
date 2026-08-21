@@ -200,7 +200,7 @@ class _MiniPlayerBody extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    onPressed: pb.skipPrevious,
+                    onPressed: pb.goToPrevious,
                     icon: const Icon(
                       Icons.skip_previous_rounded,
                       semanticLabel: 'Предыдущий трек',
@@ -217,7 +217,7 @@ class _MiniPlayerBody extends StatelessWidget {
                     foreground: background,
                   ),
                   IconButton(
-                    onPressed: pb.skipNext,
+                    onPressed: pb.goToNext,
                     icon: const Icon(
                       Icons.skip_next_rounded,
                       semanticLabel: 'Следующий трек',

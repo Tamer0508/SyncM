@@ -930,27 +930,72 @@ class PlaybackProvider extends ChangeNotifier {
     await playTrack(track, positionMs: positionMs, fromSession: true);
   }
 
-  Future<bool> connect() async {
-    try {
-      await SpotifySdk.getAccessToken(
-        clientId: _clientId,
-        redirectUrl: _redirectUrl,
-        scope: 'app-remote-control,user-modify-playback-state,user-read-playback-state,playlist-read-private,streaming',
-      );
+  Future<bool>? _connectAttempt;
 
+  Future<bool> connect({bool silent = false}) {
+    if (_isConnected) return Future.value(true);
+
+    final running = _connectAttempt;
+    if (running != null) return running;
+
+    final attempt = _connect(silent: silent);
+    _connectAttempt = attempt;
+    return attempt.whenComplete(() {
+      if (identical(_connectAttempt, attempt)) _connectAttempt = null;
+    });
+  }
+
+  Future<bool> _connect({required bool silent}) async {
+    try {
       _isConnected = await SpotifySdk.connectToSpotifyRemote(
         clientId: _clientId,
         redirectUrl: _redirectUrl,
       );
+
+      if (!_isConnected && !silent) {
+        await SpotifySdk.getAccessToken(
+          clientId: _clientId,
+          redirectUrl: _redirectUrl,
+          scope: 'app-remote-control,user-modify-playback-state,'
+              'user-read-playback-state,playlist-read-private,streaming',
+        );
+        _isConnected = await SpotifySdk.connectToSpotifyRemote(
+          clientId: _clientId,
+          redirectUrl: _redirectUrl,
+        );
+      }
 
       if (_isConnected) _subscribeToPlayerState();
       notifyListeners();
       return _isConnected;
     } catch (e) {
       debugPrint('[Spotify] Connect error: $e');
-      _isConnected = false;
+
+      if (silent) {
+        _isConnected = false;
+        notifyListeners();
+        return false;
+      }
+
+      try {
+        await SpotifySdk.getAccessToken(
+          clientId: _clientId,
+          redirectUrl: _redirectUrl,
+          scope: 'app-remote-control,user-modify-playback-state,'
+              'user-read-playback-state,playlist-read-private,streaming',
+        );
+        _isConnected = await SpotifySdk.connectToSpotifyRemote(
+          clientId: _clientId,
+          redirectUrl: _redirectUrl,
+        );
+        if (_isConnected) _subscribeToPlayerState();
+      } catch (retryError) {
+        debugPrint('[Spotify] Authorize error: $retryError');
+        _isConnected = false;
+      }
+
       notifyListeners();
-      return false;
+      return _isConnected;
     }
   }
 
@@ -964,12 +1009,6 @@ class PlaybackProvider extends ChangeNotifier {
       _positionMs = state.playbackPosition;
       _positionAnchorAt = DateTime.now();
 
-      // Запоминаем последнюю позицию/длительность ДО паузы. Многие плееры
-      // (включая Spotify SDK) при естественном завершении трека шлют
-      // isPaused=true с playbackPosition, сброшенной в 0 — из-за этого
-      // проверка "конец ли это трека" ниже не должна опираться на
-      // state.playbackPosition в момент самой паузы, а на последнее известное
-      // значение непосредственно перед ней.
       if (!state.isPaused) {
         _lastActivePositionMs = state.playbackPosition;
         if (state.track != null) _lastActiveDurationMs = state.track!.duration;
@@ -1033,10 +1072,6 @@ class PlaybackProvider extends ChangeNotifier {
           });
         }
 
-        // Автопереключение очереди — только если флаг ещё не стоит.
-        // Исключаем случай, когда пауза вызвана НАМЕРЕННО из handleServerPrepare
-        // (play+pause для предзагрузки следующего трека) — иначе это тоже
-        // прочитается как "конец трека" и вызовет повторный/ложный скип.
         final bool isIntentionalPreparePause = _preparedTrackId != null && !_isReadySent;
         if (_sessionMode &&
             _isHost &&
@@ -1052,7 +1087,6 @@ class PlaybackProvider extends ChangeNotifier {
           }
         }
 
-        // Shuffle коррекция только вне session mode
         if (!_sessionMode &&
             trackChanged &&
             _shuffleActive &&
@@ -1099,11 +1133,6 @@ class PlaybackProvider extends ChangeNotifier {
             offset: track['index'] as int?,
           );
 
-          // Windows/Web: playTrack запускает трек с нуля и НЕ учитывает
-          // positionMs. Раньше это было незаметно (seek шёл отдельным путём),
-          // но с Фазы 5.3 перемотка идёт через session_start → _playAtPosition
-          // → playTrack, и без этой перемотки реальный звук стартовал с 0,
-          // хотя UI показывал позицию seek. Применяем позицию явно.
           if (positionMs != null && positionMs > 0) {
             await Future.delayed(const Duration(milliseconds: 300));
             try {
@@ -1359,6 +1388,8 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Map<String, dynamic>? _queueNeighbour(int offset) {
+    if (_shuffleActive) return null;
+
     final tracks = _currentPlaylistTracks;
     if (tracks == null || tracks.isEmpty) return null;
 
@@ -1377,6 +1408,16 @@ class PlaybackProvider extends ChangeNotifier {
     return map;
   }
 
+  Future<void> goToNext() async {
+    if (await playQueueNeighbour(1)) return;
+    await skipNext();
+  }
+
+  Future<void> goToPrevious() async {
+    if (await playQueueNeighbour(-1)) return;
+    await skipPrevious();
+  }
+
   Future<bool> playQueueNeighbour(int direction) async {
     final track = direction > 0 ? nextQueueTrack : previousQueueTrack;
     if (track == null) return false;
@@ -1390,6 +1431,11 @@ class PlaybackProvider extends ChangeNotifier {
     _currentPlaylistId = playlistId;
     notifyListeners();
     return true;
+  }
+
+  Color? dominantColorForUrl(String? url) {
+    if (url == null || url.isEmpty) return null;
+    return _paletteCache[url]?.dominantColor?.color;
   }
 
   Color? mutedColorForUrl(String? url) {
@@ -1406,6 +1452,8 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   List<String> get neighbourArtworkUrls {
+    if (_shuffleActive) return const [];
+
     final tracks = _currentPlaylistTracks;
     if (tracks == null || tracks.isEmpty) return const [];
 
@@ -1541,14 +1589,11 @@ class PlaybackProvider extends ChangeNotifier {
       if (_shuffleActive && _currentPlaylistId != null) {
         await _playRandomFromCurrentPlaylist();
       } else {
-        // Spotify сам переключает трек по окончании текущего.
-        // Ручной вызов нужен только при нажатии на кнопку.
         await SpotifySdk.skipNext();
       }
     } catch (e) {
       debugPrint('Skip next error: $e');
     } finally {
-      // Искусственная задержка, чтобы дать плееру время обновить метаданные
       await Future.delayed(const Duration(milliseconds: 500));
       _isSkipping = false;
       notifyListeners();
@@ -1712,7 +1757,7 @@ class PlaybackProvider extends ChangeNotifier {
       }
 
       if (!_isConnected) {
-        final connected = await connect();
+        final connected = await connect(silent: true);
         if (!connected) return;
       }
       _subscribeToPlayerState();
