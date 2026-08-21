@@ -46,6 +46,7 @@ class ArtworkPager extends StatefulWidget {
   @override
   ArtworkPagerState createState() => ArtworkPagerState();
 }
+
 class ArtworkPagerState extends State<ArtworkPager>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
@@ -176,7 +177,6 @@ class ArtworkPagerState extends State<ArtworkPager>
     );
   }
 
-  /// Обложка, сдвинутая на [offset] ширин от центра.
   Widget _slide(double offset, ArtworkSource source) {
     return FractionalTranslation(
       translation: Offset(offset, 0),
@@ -198,15 +198,15 @@ class _ArtworkTile extends StatelessWidget {
     final decodeSize = (size * MediaQuery.devicePixelRatioOf(context)).round();
 
     Widget image;
-    if (source.bytes != null) {
+    if (source.url != null && source.url!.isNotEmpty) {
+      image = AppNetworkImage(url: source.url!, width: size, height: size);
+    } else if (source.bytes != null) {
       image = Image.memory(
         source.bytes!,
         fit: BoxFit.cover,
         cacheWidth: decodeSize,
         gaplessPlayback: true,
       );
-    } else if (source.url != null && source.url!.isNotEmpty) {
-      image = AppNetworkImage(url: source.url!, width: size, height: size);
     } else {
       image = ColoredBox(
         color: Colors.white.withValues(alpha: 0.08),

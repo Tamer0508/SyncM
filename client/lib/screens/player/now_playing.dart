@@ -10,16 +10,6 @@ import '../../theme.dart';
 import 'artwork_pager.dart';
 import '../../utils/image_cache.dart';
 
-/// Приглушённый свет на заднем плане плеера, окрашенный обложкой трека.
-///
-/// Заменяет прежний фон из сетки соединённых точек и слоя концентрических
-/// кругов. Сетка узлов с линиями — приём настолько растиражированный, что
-/// читается как оформление по умолчанию; вдобавок она перерисовывала полсотни
-/// точек и связей между ними каждый кадр, а вместе с ней в том же CustomPaint
-/// крутились два независимых контроллера анимации.
-///
-/// Здесь три пятна света, размытые по Гауссу и медленно смещающиеся. Цвета
-/// приходят из палитры обложки, поэтому фон меняется вместе с треком.
 class NowPlayingScreen extends StatefulWidget {
   final String? title;
   final String? artist;
@@ -72,7 +62,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     with TickerProviderStateMixin {
   Timer? _timer;
   int _positionMs = 0;
-  bool _dragging = false; // Теперь активно используется!
+  bool _dragging = false;
 
   int? _lastSyncPosition;
 
@@ -86,13 +76,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   Color _targetVibrant = Colors.purpleAccent;
 
   String? _lastTrackUri;
-  // Сигнатура обложки, по которой уже посчитана палитра. Нужна, чтобы
-  // поймать ПОЗДНЮЮ загрузку картинки: при обычном переключении uri меняется
-  // раньше, чем догружаются байты обложки, и без этого поля палитра осталась
-  // бы на нейтральных цветах до следующей смены трека.
   int? _lastPaletteImageSig;
 
-  /// Номер текущего запроса палитры — для отбрасывания устаревших результатов.
   int _paletteRequest = 0;
 
   bool _entered = false;
@@ -154,6 +139,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   void _onRouteAnimation(AnimationStatus status) {
     if (status == AnimationStatus.completed) _markEntered();
   }
+
   Map<String, dynamic>? _lastKnownTrack;
 
   final ValueNotifier<double> _swipeProgress = ValueNotifier(0);
@@ -263,7 +249,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   @override
   void dispose() {
-    // Снимаем флаг: мини-плеер внизу должен вернуться после закрытия.
     _timer?.cancel();
     _routeAnimation?.removeStatusListener(_onRouteAnimation);
     _swipeProgress.dispose();
@@ -277,19 +262,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     if (!mounted) return;
     final pb = Provider.of<PlaybackProvider>(context, listen: false);
 
-    if (_dragging) return; // пока тащим ползунок — не трогаем позицию
+    if (_dragging) return;
 
     if (pb.sessionMode) {
-      // Фаза 4.3: в сессии позиция считается провайдером от серверного
-      // времени — просто отражаем её, чтобы прогресс-бар был синхронен
-      // у всех участников, а не тикал локально вразнобой.
       final serverPos = pb.positionMs;
       if (serverPos != _positionMs) {
         setState(() => _positionMs = serverPos);
       }
     } else if (pb.isPlaying) {
       setState(() {
-        // Вне сессии — прежнее плавное локальное наращивание.
         _positionMs = (_positionMs + 200).clamp(0, pb.durationMs);
       });
     }
@@ -297,16 +278,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 }
 
 
-  // Устойчивая сигнатура обложки: комбинирует uri трека и хеш содержимого
-  // картинки (по сэмплам байтов — быстро, без полного прохода по мегабайтам).
-  // uri в основе — чтобы смена трека всегда триггерила пересчёт, даже если
-  // обложка побайтово идентична (треки одного альбома). Содержимое в хеше —
-  // чтобы поймать позднюю догрузку картинки в рамках того же uri.
   int _imageSignature(Uint8List bytes, String? uri) {
     int hash = (uri?.hashCode ?? 0) ^ 0x9E3779B1;
     hash = 0x1fffffff & (hash + bytes.length);
-    // Сэмплируем ~64 точки по всей длине — этого достаточно, чтобы различать
-    // разные картинки, и дёшево даже для больших обложек.
     final int len = bytes.length;
     if (len > 0) {
       final int step = len < 64 ? 1 : len ~/ 64;
@@ -337,7 +311,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       ..forward();
   }
 
-  // ФИКС №3: Передаем trackUri, чтобы защититься от Race Condition
   Future<void> _updatePalette({
     Uint8List? imageBytes,
     String? imageUrl,
@@ -350,11 +323,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
     final provider = Provider.of<PlaybackProvider>(context, listen: false);
 
-    // Ключ кэша: imageUrl если есть, иначе uri трека (на Android imageUrl
-    // часто null — обложка приходит байтами, кэшировать по url нельзя).
     final String? cacheKey = imageUrl ?? trackUri;
 
-    // Проверяем кэш
     if (cacheKey != null && provider.paletteCache.containsKey(cacheKey)) {
       final p = provider.paletteCache[cacheKey]!;
       _applyPalette(p, trackUri, provider);
@@ -374,33 +344,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
     try {
       final ImageProvider<Object> providerImg;
-      if (imageBytes != null) {
-        providerImg = MemoryImage(imageBytes);
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        providerImg = NetworkImage(imageUrl);
       } else {
-        providerImg = NetworkImage(imageUrl!);
+        providerImg = MemoryImage(imageBytes!);
       }
 
       final palette = await PaletteGenerator.fromImageProvider(
         providerImg,
-        // 64×64 и 8 цветов вместо 150×150 и 12.
-        //
-        // Квантование выполняется в основном потоке, и его стоимость растёт
-        // пропорционально числу точек: 150×150 — это больше двадцати тысяч
-        // пикселей, из-за которых фон заметно отставал от смены трека.
-        // Для размытого свечения такая точность избыточна — доминирующий
-        // цвет обложки при 64×64 практически тот же.
         size: const Size(64, 64),
         maximumColorCount: 8,
       );
 
-      // Поздний результат от предыдущего трека отбрасываем: при быстром
-      // переключении извлечения накладываются, и раньше побеждало то,
-      // которое завершилось последним, — не обязательно актуальное.
       if (!mounted || request != _paletteRequest) return;
 
       if (cacheKey != null) {
-        // Кэш ограничен: за долгую сессию он рос без предела, удерживая
-        // палитры всех прослушанных обложек.
         if (provider.paletteCache.length > 60) {
           provider.paletteCache.remove(provider.paletteCache.keys.first);
         }
@@ -409,16 +367,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
       _applyPalette(palette, trackUri, provider);
     } catch (err) {
-      // Обложка недоступна или повреждена — остаёмся на текущих цветах.
       debugPrint('Palette extraction failed: $err');
     }
   }
 
-  // Применяет палитру напрямую. Раньше это было обёрнуто в
-  // addPostFrameCallback + проверку uri, которая на Android при частых
-  // обновлениях состояния плеера могла молча отменять валидный пересчёт.
-  // Проверяем актуальность трека мягко: если uri уже сменился — просто
-  // не применяем (следующий трек сам себя пересчитает).
   void _applyPalette(PaletteGenerator p, String? trackUri, PlaybackProvider provider) {
     if (!mounted) return;
     final current = provider.currentTrack?['uri'];
@@ -444,20 +396,19 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final artist = track?['artist'] ?? widget.artist ?? 'Unknown Artist';
         final duration = pb.durationMs;
         final imageBytes = pb.currentImageBytes;
-        final imageUrl = track?['imageUrl'] ?? widget.artworkUrl;
+        final imageUrl = (track?['imageUrl'] as String?) ??
+            (track == null ? widget.artworkUrl : null);
         final currentUri = track?['uri'];
 
         _warmUpcoming(pb.neighbourArtworkUrls);
 
         if (!_dragging) {
-          // Если секунда в провайдере изменилась (или трек переключился/применился seek)
           if (_lastSyncPosition != pb.positionMs) {
-            _positionMs = pb.positionMs;       // Обновляем визуальную позицию
-            _lastSyncPosition = pb.positionMs; // Запоминаем её
+            _positionMs = pb.positionMs;
+            _lastSyncPosition = pb.positionMs;
           }
         }
 
-        // Отслеживаем смену трека чисто и без побочных эффектов
         if (currentUri != _lastTrackUri) {
           _lastTrackUri = currentUri;
 
@@ -466,7 +417,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
             final freshBytes = pb.currentImageBytes;
             final freshUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
 
-            // Ставим базовые нейтральные цвета на момент загрузки, если нет в кэше
             final cached = freshUrl != null ? pb.paletteCache[freshUrl] : null;
             if (cached != null) {
               _setTargetColors(
@@ -504,7 +454,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final dragProgress = (_dragOffset / screenHeight).clamp(0.0, 1.0);
 
         return GestureDetector(
-          // Внутри панели свайпом занимается она сама.
           onVerticalDragUpdate: widget.insideSheet ? null : _onDragUpdate,
           onVerticalDragEnd: widget.insideSheet ? null : _onDragEnd,
           child: Transform.translate(
@@ -536,8 +485,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         final progress = swipe.abs().clamp(0.0, 1.0);
                         final Color base;
                         if (neighbour == null) {
-                          // Соседа нет — просто гасим цвет к фону, чтобы
-                          // жест всё равно читался.
                           base = Color.lerp(_displayDominant, surface, progress)!;
                         } else if (progress < 0.5) {
                           base = Color.lerp(
@@ -569,10 +516,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
               SafeArea(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    // Размер обложки считается от доступной ВЫСОТЫ, а не от
-                    // ширины экрана. Раньше стояло width * 0.58: на низком
-                    // окне (браузер, разделённый экран, открытая клавиатура)
-                    // обложка не помещалась и содержимое переполняло экран.
                     final artSize = (constraints.maxHeight * 0.42)
                         .clamp(140.0, constraints.maxWidth - 96);
 
@@ -723,8 +666,6 @@ class _Header extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              // Русская подпись вместо «NOW PLAYING»: это была одна из
-              // немногих английских строк в интерфейсе.
               'Сейчас играет',
               textAlign: TextAlign.center,
               style: context.texts.labelLarge?.copyWith(
@@ -734,8 +675,6 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-          // Пустая область той же ширины, что кнопка слева, — чтобы подпись
-          // оставалась строго по центру.
           const SizedBox(width: 48),
         ],
       ),
@@ -760,8 +699,6 @@ class _TrackInfo extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            // headlineMedium вместо titleLarge: на экране плеера название
-            // трека — главное, и крупная типографика здесь уместна.
             style: context.texts.headlineMedium?.copyWith(color: Colors.white),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -804,14 +741,8 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      // Промежутки распределяет spaceEvenly. Отдельные SizedBox между
-      // кнопками убраны: вместе они давали суммарную ширину больше
-      // доступной, и ряд переполнялся на узком экране
-      // («RenderFlex overflowed on the right»).
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        // Перемешивание и повтор — второстепенные режимы: меньше размером и
-        // подсвечиваются только когда включены.
         _ModeButton(
           icon: Icons.shuffle_rounded,
           isActive: isShuffle,
@@ -825,9 +756,6 @@ class _Controls extends StatelessWidget {
           color: Colors.white,
           tooltip: 'Предыдущий трек',
         ),
-        // Главная кнопка — крупная и залитая акцентным цветом обложки.
-        // Раньше все три кнопки были одинаковыми иконками, и центральная
-        // ничем не выделялась, хотя нажимают её чаще остальных.
         Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
@@ -866,9 +794,6 @@ class _Controls extends StatelessWidget {
           tooltip: 'Следующий трек',
         ),
         _ModeButton(
-          // Три состояния: выключен, повтор списка, повтор одного трека.
-          // Иконка меняется на repeat_one — по одному лишь цвету отличить
-          // повтор списка от повтора трека невозможно.
           icon: repeatMode == 'track' ? Icons.repeat_one_rounded : Icons.repeat_rounded,
           isActive: repeatMode != 'off',
           accentColor: accentColor,
@@ -905,8 +830,6 @@ class _ModeButton extends StatelessWidget {
       onPressed: onPressed,
       tooltip: tooltip,
       icon: Icon(icon, size: 24),
-      // Белый при включённом режиме, приглушённый при выключенном: акцентный
-      // цвет обложки бывает тёмным и на затемнённом фоне терялся бы.
       color: isActive ? Colors.white : Colors.white38,
       style: IconButton.styleFrom(
         backgroundColor: isActive ? accentColor.withValues(alpha: 0.28) : null,
