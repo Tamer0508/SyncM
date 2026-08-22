@@ -57,6 +57,10 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   Future<void> _loadTracks() async {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
+
+      final likedRequest = api.getLikedTracks();
+      likedRequest.ignore();
+
       List<dynamic>? rawTracks; // nullable
 
       if (widget.isCustom) {
@@ -86,7 +90,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
 
       final tracks = rawTracks; // теперь точно не null
 
-      final likedTracks = await api.getLikedTracks();
+      final likedTracks = await likedRequest;
       final Map<String, bool> likedMap = {};
       for (var t in likedTracks) {
         likedMap[t['spotifyUri']] = true;

@@ -14,6 +14,7 @@ import 'theme.dart';
 import 'config.dart';
 import 'utils/image_cache.dart';
 import 'utils/local_store.dart';
+import 'utils/artwork_color_store.dart';
 import 'utils/app_globals.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/home/home_screen.dart';
@@ -25,6 +26,8 @@ void main() async {
   await LocalStore.init();
 
   AppImageCache.configure();
+
+  ArtworkColorStore.restore();
 
   runApp(const MyApp());
 }
@@ -75,13 +78,13 @@ class MyApp extends StatelessWidget {
       child: Consumer2<ThemeProvider, AppearanceProvider>(
         builder: (context, themeProvider, appearance, _) => MaterialApp(
           title: 'SyncM',
-          theme: AppTheme.build(
+          theme: _ThemeCache.of(
             brightness: Brightness.light,
             accent: appearance.accent,
             compact: appearance.compact,
             reduceMotion: appearance.reduceMotion,
           ),
-          darkTheme: AppTheme.build(
+          darkTheme: _ThemeCache.of(
             brightness: Brightness.dark,
             accent: appearance.accent,
             compact: appearance.compact,
@@ -104,6 +107,30 @@ class MyApp extends StatelessWidget {
           home: const _AuthGate(),
           onGenerateRoute: generateRoute,
         ),
+      ),
+    );
+  }
+}
+
+class _ThemeCache {
+  const _ThemeCache._();
+
+  static final Map<String, ThemeData> _themes = {};
+
+  static ThemeData of({
+    required Brightness brightness,
+    required AccentColor accent,
+    required bool compact,
+    required bool reduceMotion,
+  }) {
+    final key = '${brightness.name}:${accent.name}:$compact:$reduceMotion';
+    return _themes.putIfAbsent(
+      key,
+      () => AppTheme.build(
+        brightness: brightness,
+        accent: accent,
+        compact: compact,
+        reduceMotion: reduceMotion,
       ),
     );
   }

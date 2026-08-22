@@ -93,6 +93,7 @@ class User {
         'spotifyConnected': spotifyConnected,
         'spotifyId': spotifyId,
         'isFriendsHidden': isFriendsHidden,
+        'isSearchHidden': isSearchHidden,
         'isActivityHidden': isActivityHidden,
         'isOnlineHidden': isOnlineHidden,
       };

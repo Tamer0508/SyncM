@@ -19,3 +19,9 @@ Future<void> saveAuthToken(String token) async {
 Future<void> clearAuthToken() async {
   html.window.localStorage.remove(_authTokenKey);
 }
+/// Синхронное чтение токена — см. комментарий в нативной реализации.
+String? readAuthTokenSync() {
+  final token = html.window.localStorage[_authTokenKey];
+  if (token == null || token.isEmpty) return null;
+  return token;
+}

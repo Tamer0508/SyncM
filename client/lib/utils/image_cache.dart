@@ -29,6 +29,17 @@ class AppImageCache {
     cache.maximumSize = 200;
   }
 
+  static CachedNetworkImageProvider provider(String url) =>
+      CachedNetworkImageProvider(url, cacheManager: manager);
+
+  static Future<void> precache(String url, BuildContext context) async {
+    if (url.isEmpty) return;
+    try {
+      await precacheImage(provider(url), context);
+    } catch (_) {
+    }
+  }
+
   static Future<void> clear() async {
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
@@ -79,8 +90,9 @@ class AppNetworkImage extends StatelessWidget {
       fit: fit,
       memCacheWidth: pixelWidth,
       memCacheHeight: pixelHeight,
-      maxWidthDiskCache: pixelWidth,
-      maxHeightDiskCache: pixelHeight,
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
+      placeholderFadeInDuration: Duration.zero,
       placeholder: (_, _) => fallback,
       errorWidget: (_, _, _) => fallback,
     );

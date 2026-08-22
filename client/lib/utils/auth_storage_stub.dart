@@ -1,3 +1,4 @@
+import 'local_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _authTokenKey = 'syncm_auth_token';
@@ -29,4 +30,13 @@ Future<void> clearAuthToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_authTokenKey);
   } catch (_) {}
+}
+String? readAuthTokenSync() {
+  try {
+    final token = LocalStore.readString(_authTokenKey);
+    if (token == null || token.isEmpty) return null;
+    return token;
+  } catch (_) {
+    return null;
+  }
 }

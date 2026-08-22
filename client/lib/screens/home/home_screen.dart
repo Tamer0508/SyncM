@@ -48,8 +48,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = LocalStore.readDouble(StoreKeys.startTab, defaultValue: 0)
       .round()
       .clamp(0, 2);
-  List<dynamic> _customPlaylists = [];
-  List<dynamic> _spotifyPlaylists = [];
+  List<dynamic> _customPlaylists = LocalStore.readList(StoreKeys.customPlaylists);
+  List<dynamic> _spotifyPlaylists = LocalStore.readList(StoreKeys.spotifyPlaylists);
   bool _loadingCustom = false;
   bool _loadingSpotify = false;
   Map<String, dynamic>? _selectedPlaylist;
@@ -171,17 +171,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-  Future<void> _loadAllPlaylists() async {
-    if (mounted) {
-      setState(() {
-        _loadingCustom = true;
-        _loadingSpotify = true;
-      });
-    }
+  Future<void> _loadAllPlaylists({bool refresh = false}) async {
+    if (!mounted) return;
+    setState(() {
+      _loadingCustom = true;
+      _loadingSpotify = true;
+    });
+
     final api = Provider.of<AuthProvider>(context, listen: false).api;
+
+    await Future.wait([
+      _loadCustomPlaylists(api, refresh: refresh),
+      _loadSpotifyPlaylists(api, refresh: refresh),
+    ]);
+  }
+
+  Future<void> _loadCustomPlaylists(ApiService api, {required bool refresh}) async {
     try {
-      final custom = await api.getMyPlaylists();
-      if (mounted) setState(() => _customPlaylists = custom);
+      final custom = await api.getMyPlaylists(refresh: refresh);
+      if (!mounted) return;
+      setState(() => _customPlaylists = custom);
+      _savePlaylists(StoreKeys.customPlaylists, custom);
     } catch (e) {
       // showError сам молчит про 429 и внутренние сбои, поэтому проверку
       // suppressUiNotification повторять здесь не нужно.
@@ -189,9 +199,14 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _loadingCustom = false);
     }
+  }
+
+  Future<void> _loadSpotifyPlaylists(ApiService api, {required bool refresh}) async {
     try {
-      final spotify = await api.getPlaylists();
-      if (mounted) setState(() => _spotifyPlaylists = spotify);
+      final spotify = await api.getPlaylists(refresh: refresh);
+      if (!mounted) return;
+      setState(() => _spotifyPlaylists = spotify);
+      _savePlaylists(StoreKeys.spotifyPlaylists, spotify);
     } catch (e) {
       // Отсутствие подключения к Spotify — не ошибка: раздел просто
       // покажет предложение подключить аккаунт, ругаться на это незачем.
@@ -200,6 +215,11 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _loadingSpotify = false);
     }
+  }
+
+  void _savePlaylists(String key, List<dynamic> playlists) {
+    final items = playlists.whereType<Map>().map(Map<String, dynamic>.from).toList();
+    LocalStore.saveList(key, items).ignore();
   }
 
   /// Вкладка «Сейчас» — что происходит прямо сейчас.
@@ -340,7 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final playlists = isCustom ? _customPlaylists : _spotifyPlaylists;
     final loading = isCustom ? _loadingCustom : _loadingSpotify;
     final isDesktop = context.isWideWindow;
-    if (loading) return const SkeletonPlaylistRow();
+    if (loading && playlists.isEmpty) return const SkeletonPlaylistRow();
     if (playlists.isEmpty) {
       return Center(
         child: Column(

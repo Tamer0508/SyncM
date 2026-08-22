@@ -10,6 +10,24 @@ import '../utils/local_store.dart';
 class AuthProvider with ChangeNotifier {
   AuthProvider({ApiService? api}) : api = api ?? ApiService() {
     this.api.onTokenIssued = _acceptToken;
+    _restoreUserSnapshot();
+  }
+
+  void _restoreUserSnapshot() {
+    final token = readAuthTokenSync();
+    if (token == null) return;
+
+    _token = token;
+    api.setCookie(token);
+
+    final saved = LocalStore.readMap(StoreKeys.me);
+    if (saved == null) return;
+
+    try {
+      _user = User.fromJson(saved);
+    } catch (err) {
+      debugPrint('Снимок профиля не прочитался: $err');
+    }
   }
 
   final ApiService api;
@@ -37,16 +55,27 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
     try {
       final loaded = await api.getMe();
+      final changed = loaded != _user;
       _user = loaded;
+
       if (loaded == null) {
         _token = null;
         api.setCookie('');
         await clearAuthToken();
+        unawaited(LocalStore.remove(StoreKeys.me));
+      } else if (changed) {
+        unawaited(LocalStore.saveMap(StoreKeys.me, loaded.toJson()));
       }
     } finally {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  void _persistUser() {
+    final current = _user;
+    if (current == null) return;
+    unawaited(LocalStore.saveMap(StoreKeys.me, current.toJson()));
   }
 
   Future<void> updateSettings(Map<String, bool> settings) async {
@@ -72,6 +101,7 @@ class AuthProvider with ChangeNotifier {
         isOnlineHidden: updated['isOnlineHidden'],
         isSearchHidden: updated['isSearchHidden'],
       );
+      _persistUser();
       notifyListeners();
     } catch (err) {
       _user = before;
@@ -93,6 +123,7 @@ class AuthProvider with ChangeNotifier {
       avatarUrl: updated['avatarUrl'] as String?,
       customAvatarUrl: updated['customAvatarUrl'] as String?,
     );
+    _persistUser();
     notifyListeners();
   }
 
@@ -105,6 +136,7 @@ class AuthProvider with ChangeNotifier {
       avatarUrl: updated['avatarUrl'] as String?,
       customAvatarUrl: updated['customAvatarUrl'] as String?,
     );
+    _persistUser();
     notifyListeners();
   }
 
@@ -119,7 +151,9 @@ class AuthProvider with ChangeNotifier {
   void setCookie(String cookie) => _acceptToken(cookie);
 
   void setUser(User user) {
+    if (_user == user) return;
     _user = user;
+    _persistUser();
     notifyListeners();
   }
 

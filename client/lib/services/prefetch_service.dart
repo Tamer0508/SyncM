@@ -1,10 +1,13 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../models/friend.dart';
 import '../providers/friends_provider.dart';
 import '../providers/session_provider.dart';
 import '../services/api_service.dart';
+import '../utils/artwork_color_store.dart';
 import '../utils/image_cache.dart';
 
 class PrefetchService {
@@ -19,6 +22,9 @@ class PrefetchService {
   /// возврате приложения из фона, а гонять одни и те же запросы подряд
   /// незачем — они лишь съедают лимит частоты на сервере.
   static const _minInterval = Duration(seconds: 30);
+
+  static const _avatarLimit = 16;
+  static const _avatarConcurrency = 3;
 
   /// Запускает прогрев. Не бросает исключений: это фоновая работа, и её сбой
   /// не должен ничего ломать — экраны в любом случае загрузят своё сами.
@@ -35,18 +41,24 @@ class PrefetchService {
 
     _inProgress = true;
     try {
-      // Параллельно, а не по очереди: запросы независимы, и последовательное
-      // выполнение растянуло бы прогрев на сумму задержек сети.
+      await Future.wait([
+        _safe(() => sessions.fetchMySessions()),
+        _safe(() => sessions.fetchInvites()),
+      ]);
+
+      // P1.
       await Future.wait([
         _safe(() => friends.fetchFriends(refresh: true)),
         _safe(() => friends.fetchIncomingRequests(refresh: true)),
-        _safe(() => sessions.fetchMySessions()),
-        _safe(() => sessions.fetchInvites()),
-        // Плейлисты греем ради кэша на сервере и в ApiService: результат
-        // здесь не нужен, экран запросит его сам и получит уже готовый.
-        _safe(() async => _api.getMyPlaylists()),
-        _safe(() async => _api.getPlaylists()),
       ]);
+
+      unawaited(SchedulerBinding.instance.scheduleTask<void>(
+        () {
+          _safe(() async => _api.getMyPlaylists()).ignore();
+          _safe(() async => _api.getPlaylists()).ignore();
+        },
+        Priority.idle,
+      ));
 
       _lastRun = DateTime.now();
     } finally {
@@ -59,16 +71,21 @@ class PrefetchService {
         .map((f) => f.avatarUrl)
         .whereType<String>()
         .where((url) => url.isNotEmpty)
-        .take(30) // разумный предел: греть сотни изображений незачем
+        .take(_avatarLimit)
         .toList();
 
-    for (final url in urls) {
+    if (urls.isEmpty) return;
+
+    for (var i = 0; i < urls.length; i += _avatarConcurrency) {
       if (!context.mounted) return;
-      await _safe(() => precacheImage(
-            CachedNetworkImageProvider(url, cacheManager: AppImageCache.manager),
-            context,
-          ));
+
+      final chunk = urls.skip(i).take(_avatarConcurrency);
+      await Future.wait([
+        for (final url in chunk) AppImageCache.precache(url, context),
+      ]);
     }
+
+    ArtworkColorStore.warmUp(urls);
   }
 
   Future<void> _safe(Future<void> Function() action) async {

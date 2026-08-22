@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'package:flutter/material.dart';
 
 import '../models/session.dart';
@@ -29,7 +30,8 @@ class SessionProvider with ChangeNotifier {
   void syncCookie(String cookie) => api.setCookie(cookie);
 
   List<SessionModel> _sessions = [];
-  List<SessionModel> get sessions => List.unmodifiable(_sessions);
+  /// Представление, а не копия: см. комментарий в FriendsProvider.
+  List<SessionModel> get sessions => UnmodifiableListView(_sessions);
 
   List<Map<String, dynamic>> _invites = [];
 
@@ -72,7 +74,7 @@ class SessionProvider with ChangeNotifier {
     // Без оповещения: поле забирают во время построения, а notifyListeners
     // оттуда вызывать нельзя — это приводит к исключению.
   }
-  List<Map<String, dynamic>> get invites => List.unmodifiable(_invites);
+  List<Map<String, dynamic>> get invites => UnmodifiableListView(_invites);
 
   bool _loading = false;
   bool get loading => _loading;

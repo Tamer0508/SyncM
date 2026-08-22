@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'package:flutter/material.dart';
 
 import '../config.dart';
@@ -31,7 +32,7 @@ class FriendsProvider with ChangeNotifier {
 
 
   List<Friend> _friends = [];
-  List<Friend> get friends => List.unmodifiable(_friends);
+  List<Friend> get friends => UnmodifiableListView(_friends);
 
   String? _friendsNextCursor;
   bool _friendsHasMore = true;
@@ -108,7 +109,8 @@ class FriendsProvider with ChangeNotifier {
   int get unreadCount => _friendRequests.length;
 
   List<Map<String, dynamic>> _friendRequests = [];
-  List<Map<String, dynamic>> get incomingRequests => List.unmodifiable(_friendRequests);
+  List<Map<String, dynamic>> get incomingRequests =>
+      UnmodifiableListView(_friendRequests);
 
   String? _incomingNextCursor;
   bool _incomingHasMore = true;

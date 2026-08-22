@@ -12,6 +12,8 @@ import '../models/sync_phase.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../services/session_foreground_service.dart';
+import '../utils/artwork_color_store.dart';
+import '../utils/image_cache.dart';
 import '../utils/local_store.dart';
 
 typedef SessionTracksCallback = void Function(Map<String, dynamic> data);
@@ -1585,9 +1587,16 @@ class PlaybackProvider extends ChangeNotifier {
   Color? mutedColorForUrl(String? url) {
     if (url == null || url.isEmpty) return null;
 
-    final base = _paletteCache[url]?.dominantColor?.color;
+    // Палитра этого запуска или цвет, сохранённый с прошлого: фон плеера
+    // должен быть правильным с первого кадра, а не после расчёта.
+    final base = _paletteCache[url]?.dominantColor?.color ??
+        ArtworkColorStore.cached(url);
     if (base == null) return null;
 
+    return _shadeArtworkColor(base);
+  }
+
+  static Color _shadeArtworkColor(Color base) {
     final hsl = HSLColor.fromColor(base);
     return hsl
         .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.6))
@@ -1663,11 +1672,22 @@ class PlaybackProvider extends ChangeNotifier {
     String? url,
     Uint8List? bytes,
   ) async {
+    if (url != null && url.isNotEmpty) {
+      final known = ArtworkColorStore.cached(url);
+      if (known != null) {
+        if (key != _artworkColorPending) return;
+        _artworkColorKey = key;
+        _setArtworkColor(_shadeArtworkColor(known));
+        _artworkColorPending = null;
+        return;
+      }
+    }
+
     final ImageProvider provider;
     if (bytes != null) {
       provider = MemoryImage(bytes);
     } else if (url != null && url.isNotEmpty) {
-      provider = NetworkImage(url);
+      provider = AppImageCache.provider(url);
     } else {
       return;
     }
@@ -1682,12 +1702,9 @@ class PlaybackProvider extends ChangeNotifier {
       if (base == null) return;
 
       _artworkColorKey = key;
+      if (url != null && url.isNotEmpty) ArtworkColorStore.remember(url, base);
 
-      final hsl = HSLColor.fromColor(base);
-      _setArtworkColor(hsl
-          .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.6))
-          .withLightness(0.28)
-          .toColor());
+      _setArtworkColor(_shadeArtworkColor(base));
     } catch (err) {
       debugPrint('Не удалось получить цвет обложки: $err');
     } finally {
@@ -1719,6 +1736,10 @@ class PlaybackProvider extends ChangeNotifier {
         size: const Size(64, 64),
         maximumColorCount: 8,
       );
+      final dominant = palette.dominantColor?.color;
+      if (dominant != null && key.startsWith('http')) {
+        ArtworkColorStore.remember(key, dominant);
+      }
       // Готовая палитра не перестраивает весь UI: об этом узнают только
       // потребители цвета (paletteVersion / artworkColorNotifier).
       _cachePalette(key, palette);
@@ -1749,7 +1770,7 @@ class PlaybackProvider extends ChangeNotifier {
     SchedulerBinding.instance.scheduleTask<void>(
       () {
         if (_disposed || _paletteCache.containsKey(imageUrl)) return;
-        unawaited(_generatePalette(imageUrl, NetworkImage(imageUrl)));
+        unawaited(_generatePalette(imageUrl, AppImageCache.provider(imageUrl)));
       },
       Priority.idle,
     );

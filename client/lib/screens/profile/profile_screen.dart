@@ -1,13 +1,15 @@
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../services/spotify_link_service.dart';
 import '../../theme.dart';
+import '../../utils/artwork_color_store.dart';
 import '../../utils/image_cache.dart';
+import '../../utils/local_store.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/mini_player.dart';
 import '../../widgets/app_menu.dart';
@@ -44,6 +46,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _displayId;
   bool _loading = false;
 
+  int _requestGeneration = 0;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -61,21 +65,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (targetId != null && targetId != _displayId) {
       _displayId = targetId;
+      _profileData = _cachedProfile(targetId);
       _loadProfile(targetId);
     }
   }
 
+  static Map<String, dynamic>? _cachedProfile(String userId) {
+    final all = LocalStore.readMap(StoreKeys.profiles);
+    final saved = all?[userId];
+    return saved is Map ? Map<String, dynamic>.from(saved) : null;
+  }
+
+  static void _saveProfile(String userId, Map<String, dynamic> data) {
+    final all = LocalStore.readMap(StoreKeys.profiles) ?? <String, dynamic>{};
+    all[userId] = data;
+
+    if (all.length > 20) {
+      final extra = all.keys.take(all.length - 20).toList();
+      for (final key in extra) {
+        all.remove(key);
+      }
+    }
+
+    LocalStore.saveMap(StoreKeys.profiles, all).ignore();
+  }
+
   Future<void> _loadProfile(String userId) async {
-    setState(() => _loading = true);
+    final generation = ++_requestGeneration;
+
+    if (_profileData == null) setState(() => _loading = true);
+
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
       final data = await api.getUserProfile(userId);
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
+
+      _saveProfile(userId, data);
       setState(() => _profileData = data);
     } catch (err) {
-      if (mounted) showError(context, err);
+      if (!mounted || generation != _requestGeneration) return;
+      if (_profileData == null) showError(context, err);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _requestGeneration && _loading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -289,7 +322,8 @@ class _ProfileContent extends StatefulWidget {
 
 class _ProfileContentState extends State<_ProfileContent> {
   /// Цвет шапки, снятый с аватара.
-  Color? _heroColor;
+  late final ValueNotifier<Color?> _heroColor =
+      ValueNotifier<Color?>(ArtworkColorStore.cached(widget.avatarUrl));
 
   List<Map<String, dynamic>> _history = [];
   List<Map<String, dynamic>> _liked = [];
@@ -307,25 +341,29 @@ class _ProfileContentState extends State<_ProfileContent> {
     });
   }
 
+  @override
+  void didUpdateWidget(covariant _ProfileContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.avatarUrl != widget.avatarUrl) {
+      _heroColor.value = ArtworkColorStore.cached(widget.avatarUrl);
+      _extractHeroColor();
+    }
+  }
+
+  @override
+  void dispose() {
+    _heroColor.dispose();
+    super.dispose();
+  }
+
   Future<void> _extractHeroColor() async {
     final url = widget.avatarUrl;
     if (url == null || url.isEmpty) return;
+    if (_heroColor.value != null) return;
 
-    try {
-      final palette = await PaletteGenerator.fromImageProvider(
-        CachedNetworkImageProvider(url, cacheManager: AppImageCache.manager),
-        size: const Size(48, 48),
-        maximumColorCount: 8,
-      );
-      if (!mounted) return;
-
-      final color = palette.dominantColor?.color ??
-          palette.vibrantColor?.color ??
-          palette.mutedColor?.color;
-      if (color != null) setState(() => _heroColor = color);
-    } catch (err) {
-      debugPrint('Не удалось снять цвет с аватара: $err');
-    }
+    final color = await ArtworkColorStore.resolve(url);
+    if (!mounted || color == null) return;
+    _heroColor.value = color;
   }
 
   Future<void> _loadLists() async {
@@ -333,15 +371,16 @@ class _ProfileContentState extends State<_ProfileContent> {
       final api = context.read<AuthProvider>().api;
 
       if (widget.isOwnProfile) {
-        final results = await Future.wait([
-          api.getPlayHistory(limit: 20),
-          api.getLikedTracks(),
-        ]);
+        final historyRequest = api.getPlayHistory(limit: 20);
+        final likedRequest = api.getLikedTracks();
+
+        final history = await historyRequest;
+        final liked = await likedRequest;
         if (!mounted) return;
 
         setState(() {
-          _history = results[0] as List<Map<String, dynamic>>;
-          _liked = (results[1] as List)
+          _history = history;
+          _liked = liked
               .whereType<Map>()
               .map(Map<String, dynamic>.from)
               .take(20)
@@ -400,21 +439,13 @@ class _ProfileContentState extends State<_ProfileContent> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     final isNarrow = MediaQuery.sizeOf(context).width < 700;
-
-    final base = _heroColor ?? colors.primary;
-    final hsl = HSLColor.fromColor(base);
-    final hero = hsl
-        .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.6))
-        .withLightness(0.32)
-        .toColor();
 
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
           child: _Hero(
-            color: hero,
+            colorSource: _heroColor,
             isNarrow: isNarrow,
             displayName: widget.displayName,
             avatarUrl: widget.avatarUrl,
@@ -477,18 +508,32 @@ class _ProfileContentState extends State<_ProfileContent> {
 /// Шапка профиля с градиентом от цвета аватара.
 class _Hero extends StatelessWidget {
   const _Hero({
-    required this.color,
+    required this.colorSource,
     required this.isNarrow,
     required this.displayName,
     required this.avatarUrl,
     required this.subtitle,
   });
 
-  final Color color;
+  /// Цвет аватара: null, пока не посчитан.
+  final ValueListenable<Color?> colorSource;
   final bool isNarrow;
   final String displayName;
   final String? avatarUrl;
   final String subtitle;
+
+  Color _fallback(ColorScheme colors) {
+    final hasAvatar = avatarUrl != null && avatarUrl!.isNotEmpty;
+    return hasAvatar ? colors.surfaceContainerHighest : colors.primary;
+  }
+
+  static Color _shade(Color base) {
+    final hsl = HSLColor.fromColor(base);
+    return hsl
+        .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.6))
+        .withLightness(0.32)
+        .toColor();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -532,8 +577,7 @@ class _Hero extends StatelessWidget {
       ],
     );
 
-    return Container(
-      width: double.infinity,
+    final content = Padding(
       // Отступ сверху с запасом под системную строку и кнопку возврата,
       // которая лежит поверх градиента.
       padding: EdgeInsets.fromLTRB(
@@ -541,18 +585,6 @@ class _Hero extends StatelessWidget {
         MediaQuery.paddingOf(context).top + 64,
         AppSpacing.lg,
         isNarrow ? AppSpacing.lg : 96,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            color,
-            Color.lerp(color, colors.surface, 0.55)!,
-            colors.surface,
-          ],
-          stops: isNarrow ? const [0.0, 0.65, 1.0] : const [0.0, 0.55, 1.0],
-        ),
       ),
       child: Row(
         crossAxisAlignment:
@@ -563,6 +595,37 @@ class _Hero extends StatelessWidget {
           Expanded(child: info),
         ],
       ),
+    );
+
+    return ValueListenableBuilder<Color?>(
+      valueListenable: colorSource,
+      child: content,
+      builder: (context, value, child) {
+        final hero = _shade(value ?? _fallback(colors));
+
+        return TweenAnimationBuilder<Color?>(
+          tween: ColorTween(end: hero),
+          duration: const Duration(milliseconds: 220),
+          builder: (context, animated, child) => Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  animated ?? hero,
+                  Color.lerp(animated ?? hero, colors.surface, 0.55)!,
+                  colors.surface,
+                ],
+                stops:
+                    isNarrow ? const [0.0, 0.65, 1.0] : const [0.0, 0.55, 1.0],
+              ),
+            ),
+            child: child,
+          ),
+          child: child,
+        );
+      },
     );
   }
 }

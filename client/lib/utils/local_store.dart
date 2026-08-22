@@ -97,6 +97,36 @@ class LocalStore {
     return DateTime.now().difference(saved) > maxAge;
   }
 
+  /// Сохраняет объект (снимок профиля, карту цветов обложек и подобное).
+  static Future<void> saveMap(String key, Map<String, dynamic> value) async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+
+    try {
+      await prefs.setString(key, jsonEncode(value));
+      await prefs.setInt(_stampKey(key), DateTime.now().millisecondsSinceEpoch);
+    } catch (err) {
+      debugPrint('LocalStore.saveMap failed for "$key": $err');
+    }
+  }
+
+  static Map<String, dynamic>? readMap(String key) {
+    final prefs = _prefs;
+    if (prefs == null) return null;
+
+    try {
+      final raw = prefs.getString(key);
+      if (raw == null || raw.isEmpty) return null;
+
+      final decoded = jsonDecode(raw);
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } catch (err) {
+      debugPrint('LocalStore.readMap failed for "$key", dropping: $err');
+      unawaited(remove(key));
+      return null;
+    }
+  }
+
   /// Сохраняет одиночную строку — для настроек вроде выбранной темы.
   static Future<void> saveString(String key, String value) async {
     final prefs = _prefs;
@@ -151,6 +181,13 @@ class StoreKeys {
   static const sessions = 'cache:sessions';
   static const invites = 'cache:invites';
 
+  static const me = 'cache:me';
+
+  static const customPlaylists = 'cache:playlists:custom';
+  static const spotifyPlaylists = 'cache:playlists:spotify';
+
+  static const profiles = 'cache:profiles';
+
   /// Выбранная тема. Намеренно НЕ входит в all: настройка принадлежит
   /// устройству, а не аккаунту, и при выходе из профиля сбрасывать её
   /// незачем — человек не ожидает, что выход поменяет оформление.
@@ -181,5 +218,16 @@ class StoreKeys {
 
   static const startTab = 'settings:start_tab';
 
-  static const all = [friends, friendRequests, sessions, invites];
+  static const artworkColors = 'cache:artwork_colors';
+
+  static const all = [
+    friends,
+    friendRequests,
+    sessions,
+    invites,
+    me,
+    customPlaylists,
+    spotifyPlaylists,
+    profiles,
+  ];
 }
