@@ -67,6 +67,8 @@ class PlaybackProvider extends ChangeNotifier {
   List<dynamic>? _currentPlaylistTracks;
   bool _suppressAutoCorrection = false;
 
+  int _autoCorrectionGeneration = 0;
+
   String? _pendingTrackUri;
   DateTime? _pendingSince;
 
@@ -1139,7 +1141,8 @@ class PlaybackProvider extends ChangeNotifier {
       {String? playlistId,
       List<dynamic>? knownPlaylistTracks,
       int? positionMs,
-      bool fromSession = false}) async {
+      bool fromSession = false,
+      bool announceToSession = true}) async {
     final uri = track['uri'] as String?;
     if (uri == null) return;
 
@@ -1256,7 +1259,10 @@ class PlaybackProvider extends ChangeNotifier {
       _currentTrack = track;
       _isPlaying = true;
 
-      if (_currentSessionId != null && !_sessionMode && !_isRemoteSync) {
+      if (announceToSession &&
+          _currentSessionId != null &&
+          !_sessionMode &&
+          !_isRemoteSync) {
         _socketService?.emit('play', {
           'sessionId': _currentSessionId,
           'spotifyUri': uri,
@@ -1371,7 +1377,10 @@ class PlaybackProvider extends ChangeNotifier {
         _preloadPalette(newImageUrl);
       }
 
-      if (_shuffleActive && _currentPlaylistId != null && !_suppressAutoCorrection) {
+      if (!_sessionMode &&
+          _shuffleActive &&
+          _currentPlaylistId != null &&
+          !_suppressAutoCorrection) {
         try {
           await _ensurePlaylistTracksLoaded();
           final uri = _currentTrack?['uri'] as String?;
@@ -1918,34 +1927,18 @@ class PlaybackProvider extends ChangeNotifier {
       'imageUrl': sel['imageUrl'] ?? sel['album']?['images']?[0]?['url'],
     };
 
+    final generation = ++_autoCorrectionGeneration;
     _suppressAutoCorrection = true;
-    // Окно, пока Spotify переключается на выбранный случайный трек: без него
-    // проверка «трек не из плейлиста» сработает на ещё старом треке и
-    // запустит второй случайный выбор.
     Future.delayed(const Duration(seconds: 2), () {
-      _suppressAutoCorrection = false;
+      if (generation == _autoCorrectionGeneration) _suppressAutoCorrection = false;
     });
 
-    try {
-      final contextUri =
-          _currentPlaylistId!.startsWith('spotify:') ? _currentPlaylistId! : 'spotify:playlist:${_currentPlaylistId!}';
-      if (_isWindows || _isWeb) {
-        await _apiService?.playTrack(selectedUri, contextUri: contextUri, offset: trackMap['index'] as int?);
-        _currentTrack = trackMap;
-        _isPlaying = true;
-        notifyListeners();
-      } else {
-        await SpotifySdk.play(spotifyUri: contextUri);
-        // Как и выше: skipToIndex работает только по загруженному контексту.
-        await Future.delayed(const Duration(milliseconds: 500));
-        await SpotifySdk.skipToIndex(spotifyUri: contextUri, trackIndex: trackMap['index'] as int? ?? 0);
-        _currentTrack = trackMap;
-        _isPlaying = true;
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('[PlaybackProvider] _playRandomFromCurrentPlaylist error: $e');
-    }
+    await playTrack(
+      trackMap,
+      playlistId: _plainPlaylistId(_currentPlaylistId!),
+      knownPlaylistTracks: tracks,
+      announceToSession: false,
+    );
   }
 
   Future<void> seekTo(int positionMs) async {
