@@ -206,17 +206,63 @@ async function invalidateVersionedKey(namespace, key) {
   await del(buildVersionedKey(namespace, version, key));
 }
 
+const READ_VERSIONED_SCRIPT = `
+local ver = redis.call('GET', KEYS[1])
+if not ver then ver = '0' end
+local val = redis.call('GET', ARGV[1] .. ver .. ARGV[2])
+if not val then return {ver} end
+return {ver, val}
+`;
+
+function parseVersionedReply(namespace, key, reply) {
+  const version = parseInt(reply?.[0], 10) || 0;
+  const fullKey = buildVersionedKey(namespace, version, key);
+  const raw = reply?.[1];
+
+  if (!raw) return { fullKey, value: null };
+
+  try {
+    return { fullKey, value: JSON.parse(raw) };
+  } catch (err) {
+    logger.warn({ err, fullKey }, 'Cached value is not valid JSON, treating as miss');
+    return { fullKey, value: null };
+  }
+}
+
+async function readVersioned(namespace, key) {
+  try {
+    const reply = await redisClient.eval(
+      READ_VERSIONED_SCRIPT,
+      1,
+      versionKeyFor(namespace),
+      `cache:${namespace}:v`,
+      `:${key}`
+    );
+
+    return parseVersionedReply(namespace, key, reply);
+  } catch (err) {
+    logger.warn({ err, namespace }, 'Versioned read script failed, falling back to plain GETs');
+    const version = await getCacheVersion(namespace);
+    const fullKey = buildVersionedKey(namespace, version, key);
+    return { fullKey, value: await get(fullKey) };
+  }
+}
+
 async function getOrSet(namespace, key, ttlSeconds, fetchFn, { versioned = true, lockTtlSeconds = 10 } = {}) {
   if (!isRedisAvailable()) {
     return fetchFn();
   }
 
-  const version = versioned ? await getCacheVersion(namespace) : null;
-  const fullKey = versioned
-    ? buildVersionedKey(namespace, version, key)
-    : `cache:${namespace}:${key}`;
+  let fullKey;
+  let cached;
 
-  const cached = await get(fullKey);
+  if (versioned) {
+    ({ fullKey, value: cached } = await readVersioned(namespace, key));
+  } else {
+    fullKey = `cache:${namespace}:${key}`;
+    cached = await get(fullKey);
+  }
+
   if (cached !== null) {
     return cached;
   }
@@ -279,4 +325,6 @@ module.exports = {
   invalidateVersionedKey,
   getOrSet,
   clearPendingFetches,
+  parseVersionedReply,
+  READ_VERSIONED_SCRIPT,
 };

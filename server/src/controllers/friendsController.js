@@ -21,6 +21,16 @@ const invalidateSearchCaches = (userIdA, userIdB) =>
     incrementVersion(`db:search-users:${userIdB}`),
   ]);
 
+const FRIEND_USER_FIELDS = {
+  id: true,
+  username: true,
+  customAvatarUrl: true,
+  isOnline: true,
+  isOnlineHidden: true,
+  lastSeenAt: true,
+  spotifyUser: { select: { avatarUrl: true, displayName: true } },
+};
+
 const searchQuerySchema = z.object({
   query: z.string().trim().min(1).max(100),
 });
@@ -82,7 +92,11 @@ const searchUsers = asyncHandler(async (req, res) => {
       },
       take: 20,
       orderBy: { username: 'asc' },
-      include: {
+      select: {
+        id: true,
+        publicId: true,
+        username: true,
+        customAvatarUrl: true,
         spotifyUser: { select: { avatarUrl: true } },
         sentRequests: {
           where: { receiverId: userId },
@@ -307,13 +321,11 @@ const getFriends = asyncHandler(async (req, res) => {
         OR: [{ senderId: userId }, { receiverId: userId }],
         ...(cursor && { id: { lt: cursor } }),
       },
-      include: {
-        sender: {
-          include: { spotifyUser: { select: { avatarUrl: true, displayName: true } } },
-        },
-        receiver: {
-          include: { spotifyUser: { select: { avatarUrl: true, displayName: true } } },
-        },
+      select: {
+        id: true,
+        senderId: true,
+        sender: { select: FRIEND_USER_FIELDS },
+        receiver: { select: FRIEND_USER_FIELDS },
       },
       orderBy: { id: 'desc' },
       take: limit,
@@ -346,7 +358,17 @@ const getUserById = asyncHandler(async (req, res) => {
   const user = await getOrSet(`db:user-profile:${targetUserId}`, 'profile', 300, async () => {
     const found = await prisma.user.findUnique({
       where: { id: targetUserId },
-      include: { spotifyUser: { select: { avatarUrl: true, displayName: true } } },
+      select: {
+        id: true,
+        username: true,
+        customAvatarUrl: true,
+        friendsCount: true,
+        isFriendsHidden: true,
+        isOnline: true,
+        isOnlineHidden: true,
+        lastSeenAt: true,
+        spotifyUser: { select: { avatarUrl: true, displayName: true } },
+      },
     });
 
     if (!found) return null;
@@ -381,9 +403,17 @@ const getIncomingRequests = asyncHandler(async (req, res) => {
         status: 'pending',
         ...(cursor && { id: { lt: cursor } }),
       },
-      include: {
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
         sender: {
-          include: { spotifyUser: { select: { avatarUrl: true } } },
+          select: {
+            id: true,
+            username: true,
+            customAvatarUrl: true,
+            spotifyUser: { select: { avatarUrl: true } },
+          },
         },
       },
       orderBy: { id: 'desc' },

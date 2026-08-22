@@ -377,7 +377,18 @@ const getMe = asyncHandler(async (req, res) => {
   const userData = await getOrSet(`db:user-profile:${userId}`, 'me', 300, async () => {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { spotifyUser: true },
+      select: {
+        id: true,
+        publicId: true,
+        username: true,
+        email: true,
+        customAvatarUrl: true,
+        isFriendsHidden: true,
+        isSearchHidden: true,
+        isActivityHidden: true,
+        isOnlineHidden: true,
+        spotifyUser: { select: { spotifyId: true, avatarUrl: true } },
+      },
     });
 
     if (user) {
@@ -400,7 +411,25 @@ const getMe = asyncHandler(async (req, res) => {
 
     const spotifyUser = await prisma.spotifyUser.findUnique({
       where: { id: userId },
-      include: { user: true },
+      select: {
+        id: true,
+        userId: true,
+        spotifyId: true,
+        displayName: true,
+        email: true,
+        avatarUrl: true,
+        user: {
+          select: {
+            publicId: true,
+            username: true,
+            email: true,
+            isFriendsHidden: true,
+            isSearchHidden: true,
+            isActivityHidden: true,
+            isOnlineHidden: true,
+          },
+        },
+      },
     });
     if (spotifyUser) {
       return {

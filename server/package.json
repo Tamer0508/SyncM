@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "migrate:deploy": "prisma migrate deploy"
+    "migrate:deploy": "prisma migrate deploy",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +18,7 @@
     "acorn": "^8.16.0",
     "axios": "^1.13.6",
     "bullmq": "^5.78.0",
+    "compression": "^1.8.1",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",

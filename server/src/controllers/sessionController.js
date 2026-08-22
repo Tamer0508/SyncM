@@ -1,9 +1,10 @@
+const crypto = require('crypto');
 const { z } = require('zod');
 const prisma = require('../db/prisma');
 const { addNotificationJob } = require('../infrastructure/queue');
 const { getOrSet, incrementVersion } = require('../infrastructure/redis');
 const logger = require('../infrastructure/logger');
-const { getIo } = require('../socket');
+const { getIo, forgetMembership } = require('../socket');
 const { withLock } = require('../infrastructure/lock');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -200,7 +201,7 @@ const getMySessions = asyncHandler(async (req, res) => {
             addedBy: { select: { username: true } },
             ratings: { select: { userId: true, rating: true } },
           },
-          orderBy: { addedAt: 'asc' },
+          orderBy: [{ addedAt: 'asc' }, { id: 'asc' }],
         },
       },
     });
@@ -230,30 +231,29 @@ const addTracks = asyncHandler(async (req, res) => {
     );
     if (!isMember) return res.status(403).json({ error: 'Вы не участник этой сессии' });
 
-    // Создаём треки
-    const createdTracks = await Promise.all(
-      tracks.map((t) =>
-        prisma.sessionTrack.create({
-          data: {
-            sessionId,
-            addedById: userId,
-            spotifyUri: t.spotifyUri,
-            trackName: t.trackName,
-            artistName: t.artistName || '',
-            imageUrl: t.imageUrl || null,
-            durationMs: t.durationMs || null,
-          },
-          include: { addedBy: { select: { username: true } } },
-        })
-      )
-    );
+    const ids = tracks.map(() => crypto.randomUUID()).sort();
+    const rows = tracks.map((t, index) => ({
+      id: ids[index],
+      sessionId,
+      addedById: userId,
+      spotifyUri: t.spotifyUri,
+      trackName: t.trackName,
+      artistName: t.artistName || '',
+      imageUrl: t.imageUrl || null,
+      durationMs: t.durationMs || null,
+    }));
+
+    await prisma.sessionTrack.createMany({ data: rows });
 
     // Все треки сессии
     const allTracks = await prisma.sessionTrack.findMany({
       where: { sessionId },
-      orderBy: { addedAt: 'asc' },
+      orderBy: [{ addedAt: 'asc' }, { id: 'asc' }],
       include: { addedBy: { select: { username: true } } },
     });
+
+    const byId = new Map(allTracks.map((t) => [t.id, t]));
+    const createdTracks = rows.map((r) => byId.get(r.id)).filter(Boolean);
 
     const autoplayIndex = allTracks.findIndex((t) => t.id === createdTracks[0].id);
     const autoplayUri = createdTracks[0].spotifyUri;
@@ -371,6 +371,8 @@ const endSession = asyncHandler(async (req, res) => {
       data: { isActive: false },
     });
 
+    forgetMembership(sessionId);
+
     const tracks = await prisma.sessionTrack.findMany({
       where: { sessionId },
       include: { ratings: true },
@@ -416,6 +418,8 @@ const respondToInvite = asyncHandler(async (req, res) => {
     if (count === 0) {
       return res.status(404).json({ error: 'Приглашение не найдено' });
     }
+
+    if (!accept) forgetMembership(sessionId, userId);
 
     const session = await prisma.session.findUnique({
       where: { id: sessionId },

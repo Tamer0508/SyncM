@@ -3,6 +3,7 @@ require('./infrastructure/redis');
 
 const { rateLimitMiddleware } = require('./infrastructure/rateLimiter');
 const express = require('express');
+const compression = require('compression');
 const cors = require('cors');
 const helmet = require('helmet');
 const logger = require('./infrastructure/logger');
@@ -14,7 +15,9 @@ const { Server } = require('socket.io');
 const { Pool } = require('pg');
 const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
+const crypto = require('crypto');
 const { ZodError } = require('zod');
+const { extractBearerToken } = require('./infrastructure/authTokens');
 
 const authRoutes = require('./routes/auth');
 const friendsRoutes = require('./routes/friends');
@@ -107,7 +110,16 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use(compression({ threshold: 1024 }));
+
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '..', 'uploads'), {
+    maxAge: '365d',
+    immutable: true,
+    fallthrough: true,
+  })
+);
 app.use(express.json({ limit: '1mb' }));
 
 app.use(requestId);
@@ -162,7 +174,15 @@ app.use('/legal', legalRoutes);
 app.use(rateLimitMiddleware(100, 60, {
   keyGenerator: (req) => {
     const userId = req.session?.userId;
-    return userId ? `rate:global:user:${userId}` : `rate:global:ip:${req.ip}`;
+    if (userId) return `rate:global:user:${userId}`;
+
+    const token = extractBearerToken(req);
+    if (token) {
+      const fingerprint = crypto.createHash('sha256').update(token).digest('hex').slice(0, 32);
+      return `rate:global:token:${fingerprint}`;
+    }
+
+    return `rate:global:ip:${req.ip}`;
   },
 }));
 

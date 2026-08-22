@@ -15,6 +15,7 @@ const {
   SpotifyApiError,
   SpotifyNotConnectedError,
 } = require('../infrastructure/spotify/auth');
+const { collectAllPages, withPaging } = require('../infrastructure/spotify/paging');
 
 const getUserId = (req) => req.userId || req.session?.userId || null;
 
@@ -95,18 +96,17 @@ router.get('/playlists', rateLimitMiddleware(30, 60), asyncHandler(async (req, r
   try {
     const playlists = await getOrSet(`spotify:user-playlists:${userId}`, 'list', CACHE_TTL.userPlaylists, async () => {
       const spotifyUser = await requireSpotifyUser(userId);
-      const all = [];
-      let nextUrl = 'https://api.spotify.com/v1/me/playlists?limit=50';
 
-      while (nextUrl && all.length < 500) {
-        const page = await spotifyGet(spotifyUser, nextUrl);
-        all.push(...(page.items || []));
-        nextUrl = page.next;
-      }
+      const all = await collectAllPages(
+        (offset, limit) =>
+          spotifyGet(
+            spotifyUser,
+            withPaging('https://api.spotify.com/v1/me/playlists', offset, limit)
+          ),
+        { maxItems: 500 }
+      );
 
-      const data = { items: all };
-
-      return data.items.map((p) => ({
+      return all.map((p) => ({
         id: p.id,
         name: p.name,
         description: p.description,
@@ -144,19 +144,16 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
     // копии всех пользователей разом.
     const tracks = await getOrSet(`spotify:playlist-tracks:${playlistId}`, `user:${userId}`, CACHE_TTL.playlistTracks, async () => {
       const spotifyUser = await requireSpotifyUser(userId);
-      const collected = [];
-      let nextUrl =
-        `https://api.spotify.com/v1/playlists/${encodeURIComponent(playlistId)}/items?limit=50`;
 
-      while (nextUrl && collected.length < 1000) {
-        const page = await spotifyGet(spotifyUser, nextUrl);
-        collected.push(...(page.items || []));
-        nextUrl = page.next;
-      }
+      const itemsUrl =
+        `https://api.spotify.com/v1/playlists/${encodeURIComponent(playlistId)}/items`;
 
-      const data = { items: collected };
+      const collected = await collectAllPages(
+        (offset, limit) => spotifyGet(spotifyUser, withPaging(itemsUrl, offset, limit)),
+        { maxItems: 1000 }
+      );
 
-      return (data.items || [])
+      return collected
         .map((item) => extractTrack(item))
         .filter((track) => track !== null && track.id)
         .map((track) => ({

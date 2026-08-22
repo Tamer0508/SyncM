@@ -212,12 +212,48 @@ async function getFriendIds(userId) {
   }
 }
 
+const MEMBERSHIP_TTL_MS = 5000;
+const membershipCache = new Map();
+
+function membershipKey(sessionId, userId) {
+  return `${sessionId}:${userId}`;
+}
+
+function forgetMembership(sessionId, userId) {
+  if (userId) {
+    membershipCache.delete(membershipKey(sessionId, userId));
+    return;
+  }
+  // Сессия целиком — например, завершилась.
+  const prefix = `${sessionId}:`;
+  for (const key of membershipCache.keys()) {
+    if (key.startsWith(prefix)) membershipCache.delete(key);
+  }
+}
+
+// Подчистка протухших записей: сами по себе они не удаляются, а карта
+// живёт столько же, сколько процесс.
+const membershipSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [key, expiresAt] of membershipCache) {
+    if (expiresAt <= now) membershipCache.delete(key);
+  }
+}, 60000);
+membershipSweep.unref?.();
+
 async function isSessionMember(sessionId, userId) {
+  const key = membershipKey(sessionId, userId);
+  const expiresAt = membershipCache.get(key);
+  if (expiresAt && expiresAt > Date.now()) return true;
+
   try {
     const member = await prisma.sessionMember.findUnique({
-      where: { sessionId_userId: { sessionId, userId } }
+      where: { sessionId_userId: { sessionId, userId } },
+      select: { status: true },
     });
-    return member && member.status === 'accepted';
+    const allowed = Boolean(member && member.status === 'accepted');
+    if (allowed) membershipCache.set(key, Date.now() + MEMBERSHIP_TTL_MS);
+    return allowed;
   } catch (err) {
     logger.error({ err, sessionId, userId }, 'isSessionMember error');
     return false;
@@ -573,6 +609,7 @@ const setupSocket = (io) => {
 
     on('leave_session', ({ sessionId }) => {
       const uid = socket.data.userId;
+      if (uid) forgetMembership(sessionId, uid);
       socket.leave(sessionId);
       io.to(sessionId).emit('user_left', { userId: uid });
       socket.data.sessionId = null;
@@ -672,3 +709,4 @@ module.exports = setupSocket;
 module.exports.setupSocket = setupSocket;
 module.exports.getIo = getIo;
 module.exports.closeSocket = closeSocket;
+module.exports.forgetMembership = forgetMembership;

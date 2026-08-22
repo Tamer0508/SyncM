@@ -1,3 +1,4 @@
+const https = require('https');
 const axios = require('axios');
 const prisma = require('../../db/prisma');
 const { encrypt, decrypt } = require('../../utils/crypto');
@@ -6,6 +7,20 @@ const logger = require('../logger');
 
 const accessTokenAad = (spotifyUserId) => `spotifyUser:${spotifyUserId}:accessToken`;
 const refreshTokenAad = (spotifyUserId) => `spotifyUser:${spotifyUserId}:refreshToken`;
+
+const spotifyAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 15000,
+  maxSockets: 64,
+  maxFreeSockets: 16,
+  timeout: 15000,
+});
+
+const spotifyHttp = axios.create({
+  timeout: 10000,
+  httpsAgent: spotifyAgent,
+  decompress: true,
+});
 
 const REFRESH_LOCK_TTL_SECONDS = 10;
 const MAX_RATE_LIMIT_RETRIES = 5;
@@ -72,7 +87,7 @@ async function refreshAccessToken(spotifyUser) {
     });
     if (!refreshToken) throw new Error('Не удалось расшифровать refresh token');
 
-    const response = await axios.post(
+    const response = await spotifyHttp.post(
       'https://accounts.spotify.com/api/token',
       new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
       {
@@ -112,8 +127,7 @@ async function spotifyRequest(spotifyUser, config, { attempt = 1, accessToken = 
   let token = accessToken || (await getAccessToken(spotifyUser));
 
   const send = (bearer) =>
-    axios({
-      timeout: 10000,
+    spotifyHttp({
       ...config,
       headers: { ...(config.headers || {}), Authorization: `Bearer ${bearer}` },
       validateStatus: (status) => status < 500,
@@ -152,6 +166,7 @@ const spotifyGet = async (spotifyUser, url) =>
   (await spotifyRequest(spotifyUser, { method: 'get', url })).data;
 
 module.exports = {
+  spotifyHttp,
   accessTokenAad,
   refreshTokenAad,
   getSpotifyUser,
