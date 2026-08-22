@@ -16,7 +16,7 @@ function stableStringify(value) {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
 }
 
-function generateDefaultKey(req) {
+function requestFingerprint(req) {
   const payload = stableStringify({
     method: req.method,
     path: req.originalUrl || req.url,
@@ -46,13 +46,15 @@ module.exports = function idempotencyMiddleware(options = {}) {
       const log = req.log || logger;
 
       try {
+        const fingerprint = requestFingerprint(req);
+
         let idempotencyKey = req.headers['idempotency-key'];
         if (!idempotencyKey || typeof idempotencyKey !== 'string') {
-          idempotencyKey = generateDefaultKey(req);
+          idempotencyKey = fingerprint;
         }
 
-        const storageKey = `idem:${idempotencyKey}`;
-        lockKey = `idem-lock:${idempotencyKey}`;
+        const storageKey = `idem:${idempotencyKey}:${fingerprint}`;
+        lockKey = `idem-lock:${idempotencyKey}:${fingerprint}`;
 
         const replay = (cached) => {
           log.info({ storageKey }, 'Returning cached idempotent response');

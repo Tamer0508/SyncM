@@ -69,7 +69,8 @@ class ApiService {
 
   Map<String, String> get _jsonHeaders => {'Content-Type': 'application/json'};
   final Uuid _uuid = const Uuid();
-  final Map<String, String> _idempotencyKeys = {};
+
+  static const Object _idempotencyScope = #syncmIdempotencyKey;
 
   /// Заголовки собираются один раз на токен, а не на каждый запрос: раньше
   /// каждый вызов создавал две Map и заново склеивал строку 'Bearer ...'.
@@ -153,8 +154,11 @@ class ApiService {
     _inFlight.clear();
   }
 
-  String _getIdempotencyKey(String operation) =>
-      _idempotencyKeys.putIfAbsent(operation, () => _uuid.v4());
+  String _getIdempotencyKey(String operation) {
+    final scoped = Zone.current[_idempotencyScope];
+    if (scoped is String) return scoped;
+    return _uuid.v4();
+  }
 
   Map<String, String> _headersWithIdempotency(String operation) {
     final headers = Map<String, String>.from(_headers);
@@ -173,17 +177,12 @@ class ApiService {
     return true;
   }
 
-  Future<T> _retryMutable<T>(String operation, Future<T> Function() fn) async {
-    try {
-      final result = await retryWithBackoff(
-        fn,
-        shouldRetry: _shouldRetry,
-      );
-      _idempotencyKeys.remove(operation);
-      return result;
-    } catch (e) {
-      rethrow;
-    }
+  Future<T> _retryMutable<T>(String operation, Future<T> Function() fn) {
+    final key = _uuid.v4();
+    return runZoned(
+      () => retryWithBackoff(fn, shouldRetry: _shouldRetry),
+      zoneValues: {_idempotencyScope: key},
+    );
   }
 
   dynamic _decode(String body) {
@@ -291,7 +290,6 @@ class ApiService {
     }
 
     _cookie = null;
-    _idempotencyKeys.clear();
     clearCache();
   }
 
@@ -300,7 +298,6 @@ class ApiService {
       await _client.get(_uri('/auth/logout'), headers: _headers).timeout(timeout);
     } finally {
       _cookie = null;
-      _idempotencyKeys.clear();
       clearCache();
     }
   }

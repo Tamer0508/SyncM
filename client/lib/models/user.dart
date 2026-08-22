@@ -117,7 +117,8 @@ class User {
           other.spotifyId == spotifyId &&
           other.isFriendsHidden == isFriendsHidden &&
           other.isActivityHidden == isActivityHidden &&
-          other.isOnlineHidden == isOnlineHidden;
+          other.isOnlineHidden == isOnlineHidden &&
+          other.isSearchHidden == isSearchHidden;
 
   @override
   int get hashCode => Object.hash(
@@ -131,5 +132,6 @@ class User {
         isFriendsHidden,
         isActivityHidden,
         isOnlineHidden,
+        isSearchHidden,
       );
 }

@@ -54,7 +54,8 @@ class AuthProvider with ChangeNotifier {
     _loading = true;
     notifyListeners();
     try {
-      final loaded = await api.getMe();
+      final fresh = await api.getMe();
+      final loaded = fresh == null ? null : _withLocalPrivacy(fresh);
       final changed = loaded != _user;
       _user = loaded;
 
@@ -63,8 +64,9 @@ class AuthProvider with ChangeNotifier {
         api.setCookie('');
         await clearAuthToken();
         unawaited(LocalStore.remove(StoreKeys.me));
-      } else if (changed) {
-        unawaited(LocalStore.saveMap(StoreKeys.me, loaded.toJson()));
+      } else {
+        if (!_privacyBusy) _privacyConfirmed = _privacyOf(loaded);
+        if (changed) unawaited(LocalStore.saveMap(StoreKeys.me, loaded.toJson()));
       }
     } finally {
       _loading = false;
@@ -78,35 +80,109 @@ class AuthProvider with ChangeNotifier {
     unawaited(LocalStore.saveMap(StoreKeys.me, current.toJson()));
   }
 
-  Future<void> updateSettings(Map<String, bool> settings) async {
-    final before = _user;
-    if (before == null) return;
 
-    _user = before.copyWith(
-      isFriendsHidden: settings['isFriendsHidden'],
-      isActivityHidden: settings['isActivityHidden'],
-      isOnlineHidden: settings['isOnlineHidden'],
-      isSearchHidden: settings['isSearchHidden'],
-    );
+  static const List<String> _privacyKeys = [
+    'isFriendsHidden',
+    'isActivityHidden',
+    'isOnlineHidden',
+    'isSearchHidden',
+  ];
+
+  Map<String, bool>? _privacyConfirmed;
+
+  final Map<String, bool> _privacyPending = {};
+
+  final Map<String, bool> _privacySending = {};
+
+  Future<void>? _privacyFlush;
+
+  bool get _privacyBusy =>
+      _privacyPending.isNotEmpty || _privacySending.isNotEmpty;
+
+  bool get privacySyncing => _privacyFlush != null;
+
+  Map<String, bool> _privacyOf(User user) => {
+        'isFriendsHidden': user.isFriendsHidden,
+        'isActivityHidden': user.isActivityHidden,
+        'isOnlineHidden': user.isOnlineHidden,
+        'isSearchHidden': user.isSearchHidden,
+      };
+
+  User _applyPrivacy(User user, Map<String, bool> patch) => user.copyWith(
+        isFriendsHidden: patch['isFriendsHidden'],
+        isActivityHidden: patch['isActivityHidden'],
+        isOnlineHidden: patch['isOnlineHidden'],
+        isSearchHidden: patch['isSearchHidden'],
+      );
+
+  User _withLocalPrivacy(User user) => _privacyBusy
+      ? _applyPrivacy(user, {..._privacySending, ..._privacyPending})
+      : user;
+
+  void _settlePrivacy() {
+    final current = _user;
+    if (current == null) return;
+
+    final next = _applyPrivacy(current, {
+      ...?_privacyConfirmed,
+      ..._privacyPending,
+    });
+    if (next == current) return;
+
+    _user = next;
+    _persistUser();
+    notifyListeners();
+  }
+
+  Future<void> updateSettings(Map<String, bool> settings) {
+    final before = _user;
+    if (before == null) return Future<void>.value();
+
+    _privacyConfirmed ??= _privacyOf(before);
+
+    _user = _applyPrivacy(before, settings);
     notifyListeners();
 
-    try {
-      final updated = await api.updatePrivacySettings(settings);
-      final current = _user;
-      if (current == null) return;
+    _privacyPending.addAll(settings);
 
-      _user = current.copyWith(
-        isFriendsHidden: updated['isFriendsHidden'],
-        isActivityHidden: updated['isActivityHidden'],
-        isOnlineHidden: updated['isOnlineHidden'],
-        isSearchHidden: updated['isSearchHidden'],
-      );
-      _persistUser();
-      notifyListeners();
-    } catch (err) {
-      _user = before;
-      notifyListeners();
-      rethrow;
+    if (_privacyFlush != null) return Future<void>.value();
+
+    return _privacyFlush = _flushPrivacy().whenComplete(() {
+      _privacyFlush = null;
+    });
+  }
+
+  Future<void> _flushPrivacy() async {
+    while (_privacyPending.isNotEmpty) {
+      _privacySending
+        ..clear()
+        ..addAll(_privacyPending);
+      _privacyPending.clear();
+
+      final Map<String, dynamic> updated;
+      try {
+        updated = await api.updatePrivacySettings(
+          Map<String, bool>.from(_privacySending),
+        );
+      } catch (_) {
+        _privacySending.clear();
+        _privacyPending.clear();
+        _settlePrivacy();
+        rethrow;
+      }
+
+      // Ответ сервера — новая точка отсчёта.
+      final confirmed = _privacyConfirmed;
+      _privacyConfirmed = {
+        for (final key in _privacyKeys)
+          key: updated[key] as bool? ??
+              _privacySending[key] ??
+              confirmed?[key] ??
+              false,
+      };
+      _privacySending.clear();
+
+      _settlePrivacy();
     }
   }
 
@@ -151,13 +227,22 @@ class AuthProvider with ChangeNotifier {
   void setCookie(String cookie) => _acceptToken(cookie);
 
   void setUser(User user) {
-    if (_user == user) return;
-    _user = user;
+    final next = _withLocalPrivacy(user);
+    if (!_privacyBusy) _privacyConfirmed = _privacyOf(next);
+    if (_user == next) return;
+    _user = next;
     _persistUser();
     notifyListeners();
   }
 
+  void _resetPrivacyQueue() {
+    _privacyPending.clear();
+    _privacySending.clear();
+    _privacyConfirmed = null;
+  }
+
   Future<void> forgetLocalSession() async {
+    _resetPrivacyQueue();
     _user = null;
     _token = null;
     api.setCookie('');
@@ -173,6 +258,7 @@ class AuthProvider with ChangeNotifier {
       debugPrint('Logout request failed, clearing local session anyway: $err');
     }
 
+    _resetPrivacyQueue();
     _user = null;
     _token = null;
     api.setCookie('');
