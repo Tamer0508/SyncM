@@ -316,28 +316,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
     final request = ++_paletteRequest;
 
-    try {
-      final ImageProvider<Object> providerImg;
-      if (imageUrl != null && imageUrl.isNotEmpty) {
-        providerImg = NetworkImage(imageUrl);
-      } else {
-        providerImg = MemoryImage(imageBytes!);
-      }
+    final palette = await provider.paletteFor(
+      imageUrl: imageUrl,
+      imageBytes: imageBytes,
+      fallbackKey: trackUri,
+    );
 
-      final palette = await PaletteGenerator.fromImageProvider(
-        providerImg,
-        size: const Size(64, 64),
-        maximumColorCount: 8,
-      );
+    if (palette == null || !mounted || request != _paletteRequest) return;
 
-      if (!mounted || request != _paletteRequest) return;
-
-      if (cacheKey != null) provider.cachePalette(cacheKey, palette);
-
-      _applyPalette(palette, trackUri, provider);
-    } catch (err) {
-      debugPrint('Palette extraction failed: $err');
-    }
+    _applyPalette(palette, trackUri, provider);
   }
 
   void _applyPalette(PaletteGenerator p, String? trackUri, PlaybackProvider provider) {

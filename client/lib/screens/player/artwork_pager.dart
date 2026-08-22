@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../theme.dart';
 import '../../utils/image_cache.dart';
@@ -87,11 +88,32 @@ class ArtworkPagerState extends State<ArtworkPager>
   Widget? _previousTile;
   Widget? _nextTile;
 
+  bool _progressFlushScheduled = false;
+
   @override
   void initState() {
     super.initState();
     _controller = AnimationController.unbounded(vsync: this, value: 0)
-      ..addListener(() => widget.progress.value = _controller.value);
+      ..addListener(_publishProgress);
+  }
+
+  void _publishProgress() {
+    final value = _controller.value;
+    if (widget.progress.value == value) return;
+
+    if (SchedulerBinding.instance.schedulerPhase !=
+        SchedulerPhase.persistentCallbacks) {
+      widget.progress.value = value;
+      return;
+    }
+
+    if (_progressFlushScheduled) return;
+    _progressFlushScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _progressFlushScheduled = false;
+      if (!mounted) return;
+      widget.progress.value = _controller.value;
+    });
   }
 
   @override
@@ -105,7 +127,7 @@ class ArtworkPagerState extends State<ArtworkPager>
       _settleTarget = 0;
       _controller.stop();
       _controller.value = 0;
-      widget.progress.value = 0;
+      _publishProgress();
     }
   }
 

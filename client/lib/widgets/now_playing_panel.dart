@@ -52,32 +52,16 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
 
   Future<void> _extractPalette(PlaybackProvider pb, String? imageUrl) async {
     final request = ++_paletteRequest;
-    final imageBytes = pb.currentImageBytes;
 
-    final ImageProvider provider;
-    if (imageBytes != null) {
-      provider = MemoryImage(imageBytes);
-    } else if (imageUrl != null && imageUrl.isNotEmpty) {
-      provider = NetworkImage(imageUrl);
-    } else {
-      return;
-    }
+    final palette = await pb.paletteFor(
+      imageUrl: imageUrl,
+      imageBytes: pb.currentImageBytes,
+      fallbackKey: _lastTrackUri,
+    );
 
-    try {
-      final palette = await PaletteGenerator.fromImageProvider(
-        provider,
-        size: const Size(64, 64),
-        maximumColorCount: 8,
-      );
+    if (palette == null || !mounted || request != _paletteRequest) return;
 
-      if (!mounted || request != _paletteRequest) return;
-
-      if (imageUrl != null) pb.cachePalette(imageUrl, palette);
-
-      _applyPalette(palette);
-    } catch (err) {
-      debugPrint('Palette extraction failed: $err');
-    }
+    _applyPalette(palette);
   }
 
   void _applyPalette(PaletteGenerator palette) {

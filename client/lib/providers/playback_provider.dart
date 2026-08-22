@@ -266,10 +266,6 @@ class PlaybackProvider extends ChangeNotifier {
   final Map<String, Future<PaletteGenerator?>> _palettePending = {};
 
   /// Кладёт готовую палитру в общий кэш (с ограничением размера) и сообщает
-  /// об этом только потребителям цвета.
-  void cachePalette(String key, PaletteGenerator palette) =>
-      _cachePalette(key, palette);
-
   void _cachePalette(String key, PaletteGenerator palette) {
     if (!_paletteCache.containsKey(key) &&
         _paletteCache.length >= _paletteCacheLimit) {
@@ -1885,6 +1881,25 @@ class PlaybackProvider extends ChangeNotifier {
     } finally {
       _palettePending.remove(key);
     }
+  }
+
+
+  Future<PaletteGenerator?> paletteFor({
+    String? imageUrl,
+    Uint8List? imageBytes,
+    String? fallbackKey,
+  }) {
+    final String? url =
+        (imageUrl != null && imageUrl.isNotEmpty) ? imageUrl : null;
+    final String? key = url ?? fallbackKey;
+    if (key == null) return Future<PaletteGenerator?>.value(null);
+
+    final ImageProvider? image = url != null
+        ? AppImageCache.provider(url)
+        : (imageBytes != null ? MemoryImage(imageBytes) : null);
+    if (image == null) return Future<PaletteGenerator?>.value(null);
+
+    return _generatePalette(key, image);
   }
 
   void preloadPalettes(Iterable<String> urls) {
