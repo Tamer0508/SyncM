@@ -439,17 +439,17 @@ class _ProfileContentState extends State<_ProfileContent> {
 
   @override
   Widget build(BuildContext context) {
-    final isNarrow = MediaQuery.sizeOf(context).width < 700;
-
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
-          child: _Hero(
-            colorSource: _heroColor,
-            isNarrow: isNarrow,
-            displayName: widget.displayName,
-            avatarUrl: widget.avatarUrl,
-            subtitle: _buildSubtitle(),
+          child: LayoutBuilder(
+            builder: (context, constraints) => _Hero(
+              colorSource: _heroColor,
+              isNarrow: constraints.maxWidth < 700,
+              displayName: widget.displayName,
+              avatarUrl: widget.avatarUrl,
+              subtitle: _buildSubtitle(),
+            ),
           ),
         ),
 

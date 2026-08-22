@@ -1,5 +1,6 @@
 import 'dart:ui' show FontFeature;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -94,16 +95,109 @@ class AppSpacing {
   static const double xl = 32;
 }
 
-class AppBreakpoints {
-  const AppBreakpoints._();
+@immutable
+class AppLayout {
+  const AppLayout._({
+    required this.width,
+    required this.showRail,
+    required this.railLabels,
+    required this.showNowPlayingPanel,
+    required this.railMaxWidth,
+    required this.sidePanelWidth,
+    required this.gutter,
+    required this.contentMaxWidth,
+  });
 
-  /// Начиная с этой ширины показываем раскладку с боковыми панелями.
-  static const double wide = 900;
+  static const double railMinSpace = 600;
 
-  /// Ниже этой ширины интерфейс уплотняется (размеры, а не структура).
-  static const double compact = 600;
+  static const double railLabelsMinSpace = 760;
 
-  static bool isWide(BoxConstraints constraints) => constraints.maxWidth >= wide;
+  static const double sidePanelMinSpace = 1040;
+
+  static const double minUsableWidth = 320;
+
+  static const Size minWindowSize = Size(640, 560);
+
+  factory AppLayout.of(double width) => AppLayout._(
+        width: width,
+        showRail: width >= railMinSpace,
+        railLabels: width >= railLabelsMinSpace,
+        showNowPlayingPanel: width >= sidePanelMinSpace,
+        railMaxWidth: (width * 0.28).clamp(200.0, 340.0),
+        sidePanelWidth: (width * 0.24).clamp(280.0, 360.0),
+        gutter: width >= railLabelsMinSpace ? 8.0 : 4.0,
+        contentMaxWidth: 1100,
+      );
+
+  final double width;
+
+  final bool showRail;
+
+  final bool railLabels;
+
+  final bool showNowPlayingPanel;
+
+  final double railMaxWidth;
+
+  final double sidePanelWidth;
+
+  final double gutter;
+
+  final double contentMaxWidth;
+}
+
+class AppLayoutScope extends StatelessWidget {
+  const AppLayoutScope({super.key, required this.child});
+
+  final Widget child;
+
+  static bool get _resizableWindow => switch (defaultTargetPlatform) {
+        TargetPlatform.windows ||
+        TargetPlatform.linux ||
+        TargetPlatform.macOS =>
+          true,
+        _ => false,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final size = media.size;
+
+    final floor = _resizableWindow
+        ? AppLayout.minWindowSize
+        : const Size(AppLayout.minUsableWidth, 0);
+
+    final width = size.width < floor.width ? floor.width : size.width;
+    final height = size.height < floor.height ? floor.height : size.height;
+
+    if (width == size.width && height == size.height) {
+      return _AppLayoutData(layout: AppLayout.of(width), child: child);
+    }
+
+    return _AppLayoutData(
+      layout: AppLayout.of(width),
+      child: MediaQuery(
+        data: media.copyWith(size: Size(width, height)),
+        child: SingleChildScrollView(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(width: width, height: height, child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AppLayoutData extends InheritedWidget {
+  const _AppLayoutData({required this.layout, required super.child});
+
+  final AppLayout layout;
+
+  @override
+  bool updateShouldNotify(_AppLayoutData old) =>
+      layout.width != old.layout.width;
 }
 
 @immutable
@@ -574,8 +668,11 @@ extension AppThemeContext on BuildContext {
     );
   }
 
-  bool get isWideWindow =>
-      MediaQuery.sizeOf(this).width >= AppBreakpoints.wide;
+  AppLayout get layout =>
+      dependOnInheritedWidgetOfExactType<_AppLayoutData>()?.layout ??
+      AppLayout.of(MediaQuery.sizeOf(this).width);
+
+  bool get isWideWindow => layout.showRail;
 
   bool get reduceMotion =>
       (Theme.of(this).extension<AppMotionSettings>()?.reduceMotion ?? false) ||

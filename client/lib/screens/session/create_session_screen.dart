@@ -108,7 +108,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
       if (widget.onSessionCreated != null) {
         widget.onSessionCreated!(session);
       } else {
-        if (MediaQuery.sizeOf(context).width >= 900) {
+        if (context.isWideWindow) {
           context.read<SessionProvider>().requestOpenSession(session);
           Navigator.of(context).maybePop();
           return;

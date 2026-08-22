@@ -81,26 +81,13 @@ class HomeBottomNav extends StatelessWidget {
   }
 }
 
-/// Боковая навигация (широкая раскладка).
-///
-/// Заменяет рукописную панель на ~90 строк с самодельным индикатором на
-/// AnimatedPositioned. У штатного NavigationRail индикатор, состояния
-/// наведения, доступность и поддержка темы уже есть; расхождение размеров
-/// пунктов и индикатора, которое приходилось согласовывать вручную через
-/// константы _itemHeight/_itemPadding, исчезает как класс задач./// Боковая панель широкой раскладки.
-///
-/// Раньше она раскрывалась по наведению мыши и схлопывалась обратно. Это
-/// казалось экономным, но на деле мешало: подписи появлялись и исчезали, а
-/// на панель приходилось «наводиться», чтобы понять, где находишься.
-///
-/// Теперь панель открыта всегда, а ширину можно потянуть за правый край —
-/// как в Spotify. Значение сохраняется, поэтому подстраивать его каждый
-/// запуск не нужно.
 class HomeNavigationRail extends StatefulWidget {
   const HomeNavigationRail({
     super.key,
     required this.currentIndex,
     required this.onSelected,
+    required this.maxWidth,
+    this.showLabels = true,
     this.unreadFriendRequests = 0,
     this.onCreateSession,
     this.onFindFriends,
@@ -112,6 +99,11 @@ class HomeNavigationRail extends StatefulWidget {
   final ValueChanged<int> onSelected;
   final int unreadFriendRequests;
 
+  final double maxWidth;
+
+  /// Подписи рядом со значками. Без них панель схлопывается до [_railIconWidth].
+  final bool showLabels;
+
   final VoidCallback? onCreateSession;
   final VoidCallback? onFindFriends;
   final VoidCallback? onOpenLiked;
@@ -121,25 +113,31 @@ class HomeNavigationRail extends StatefulWidget {
   State<HomeNavigationRail> createState() => _HomeNavigationRailState();
 }
 
+/// Ширина панели, свёрнутой до значков.
+const double _railIconWidth = 72;
+
 class _HomeNavigationRailState extends State<HomeNavigationRail> {
   static const double _minWidth = 200;
-  static const double _maxWidth = 340;
   static const double _defaultWidth = 240;
 
   late double _width;
 
   bool _hoveringHandle = false;
 
+  /// Ширина с оглядкой на то, сколько места есть сейчас.
+  double get _effectiveWidth =>
+      _width.clamp(_minWidth, widget.maxWidth.clamp(_minWidth, double.infinity));
+
   @override
   void initState() {
     super.initState();
-    _width = LocalStore.readDouble(StoreKeys.railWidth, defaultValue: _defaultWidth)
-        .clamp(_minWidth, _maxWidth);
+    _width = LocalStore.readDouble(StoreKeys.railWidth, defaultValue: _defaultWidth);
   }
 
   void _onDrag(DragUpdateDetails details) {
     setState(() {
-      _width = (_width + details.delta.dx).clamp(_minWidth, _maxWidth);
+      _width = (_effectiveWidth + details.delta.dx)
+          .clamp(_minWidth, widget.maxWidth.clamp(_minWidth, double.infinity));
     });
   }
 
@@ -151,20 +149,23 @@ class _HomeNavigationRailState extends State<HomeNavigationRail> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     const destinations = kHomeDestinations;
+    final labels = widget.showLabels;
 
     return Row(
       children: [
         Container(
-          width: _width,
+          width: labels ? _effectiveWidth : _railIconWidth,
+          height: double.infinity,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: colors.surface,
             borderRadius: AppRadius.large,
           ),
-          child: Column(
+          child: SingleChildScrollView(
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _RailHeader(),
+              _RailHeader(showLabel: labels),
               const SizedBox(height: AppSpacing.sm),
 
               for (var i = 0; i < destinations.length; i++)
@@ -172,46 +173,53 @@ class _HomeNavigationRailState extends State<HomeNavigationRail> {
                   destination: destinations[i],
                   selected: widget.currentIndex == i,
                   badgeCount: i == 2 ? widget.unreadFriendRequests : 0,
+                  showLabel: labels,
                   onTap: () => widget.onSelected(i),
                 ),
 
               const _RailDivider(),
 
-              const _RailSectionTitle('Быстро'),
+              if (labels) const _RailSectionTitle('Быстро'),
               if (widget.onCreateSession != null)
                 _RailAction(
                   icon: Icons.add_circle_outline_rounded,
                   label: 'Новая сессия',
+                  showLabel: labels,
                   onTap: widget.onCreateSession!,
                 ),
               if (widget.onFindFriends != null)
                 _RailAction(
                   icon: Icons.person_search_outlined,
                   label: 'Найти друзей',
+                  showLabel: labels,
                   onTap: widget.onFindFriends!,
                 ),
 
               const _RailDivider(),
 
-              const _RailSectionTitle('Библиотека'),
+              if (labels) const _RailSectionTitle('Библиотека'),
               if (widget.onOpenLiked != null)
                 _RailAction(
                   icon: Icons.favorite_border_rounded,
                   label: 'Любимые треки',
+                  showLabel: labels,
                   onTap: widget.onOpenLiked!,
                 ),
               if (widget.onOpenHistory != null)
                 _RailAction(
                   icon: Icons.history_rounded,
                   label: 'История',
+                  showLabel: labels,
                   onTap: widget.onOpenHistory!,
                 ),
-
-              const Spacer(),
             ],
+          ),
           ),
         ),
 
+        if (!labels)
+          const SizedBox(width: AppSpacing.sm)
+        else
         MouseRegion(
           cursor: SystemMouseCursors.resizeLeftRight,
           onEnter: (_) => setState(() => _hoveringHandle = true),
@@ -250,12 +258,14 @@ class _RailItem extends StatelessWidget {
     required this.destination,
     required this.selected,
     required this.onTap,
+    required this.showLabel,
     this.badgeCount = 0,
   });
 
   final HomeDestination destination;
   final bool selected;
   final VoidCallback onTap;
+  final bool showLabel;
   final int badgeCount;
 
   @override
@@ -263,9 +273,62 @@ class _RailItem extends StatelessWidget {
     final colors = context.colors;
     final texts = context.texts;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
+    final icon = Icon(
+      selected ? destination.selectedIcon : destination.icon,
+      size: 22,
+      color: selected ? colors.primary : colors.onSurfaceVariant,
+    );
+
+    final badge = badgeCount <= 0
+        ? null
+        : Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: colors.error,
+              borderRadius: BorderRadius.circular(AppRadius.full),
+            ),
+            child: Text(
+              '$badgeCount',
+              style: texts.labelSmall?.copyWith(
+                color: colors.onError,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          );
+
+    final content = showLabel
+        ? Row(
+            children: [
+              icon,
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  destination.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: texts.titleSmall?.copyWith(
+                    color: selected ? colors.onSurface : colors.onSurfaceVariant,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (badge != null) badge,
+            ],
+          )
+        : Center(
+            child: badgeCount > 0
+                ? Badge.count(
+                    count: badgeCount,
+                    backgroundColor: colors.error,
+                    textColor: colors.onError,
+                    child: icon,
+                  )
+                : icon,
+          );
+
+    final button = Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: showLabel ? AppSpacing.sm : AppSpacing.md,
         vertical: 2,
       ),
       child: Material(
@@ -275,50 +338,18 @@ class _RailItem extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
+            padding: EdgeInsets.symmetric(
+              horizontal: showLabel ? AppSpacing.md : AppSpacing.xs,
               vertical: AppSpacing.sm + 4,
             ),
-            child: Row(
-              children: [
-                Icon(
-                  selected ? destination.selectedIcon : destination.icon,
-                  size: 22,
-                  color: selected ? colors.primary : colors.onSurfaceVariant,
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(
-                    destination.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: texts.titleSmall?.copyWith(
-                      color: selected ? colors.onSurface : colors.onSurfaceVariant,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    ),
-                  ),
-                ),
-                if (badgeCount > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: colors.error,
-                      borderRadius: BorderRadius.circular(AppRadius.full),
-                    ),
-                    child: Text(
-                      '$badgeCount',
-                      style: texts.labelSmall?.copyWith(
-                        color: colors.onError,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+            child: content,
           ),
         ),
       ),
     );
+
+    if (showLabel) return button;
+    return Tooltip(message: destination.label, child: button);
   }
 }
 
@@ -328,18 +359,24 @@ class _RailAction extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    required this.showLabel,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+    final glyph = Icon(icon, size: 20, color: colors.onSurfaceVariant);
+
+    final button = Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: showLabel ? AppSpacing.sm : AppSpacing.md,
+      ),
       child: Material(
         color: Colors.transparent,
         borderRadius: AppRadius.medium,
@@ -347,29 +384,34 @@ class _RailAction extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
+            padding: EdgeInsets.symmetric(
+              horizontal: showLabel ? AppSpacing.md : AppSpacing.xs,
               vertical: AppSpacing.sm + 2,
             ),
-            child: Row(
-              children: [
-                Icon(icon, size: 20, color: colors.onSurfaceVariant),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.texts.bodyMedium
-                        ?.copyWith(color: colors.onSurfaceVariant),
-                  ),
-                ),
-              ],
-            ),
+            child: showLabel
+                ? Row(
+                    children: [
+                      glyph,
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.texts.bodyMedium
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  )
+                : Center(child: glyph),
           ),
         ),
       ),
     );
+
+    if (showLabel) return button;
+    return Tooltip(message: label, child: button);
   }
 }
 
@@ -415,23 +457,34 @@ class _RailDivider extends StatelessWidget {
 }
 
 class _RailHeader extends StatelessWidget {
-  const _RailHeader();
+  const _RailHeader({required this.showLabel});
+
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+      padding: EdgeInsets.symmetric(
+        vertical: showLabel ? AppSpacing.lg : AppSpacing.md,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _Logo(colors: colors),
-          const SizedBox(width: AppSpacing.sm + 4),
-          Text(
-            'SyncM',
-            style: context.texts.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-          ),
+          if (showLabel) ...[
+            const SizedBox(width: AppSpacing.sm + 4),
+            Flexible(
+              child: Text(
+                'SyncM',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    context.texts.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
         ],
       ),
     );

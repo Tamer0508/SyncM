@@ -187,6 +187,38 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    case WM_GETMINMAXINFO: {
+      // Нижняя граница размера окна.
+      //
+      // Интерфейс сжимается до последнего, но ниже этого места сжимать уже
+      // нечего: содержимое упрётся в минимальный рабочий размер, и окно
+      // начнёт прокручиваться вместо того, чтобы что-то показывать. Дешевле
+      // не дать дотащить рамку туда вовсе.
+      //
+      // Значения те же, что у AppLayout.minWindowSize в lib/theme.dart, —
+      // это одна и та же граница с двух сторон. Дублируются они потому, что
+      // разделить константу между Dart и рантаймом окна нечем.
+      const int kMinLogicalWidth = 640;
+      const int kMinLogicalHeight = 560;
+
+      HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+      UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+      double scale_factor = dpi / 96.0;
+
+      // Предел задаётся для всего окна вместе с рамкой, а размер, который
+      // видит Flutter, — это клиентская область. Без поправки на рамку и
+      // заголовок клиентская область оказалась бы меньше задуманного, и
+      // содержимое всё равно уехало бы в прокрутку у самой границы.
+      RECT frame = {0, 0, Scale(kMinLogicalWidth, scale_factor),
+                    Scale(kMinLogicalHeight, scale_factor)};
+      AdjustWindowRect(&frame, WS_OVERLAPPEDWINDOW, FALSE);
+
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      info->ptMinTrackSize.x = frame.right - frame.left;
+      info->ptMinTrackSize.y = frame.bottom - frame.top;
+      return 0;
+    }
+
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;

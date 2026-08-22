@@ -55,6 +55,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _selectedPlaylist;
   final _prefetch = PrefetchService();
 
+  /// Общий ключ для стопки вкладок в обеих раскладках.
+  ///
+  /// Раскладки — разные ветки дерева, и при переходе через границу Flutter
+  /// снёс бы вкладки и построил заново: прокрутка списков, введённый в поиск
+  /// текст и раскрытые разделы терялись просто от того, что окно потянули за
+  /// край. С GlobalKey элемент переезжает в новое место вместе с состоянием.
+  final GlobalKey _tabsKey = GlobalKey();
+
 
 
   bool _creatingSession = false;
@@ -743,285 +751,232 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    return LayoutBuilder(builder: (context, constraints) {
-      final isDesktop = AppBreakpoints.isWide(constraints);
-      // Вкладок теперь три в обеих раскладках — подрезать индекс не нужно.
-      final unreadCount = Provider.of<FriendsProvider>(context).unreadCount;
+    final layout = context.layout;
+    final isDesktop = layout.showRail;
+    // Вкладок теперь три в обеих раскладках — подрезать индекс не нужно.
+    final unreadCount = Provider.of<FriendsProvider>(context).unreadCount;
 
-      // Сессию закрыл кто-то другой — провайдер положил итоги сюда.
-      //
-      // Забираем их в своё состояние и сразу помечаем как показанные, иначе
-      // при следующей перерисовке они всплывут снова, перекрыв то, что
-      // пользователь успел открыть.
-      //
-      // Через postFrameCallback, потому что менять состояние во время
-      // построения дерева нельзя.
 
-      // Кто-то попросил открыть сессию — показываем её встроенной.
-      final pendingSession = context.watch<SessionProvider>().openSessionRequest;
-      if (pendingSession != null && isDesktop) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          context.read<SessionProvider>().consumeOpenSession();
-          _openOverlay(() => _activeSession = pendingSession);
+    // Кто-то попросил открыть сессию — показываем её встроенной.
+    final pendingSession = context.watch<SessionProvider>().openSessionRequest;
+    if (pendingSession != null && isDesktop) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        context.read<SessionProvider>().consumeOpenSession();
+        _openOverlay(() => _activeSession = pendingSession);
+      });
+    }
+
+    final pendingResults = context.watch<SessionProvider>().endedResults;
+    if (pendingResults != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        context.read<SessionProvider>().consumeEndedResults();
+        if (_sessionResults != null) return;
+        _openOverlay(() => _sessionResults = pendingResults);
+      });
+    }
+    final tabs = [
+      _buildHomeTab(),
+      _buildMusicTab(),
+      FriendsScreen(
+        embedded: true,
+        onFindFriends: isDesktop
+            ? () => _openOverlay(() => _activeFriendView = 'search')
+            : null,
+        onOpenProfile: isDesktop
+            ? (args) => _openOverlay(() => _viewingProfile = args)
+            : null,
+      ),
+    ];
+    void selectTab(int index) => setState(() {
+          _clearOverlays();
+          _currentIndex = index;
         });
-      }
 
-      final pendingResults = context.watch<SessionProvider>().endedResults;
-      if (pendingResults != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          context.read<SessionProvider>().consumeEndedResults();
-          if (_sessionResults != null) return;
-          _openOverlay(() => _sessionResults = pendingResults);
-        });
-      }
-      // Один список вкладок на обе раскладки.
-      //
-      // Раньше их было два, и различались они не только составом: на
-      // десктопе была лишняя вкладка настроек. Приходилось следить за
-      // совпадением индексов, а расхождение молча открывало не тот экран.
-      //
-      // Профиль из вкладок убран — он открывается аватаром в шапке.
-      final tabs = [
-        _buildHomeTab(),
-        _buildMusicTab(),
-        FriendsScreen(
-          embedded: true,
-          // Обработчик только для широкой раскладки.
-          //
-          // Он открывает поиск встроенным блоком, а тот отрисовывается лишь
-          // на десктопе. Когда список вкладок стал общим, обработчик начал
-          // передаваться и на телефон — нажатие срабатывало, состояние
-          // менялось, но показать его было негде: кнопка выглядела нерабочей.
-          //
-          // На узком экране обработчика нет, и экран сам открывает поиск
-          // отдельным маршрутом, как и должно быть без боковых панелей.
-          onFindFriends: isDesktop
-              ? () => _openOverlay(() => _activeFriendView = 'search')
-              : null,
-          onOpenProfile: isDesktop
-              ? (args) => _openOverlay(() => _viewingProfile = args)
-              : null,
-        ),
-      ];
-      // Смена вкладки гасит все наложенные экраны, включая создание сессии:
-      // без этого нажатие на вкладку в боковой панели визуально ничего не
-      // делало, а переход происходил только после закрытия наложенного окна.
-      void selectTab(int index) => setState(() {
-            _clearOverlays();
-            _currentIndex = index;
-          });
+    return Scaffold(
+      backgroundColor: isDesktop
+          ? context.colors.surfaceContainerLowest
+          : context.colors.surface,
+      body: isDesktop
+          ? Padding(
+              padding: EdgeInsets.all(layout.gutter),
+              child: Row(children: [
+              HomeNavigationRail(
+                currentIndex: _currentIndex,
+                onSelected: selectTab,
+                maxWidth: layout.railMaxWidth,
+                showLabels: layout.railLabels,
+                unreadFriendRequests: unreadCount,
+                onCreateSession: () =>
+                    _openOverlay(() => _creatingSession = true),
+                onFindFriends: () =>
+                    _openOverlay(() => _activeFriendView = 'search'),
+                onOpenLiked: () => selectTab(1),
+                // Встроенно, а не маршрутом: полноэкранный переход закрыл
+                // бы боковую панель и панель воспроизведения.
+                onOpenHistory: () =>
+                    _openOverlay(() => _showingHistory = true),
+              ),
 
-      return Scaffold(
-        backgroundColor: isDesktop
-            ? context.colors.surfaceContainerLowest
-            : context.colors.surface,
-        body: isDesktop
-            ? Padding(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                child: Row(children: [
-                HomeNavigationRail(
+              // Зазор до центральной панели даёт сама область захвата
+              // ширины внутри рельса — второй отступ здесь удвоил бы его.
+              Expanded(
+                  child: Row(children: [
+                Expanded(
+                    child: _Panel(
+                        child: Column(children: [
+                  if (!_hasOverlay) _buildDesktopHeader(),
+                  Expanded(
+                    child: _activeFriendView != null // ← новая проверка
+                        ? (_activeFriendView == 'search'
+                            ? SearchUsersScreen(
+                                embedded: true,
+                                onBack: () =>
+                                    setState(() => _activeFriendView = null))
+                            : FriendRequestsScreen(
+                                embedded: true,
+                                onBack: () =>
+                                    setState(() => _activeFriendView = null)))
+                        : _showingHistory
+                            ? PlayHistoryScreen(
+                                embedded: true,
+                                onBack: () =>
+                                    setState(() => _showingHistory = false),
+                              )
+                        : _showingSettings
+                            ? SettingsScreen(
+                                embedded: true,
+                                onOpenHistory: () => _openOverlay(
+                                    () => _showingHistory = true),
+                                onBack: () =>
+                                    setState(() => _showingSettings = false),
+                              )
+                        : _showingOwnProfile
+                            ? ProfileScreen(
+                                embedded: true,
+                                onOpenHistory: () => _openOverlay(
+                                    () => _showingHistory = true),
+                                onOpenSettings: () => _openOverlay(
+                                    () => _showingSettings = true),
+                                onBack: () => setState(
+                                    () => _showingOwnProfile = false),
+                              )
+                        : _viewingProfile != null
+                            ? ProfileScreen(
+                                embedded: true,
+                                overrideArgs: _viewingProfile,
+                                onBack: () =>
+                                    setState(() => _viewingProfile = null),
+                              )
+                        : _showingInvites
+                            ? SessionInvitesScreen(
+                                embedded: true,
+                                onBack: () =>
+                                    setState(() => _showingInvites = false),
+                              )
+                        : _sessionResults != null
+                            ? SessionResultsScreen(
+                                embedded: true,
+                                mutualLikes: (_sessionResults!['mutualLikes']
+                                        as List?)
+                                    ?.whereType<Map>()
+                                    .toList(),
+                                onClose: () =>
+                                    setState(() => _sessionResults = null),
+                              )
+                            : _activeSession != null
+                            ? SessionScreen(
+                                embedded: true,
+                                sessionData: _activeSession!,
+                                onSessionEnded: (results) {
+                                  setState(() {
+                                    _activeSession = null;
+                                    _sessionResults = results;
+                                  });
+
+                                  context
+                                      .read<SessionProvider>()
+                                      .fetchMySessions()
+                                      .ignore();
+                                },
+                                onBack: () =>
+                                    setState(() => _activeSession = null))
+                            : _creatingSession
+                                ? CreateSessionScreen(
+                                    embedded: true,
+                                    onCancel: () => setState(
+                                        () => _creatingSession = false),
+                                    onFindFriends: () => _openOverlay(
+                                        () => _activeFriendView = 'search'),
+                                    onSessionCreated: (session) =>
+                                        setState(() {
+                                          _creatingSession = false;
+                                          _activeSession = session;
+                                        }))
+                                : _selectedPlaylist != null
+                                    ? PlaylistTracksScreen(
+                                        playlistId:
+                                            _selectedPlaylist!['id'] ?? '',
+                                        playlistName:
+                                            _selectedPlaylist!['name'] ?? '',
+                                        imageUrl:
+                                            _selectedPlaylist!['imageUrl'],
+                                        isCustom:
+                                            _selectedPlaylist!['isCustom'] ??
+                                                false,
+                                        embedded: true)
+                                    : Center(
+                                        child: ConstrainedBox(
+                                            constraints: BoxConstraints(
+                                                maxWidth:
+                                                    layout.contentMaxWidth),
+                                            child: IndexedStack(
+                                              key: _tabsKey,
+                                              index: _currentIndex,
+                                              children: tabs,
+                                            ))),
+                  ),
+                ]))),
+
+                if (layout.showNowPlayingPanel) ...[
+                  SizedBox(width: layout.gutter),
+                  SizedBox(
+                      width: layout.sidePanelWidth,
+                      child: _Panel(child: _buildRightPanel())),
+                ],
+              ])),
+            ]))
+          : SafeArea(
+              child: Column(
+                children: [
+                  _MobileHeader(
+                    title: kHomeDestinations[_currentIndex].label,
+                    onProfile: () =>
+                        Navigator.of(context).pushNamed('/profile'),
+                  ),
+                  Expanded(child: _tabsStack(tabs)),
+                ],
+              ),
+            ),
+      bottomNavigationBar: isDesktop
+          ? (layout.showNowPlayingPanel ? null : const MiniPlayerDock())
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const MiniPlayer(),
+                HomeBottomNav(
                   currentIndex: _currentIndex,
                   onSelected: selectTab,
                   unreadFriendRequests: unreadCount,
-                  onCreateSession: () =>
-                      _openOverlay(() => _creatingSession = true),
-                  onFindFriends: () =>
-                      _openOverlay(() => _activeFriendView = 'search'),
-                  onOpenLiked: () => selectTab(1),
-                  // Встроенно, а не маршрутом: полноэкранный переход закрыл
-                  // бы боковую панель и панель воспроизведения.
-                  onOpenHistory: () =>
-                      _openOverlay(() => _showingHistory = true),
                 ),
-
-                // Зазор до центральной панели даёт сама область захвата
-                // ширины внутри рельса — второй отступ здесь удвоил бы его.
-                Expanded(
-                    child: Row(children: [
-                  Expanded(
-                      child: _Panel(
-                          child: Column(children: [
-                    if (!_hasOverlay) _buildDesktopHeader(),
-                    Expanded(
-                      child: _activeFriendView != null // ← новая проверка
-                          ? (_activeFriendView == 'search'
-                              ? SearchUsersScreen(
-                                  embedded: true,
-                                  onBack: () =>
-                                      setState(() => _activeFriendView = null))
-                              : FriendRequestsScreen(
-                                  embedded: true,
-                                  onBack: () =>
-                                      setState(() => _activeFriendView = null)))
-                          : _showingHistory
-                              ? PlayHistoryScreen(
-                                  embedded: true,
-                                  onBack: () =>
-                                      setState(() => _showingHistory = false),
-                                )
-                          : _showingSettings
-                              ? SettingsScreen(
-                                  embedded: true,
-                                  onOpenHistory: () => _openOverlay(
-                                      () => _showingHistory = true),
-                                  onBack: () =>
-                                      setState(() => _showingSettings = false),
-                                )
-                          : _showingOwnProfile
-                              ? ProfileScreen(
-                                  embedded: true,
-                                  onOpenHistory: () => _openOverlay(
-                                      () => _showingHistory = true),
-                                  onOpenSettings: () => _openOverlay(
-                                      () => _showingSettings = true),
-                                  onBack: () => setState(
-                                      () => _showingOwnProfile = false),
-                                )
-                          : _viewingProfile != null
-                              ? ProfileScreen(
-                                  embedded: true,
-                                  overrideArgs: _viewingProfile,
-                                  onBack: () =>
-                                      setState(() => _viewingProfile = null),
-                                )
-                          : _showingInvites
-                              ? SessionInvitesScreen(
-                                  embedded: true,
-                                  onBack: () =>
-                                      setState(() => _showingInvites = false),
-                                )
-                          : _sessionResults != null
-                              ? SessionResultsScreen(
-                                  embedded: true,
-                                  mutualLikes: (_sessionResults!['mutualLikes']
-                                          as List?)
-                                      ?.whereType<Map>()
-                                      .toList(),
-                                  onClose: () =>
-                                      setState(() => _sessionResults = null),
-                                )
-                              : _activeSession != null
-                              ? SessionScreen(
-                                  embedded: true,
-                                  sessionData: _activeSession!,
-                                  onSessionEnded: (results) {
-                                    setState(() {
-                                      _activeSession = null;
-                                      _sessionResults = results;
-                                    });
-
-                                    // Перечитываем список активных сессий.
-                                    //
-                                    // Глобальный обработчик тоже его
-                                    // обновляет, но срабатывает по событию
-                                    // сокета — а хост завершение
-                                    // инициировал сам и мог опередить
-                                    // событие. В итоге на главном экране
-                                    // оставалась карточка только что
-                                    // закрытой сессии.
-                                    context
-                                        .read<SessionProvider>()
-                                        .fetchMySessions()
-                                        .ignore();
-                                  },
-                                  onBack: () =>
-                                      setState(() => _activeSession = null))
-                              : _creatingSession
-                                  ? CreateSessionScreen(
-                                      embedded: true,
-                                      // onCancel не передавался — и кнопки
-                                      // возврата в шапке не было вовсе:
-                                      // из создания сессии нельзя было выйти,
-                                      // не создав её.
-                                      onCancel: () => setState(
-                                          () => _creatingSession = false),
-                                      onFindFriends: () => _openOverlay(
-                                          () => _activeFriendView = 'search'),
-                                      onSessionCreated: (session) =>
-                                          setState(() {
-                                            _creatingSession = false;
-                                            _activeSession = session;
-                                          }))
-                                  : _selectedPlaylist != null
-                                      ? PlaylistTracksScreen(
-                                          playlistId:
-                                              _selectedPlaylist!['id'] ?? '',
-                                          playlistName:
-                                              _selectedPlaylist!['name'] ?? '',
-                                          imageUrl:
-                                              _selectedPlaylist!['imageUrl'],
-                                          isCustom:
-                                              _selectedPlaylist!['isCustom'] ??
-                                                  false,
-                                          embedded: true)
-                                      : Center(
-                                          child: ConstrainedBox(
-                                              constraints: const BoxConstraints(
-                                                  maxWidth: 1100),
-                                              child: IndexedStack(
-                                                index: _currentIndex,
-                                                children: tabs,
-                                              ))),
-                    ),
-                  ]))),
-                  const SizedBox(width: AppSpacing.sm),
-                  SizedBox(
-                      width: 320, child: _Panel(child: _buildRightPanel())),
-                ])),
-              ]))
-            : SafeArea(
-                child: Column(
-                  children: [
-                    // Шапка с аватаром — единственный вход в профиль.
-                    //
-                    // Профиль убран из нижней навигации: открывают его редко,
-                    // а место там — самый дорогой ресурс интерфейса. Аватар
-                    // в углу и заметен, и не отнимает вкладку; так устроены
-                    // Spotify и YouTube Music.
-                    _MobileHeader(
-                      title: kHomeDestinations[_currentIndex].label,
-                      onProfile: () =>
-                          Navigator.of(context).pushNamed('/profile'),
-                    ),
-                    Expanded(child: _tabsStack(tabs)),
-                  ],
-                ),
-              ),
-        bottomNavigationBar: isDesktop
-            ? null
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const MiniPlayer(),
-                  HomeBottomNav(
-                    currentIndex: _currentIndex,
-                    onSelected: selectTab,
-                    unreadFriendRequests: unreadCount,
-                  ),
-                ],
-              ),
-      );
-    });
+              ],
+            ),
+    );
   }
 
   Widget _tabsStack(List<Widget> tabs) {
-    // IndexedStack вместо AnimatedSwitcher.
-                //
-                // Переключение вкладок теперь мгновенное и без затухания.
-                // Прежний вариант проигрывал 280 мс перекрёстного
-                // растворения: на стыке оба экрана были полупрозрачными, и
-                // переход читался как задержка, хотя данные уже готовы.
-                //
-                // Важнее другое: AnimatedSwitcher уничтожал старую вкладку и
-                // строил новую с нуля. Позиция прокрутки, введённый текст,
-                // раскрытые списки — всё терялось, а провайдеры заново
-                // запрашивали данные. IndexedStack держит все вкладки
-                // построенными и лишь меняет видимую, поэтому возврат на
-                // вкладку возвращает её ровно в том виде, в каком её
-                // оставили.
-    return IndexedStack(index: _currentIndex, children: tabs);
+    return IndexedStack(key: _tabsKey, index: _currentIndex, children: tabs);
   }
 }
 

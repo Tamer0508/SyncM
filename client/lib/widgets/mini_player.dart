@@ -38,7 +38,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
   }
 
   void _openPlayer(BuildContext context, Map<String, dynamic> track, String? imageUrl) {
-    if (context.isWideWindow) return;
+    if (context.layout.showNowPlayingPanel) return;
 
     if (imageUrl != null && imageUrl.isNotEmpty && !imageUrl.startsWith('data:')) {
       precacheImage(

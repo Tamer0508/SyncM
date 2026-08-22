@@ -101,7 +101,9 @@ class MyApp extends StatelessWidget {
                   media.textScaler.scale(appearance.textScale),
                 ).clamp(minScaleFactor: 0.8, maxScaleFactor: 1.6),
               ),
-              child: AppShell(child: child ?? const SizedBox.shrink()),
+              child: AppLayoutScope(
+                child: AppShell(child: child ?? const SizedBox.shrink()),
+              ),
             );
           },
           home: const _AuthGate(),

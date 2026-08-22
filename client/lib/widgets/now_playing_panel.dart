@@ -99,6 +99,14 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
       final iconColor = theme.iconTheme.color ?? theme.colorScheme.onSurface;
       final inactiveTrackColor = theme.colorScheme.onSurface.withValues(alpha: 0.24);
 
+      return LayoutBuilder(builder: (context, constraints) {
+      final widthBudget = constraints.maxWidth - 32;
+      final heightBudget =
+          constraints.hasBoundedHeight ? constraints.maxHeight - 230 : widthBudget;
+      final artSize =
+          (widthBudget < heightBudget ? widthBudget : heightBudget)
+              .clamp(88.0, 320.0);
+
       return Container(
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
@@ -121,24 +129,27 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
                       vibrantColor: _effectiveVibrant)),
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
+                child: SingleChildScrollView(
+                    child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: imageBytes != null
                           ? Image.memory(imageBytes,
-                              width: 120, height: 120, fit: BoxFit.cover)
+                              width: artSize, height: artSize, fit: BoxFit.cover)
                           : imageUrl != null && imageUrl.isNotEmpty
                               ? Image.network(imageUrl,
-                                  width: 120, height: 120, fit: BoxFit.cover)
+                                  width: artSize,
+                                  height: artSize,
+                                  fit: BoxFit.cover)
                               : Container(
-                                  width: 120,
-                                  height: 120,
+                                  width: artSize,
+                                  height: artSize,
                                   color: theme.colorScheme.primary
                                       .withValues(alpha: 0.2),
                                   child: Icon(Icons.music_note,
-                                      size: 48,
+                                      size: artSize * 0.4,
                                       color: theme.colorScheme.primary)),
                     ),
                     const SizedBox(height: 12),
@@ -248,12 +259,13 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
                               size: 22),
                         ]),
                   ],
-                ),
+                )),
               ),
             ],
           ),
         ),
       );
+      });
     });
   }
 

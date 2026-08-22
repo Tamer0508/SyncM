@@ -162,7 +162,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     final autoOpen =
         LocalStore.readBool(StoreKeys.autoOpenPlayer, defaultValue: true);
 
-    if (!context.isWideWindow && autoOpen) {
+    if (!context.layout.showNowPlayingPanel && autoOpen) {
       NowPlayingScreen.open(
         context,
         title: track['name'] as String?,

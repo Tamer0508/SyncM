@@ -157,7 +157,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<FriendsProvider>();
-    final isCompact = MediaQuery.sizeOf(context).width < 900;
+
+    // Свои кнопки нужны там, где их не даёт оболочка.
+    //
+    // В широкой раскладке действия друзей стоят в шапке центральной панели —
+    // второй такой же ряд был бы дублем. В узкой шапка показывает только
+    // название раздела, и кнопки рисует сам экран.
+    //
+    // Раньше здесь было собственное измерение окна (< 900), не совпадавшее с
+    // тем, по которому появляется шапка: в промежутке кнопки двоились.
+    final needsOwnActions = !context.isWideWindow;
 
     final enablePullToRefresh = !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
@@ -219,7 +228,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     ];
 
     if (widget.embedded) {
-      if (!isCompact) return body;
+      if (!needsOwnActions) return body;
       return Column(
         children: [
           Padding(

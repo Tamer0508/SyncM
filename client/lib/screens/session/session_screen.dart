@@ -64,9 +64,7 @@ class _SessionScreenState extends State<SessionScreen> {
 
   void _openPlayerIfMobile(Map<String, dynamic> track) async {
     if (!mounted || _isPlayerOpen) return;
-    // На широкой раскладке плеер и так виден в правой панели, а маршрут
-    // закрыл бы её вместе с боковой навигацией.
-    if (context.isWideWindow) return;
+    if (context.layout.showNowPlayingPanel) return;
     // Настройка «Открывать плеер при запуске». Раньше она писалась в
     // хранилище и не читалась нигде — переключатель выглядел рабочим, но
     // ничего не менял.
