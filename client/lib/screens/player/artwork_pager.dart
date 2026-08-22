@@ -281,8 +281,12 @@ class _ArtworkTile extends StatelessWidget {
       );
     } else {
       image = ColoredBox(
-        color: Colors.white.withValues(alpha: 0.08),
-        child: const Icon(Icons.music_note_rounded, size: 64, color: Colors.white54),
+        color: context.colors.onSurface.withValues(alpha: 0.08),
+        child: Icon(
+          Icons.music_note_rounded,
+          size: 64,
+          color: context.colors.onSurfaceVariant,
+        ),
       );
     }
 

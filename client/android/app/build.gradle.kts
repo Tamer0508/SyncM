@@ -41,4 +41,11 @@ flutter {
 
 dependencies {
     implementation(project(":spotify-app-remote"))
+
+    // spotify-app-remote AAR подключён как голый файл, без транзитивных зависимостей.
+    // Его типы размечены Jackson/JSR-305 аннотациями, которых нет в classpath, и ART
+    // на каждой десериализации PlayerState сыпет "Unable to resolve ... annotation class".
+    // Только для debug — release-сборке эти классы не нужны.
+    debugImplementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
+    debugImplementation("com.google.code.findbugs:jsr305:3.0.2")
 }

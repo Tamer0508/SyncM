@@ -352,6 +352,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     );
   }
 
+  Color _backgroundAt(double t, {required bool artworkBackground}) {
+    final surface = context.colors.surface;
+    if (!artworkBackground) return surface;
+    return Color.lerp(_displayDominant, surface, t)!;
+  }
+
   @override
   Widget build(BuildContext context) {
 
@@ -422,6 +428,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final screenHeight = MediaQuery.sizeOf(context).height;
         final dragProgress = (_dragOffset / screenHeight).clamp(0.0, 1.0);
 
+        final artworkBackground =
+            context.watch<AppearanceProvider>().artworkBackground;
+
+        final controlsForeground = _Foreground.on(context.colors.surface);
+
         return GestureDetector(
           onVerticalDragUpdate: widget.insideSheet ? null : _onDragUpdate,
           onVerticalDragEnd: widget.insideSheet ? null : _onDragEnd,
@@ -437,7 +448,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
             children: [
               ColoredBox(color: context.colors.surface),
 
-              if (context.watch<AppearanceProvider>().artworkBackground)
+              if (artworkBackground)
                 Positioned.fill(
                   child: RepaintBoundary(
                     child: AnimatedBuilder(
@@ -493,14 +504,21 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
                     return Column(
                       children: [
-                        _Header(
-                          onClose: () => Navigator.of(context).pop(),
-                          topInset: widget.insideSheet
-                              ? MediaQueryData.fromView(View.of(context))
-                                      .viewPadding
-                                      .top +
-                                  AppSpacing.sm
-                              : 0,
+                        AnimatedBuilder(
+                          animation: _colorAnimController,
+                          builder: (context, _) => _Header(
+                            fg: _Foreground.on(_backgroundAt(
+                              0.25,
+                              artworkBackground: artworkBackground,
+                            )),
+                            onClose: () => Navigator.of(context).pop(),
+                            topInset: widget.insideSheet
+                                ? MediaQueryData.fromView(View.of(context))
+                                        .viewPadding
+                                        .top +
+                                    AppSpacing.sm
+                                : 0,
+                          ),
                         ),
                         Expanded(
                           child: Center(
@@ -541,7 +559,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                   const SizedBox(height: AppSpacing.xl),
                                   _rise(
                                     delay: 0.12,
-                                    child: _TrackInfo(title: title, artist: artist),
+                                    child: AnimatedBuilder(
+                                      animation: _colorAnimController,
+                                      builder: (context, _) => _TrackInfo(
+                                        title: title,
+                                        artist: artist,
+                                        fg: _Foreground.on(_backgroundAt(
+                                          0.8,
+                                          artworkBackground: artworkBackground,
+                                        )),
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -577,6 +605,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                       positionMs: position,
                                       durationMs: duration,
                                       accentColor: _displayVibrant,
+                                      fg: controlsForeground,
                                       onSeekStart: () => _seekPreview.value =
                                           pb.positionNotifier.value,
                                       onSeekChanged: (v) =>
@@ -598,6 +627,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                   builder: (context, _) => _Controls(
                                     isPlaying: pb.isPlaying,
                                     accentColor: _displayVibrant,
+                                    fg: controlsForeground,
                                     onPrevious: () =>
                                         _slideTo(-1, pb.goToPrevious),
                                     onNext: () => _slideTo(1, pb.goToNext),
@@ -630,10 +660,36 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
 }
 
+class _Foreground {
+  const _Foreground._({required this.primary, required this.contrast});
+
+  /// Основной текст и иконки.
+  final Color primary;
+
+  /// То, что лежит поверх [primary] — иконка на белом круге play/pause.
+  final Color contrast;
+
+  Color get muted => primary.withValues(alpha: 0.70);
+  Color get faint => primary.withValues(alpha: 0.38);
+  Color get track => primary.withValues(alpha: 0.24);
+
+  static const _onDark =
+      _Foreground._(primary: Colors.white, contrast: Colors.black87);
+  static const _onLight =
+      _Foreground._(primary: Color(0xFF1A1A1A), contrast: Colors.white);
+
+  factory _Foreground.on(Color background) =>
+      ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+          ? _onDark
+          : _onLight;
+}
+
 class _Header extends StatelessWidget {
-  const _Header({required this.onClose, this.topInset = 0});
+  const _Header({required this.onClose, required this.fg, this.topInset = 0});
 
   final VoidCallback onClose;
+
+  final _Foreground fg;
 
   final double topInset;
 
@@ -651,7 +707,7 @@ class _Header extends StatelessWidget {
           IconButton(
             onPressed: onClose,
             icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30),
-            color: Colors.white,
+            color: fg.primary,
             tooltip: 'Свернуть',
           ),
           Expanded(
@@ -661,7 +717,7 @@ class _Header extends StatelessWidget {
               style: context.texts.labelLarge?.copyWith(
                 letterSpacing: 2,
                 fontWeight: FontWeight.w600,
-                color: Colors.white70,
+                color: fg.muted,
               ),
             ),
           ),
@@ -673,10 +729,15 @@ class _Header extends StatelessWidget {
 }
 
 class _TrackInfo extends StatelessWidget {
-  const _TrackInfo({required this.title, required this.artist});
+  const _TrackInfo({
+    required this.title,
+    required this.artist,
+    required this.fg,
+  });
 
   final String title;
   final String artist;
+  final _Foreground fg;
 
   @override
   Widget build(BuildContext context) {
@@ -689,7 +750,7 @@ class _TrackInfo extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: context.texts.headlineMedium?.copyWith(color: Colors.white),
+            style: context.texts.headlineMedium?.copyWith(color: fg.primary),
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
@@ -697,7 +758,7 @@ class _TrackInfo extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: context.texts.titleMedium?.copyWith(color: Colors.white70),
+            style: context.texts.titleMedium?.copyWith(color: fg.muted),
           ),
         ],
       ),
@@ -709,6 +770,7 @@ class _Controls extends StatelessWidget {
   const _Controls({
     required this.isPlaying,
     required this.accentColor,
+    required this.fg,
     required this.onPrevious,
     required this.onNext,
     required this.onToggle,
@@ -720,6 +782,7 @@ class _Controls extends StatelessWidget {
 
   final bool isPlaying;
   final Color accentColor;
+  final _Foreground fg;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onToggle;
@@ -737,19 +800,20 @@ class _Controls extends StatelessWidget {
           icon: Icons.shuffle_rounded,
           isActive: isShuffle,
           accentColor: accentColor,
+          fg: fg,
           tooltip: isShuffle ? 'Перемешивание включено' : 'Перемешать',
           onPressed: onShuffle,
         ),
         IconButton(
           onPressed: onPrevious,
           icon: const Icon(Icons.skip_previous_rounded, size: 40),
-          color: Colors.white,
+          color: fg.primary,
           tooltip: 'Предыдущий трек',
         ),
         Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.white,
+            color: fg.primary,
             boxShadow: [
               BoxShadow(
                 color: accentColor.withValues(alpha: 0.5),
@@ -772,7 +836,7 @@ class _Controls extends StatelessWidget {
               child: Icon(
                 isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                 key: ValueKey(isPlaying),
-                color: Colors.black87,
+                color: fg.contrast,
               ),
             ),
           ),
@@ -780,13 +844,14 @@ class _Controls extends StatelessWidget {
         IconButton(
           onPressed: onNext,
           icon: const Icon(Icons.skip_next_rounded, size: 40),
-          color: Colors.white,
+          color: fg.primary,
           tooltip: 'Следующий трек',
         ),
         _ModeButton(
           icon: repeatMode == 'track' ? Icons.repeat_one_rounded : Icons.repeat_rounded,
           isActive: repeatMode != 'off',
           accentColor: accentColor,
+          fg: fg,
           tooltip: switch (repeatMode) {
             'track' => 'Повтор одного трека',
             'context' => 'Повтор списка',
@@ -804,6 +869,7 @@ class _ModeButton extends StatelessWidget {
     required this.icon,
     required this.isActive,
     required this.accentColor,
+    required this.fg,
     required this.tooltip,
     required this.onPressed,
   });
@@ -811,6 +877,7 @@ class _ModeButton extends StatelessWidget {
   final IconData icon;
   final bool isActive;
   final Color accentColor;
+  final _Foreground fg;
   final String tooltip;
   final VoidCallback onPressed;
 
@@ -820,7 +887,7 @@ class _ModeButton extends StatelessWidget {
       onPressed: onPressed,
       tooltip: tooltip,
       icon: Icon(icon, size: 24),
-      color: isActive ? Colors.white : Colors.white38,
+      color: isActive ? fg.primary : fg.faint,
       style: IconButton.styleFrom(
         backgroundColor: isActive ? accentColor.withValues(alpha: 0.28) : null,
       ),
@@ -833,6 +900,7 @@ class _NowPlayingProgressBar extends StatelessWidget {
     required this.positionMs,
     required this.durationMs,
     required this.accentColor,
+    required this.fg,
     required this.onSeekStart,
     required this.onSeekChanged,
     required this.onSeekEnd,
@@ -841,6 +909,7 @@ class _NowPlayingProgressBar extends StatelessWidget {
   final int positionMs;
   final int durationMs;
   final Color accentColor;
+  final _Foreground fg;
   final VoidCallback onSeekStart;
   final ValueChanged<int> onSeekChanged;
   final ValueChanged<int> onSeekEnd;
@@ -862,8 +931,8 @@ class _NowPlayingProgressBar extends StatelessWidget {
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             activeTrackColor: accentColor,
-            inactiveTrackColor: Colors.white24,
-            thumbColor: Colors.white,
+            inactiveTrackColor: fg.track,
+            thumbColor: fg.primary,
             overlayColor: accentColor.withValues(alpha: 0.2),
             trackHeight: 4,
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
@@ -883,11 +952,11 @@ class _NowPlayingProgressBar extends StatelessWidget {
             children: [
               Text(
                 _format(positionMs),
-                style: context.timecode(color: Colors.white70),
+                style: context.timecode(color: fg.muted),
               ),
               Text(
                 _format(durationMs),
-                style: context.timecode(color: Colors.white70),
+                style: context.timecode(color: fg.muted),
               ),
             ],
           ),
