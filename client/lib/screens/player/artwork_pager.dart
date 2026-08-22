@@ -6,6 +6,7 @@ import 'package:flutter/physics.dart';
 import '../../theme.dart';
 import '../../utils/image_cache.dart';
 
+@immutable
 class ArtworkSource {
   const ArtworkSource({this.bytes, this.url});
 
@@ -14,7 +15,22 @@ class ArtworkSource {
 
   bool get isEmpty => bytes == null && (url == null || url!.isEmpty);
 
-  Object get identity => url ?? bytes?.length ?? 0;
+  /// Длина Uint8List не уникальна (две разные обложки легко совпадают по
+  /// размеру), поэтому идентичностью байтов служит сам объект буфера.
+  Object get identity => url ?? bytes ?? _emptyIdentity;
+
+  static const Object _emptyIdentity = 'artwork:empty';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ArtworkSource &&
+          other.url == url &&
+          identical(other.bytes, bytes);
+
+  @override
+  int get hashCode =>
+      Object.hash(url, bytes == null ? null : identityHashCode(bytes));
 }
 
 class ArtworkPager extends StatefulWidget {
@@ -55,6 +71,22 @@ class ArtworkPagerState extends State<ArtworkPager>
 
   int _settleTarget = 0;
 
+  /// Каждый новый жест/settle получает свой номер. Completion-callback старой
+  /// (остановленной) анимации обязан его проверить: whenCompleteOrCancel
+  /// срабатывает и при stop(), иначе отменённый spring переключит трек.
+  int _settleGeneration = 0;
+
+  // Готовые плитки обложек. Пересобираются только при смене источника или
+  // размера, поэтому кадр анимации меняет исключительно transform, а
+  // ImageProvider и Image-виджеты остаются теми же объектами.
+  double _tileSize = -1;
+  ArtworkSource? _currentSource;
+  ArtworkSource? _previousSource;
+  ArtworkSource? _nextSource;
+  Widget? _currentTile;
+  Widget? _previousTile;
+  Widget? _nextTile;
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +99,11 @@ class ArtworkPagerState extends State<ArtworkPager>
     super.didUpdateWidget(old);
 
     if (widget.currentKey != old.currentKey) {
+      // Трек уже сменился: незавершённый spring не имеет права вызвать
+      // onNext/onPrevious ещё раз.
+      _settleGeneration++;
+      _settleTarget = 0;
+      _controller.stop();
       _controller.value = 0;
       widget.progress.value = 0;
     }
@@ -79,6 +116,9 @@ class ArtworkPagerState extends State<ArtworkPager>
   }
 
   void _onDragStart(DragStartDetails details) {
+    // Новый жест обесценивает предыдущий settle.
+    _settleGeneration++;
+    _settleTarget = 0;
     _controller.stop();
   }
 
@@ -109,16 +149,12 @@ class ArtworkPagerState extends State<ArtworkPager>
   }
 
   void _settleTo(int target, {double velocity = 0}) {
+    final generation = ++_settleGeneration;
     _settleTarget = target;
 
     if (context.reduceMotion) {
       _controller.value = target.toDouble();
-      widget.progress.value = _controller.value;
-      if (target == 1) {
-        widget.onNext();
-      } else if (target == -1) {
-        widget.onPrevious();
-      }
+      _commitSettle(target, generation);
       return;
     }
 
@@ -129,14 +165,20 @@ class ArtworkPagerState extends State<ArtworkPager>
       -velocity / _width,
     );
 
-    _controller.animateWith(simulation).whenCompleteOrCancel(() {
-      if (!mounted || _settleTarget != target) return;
-      if (target == 1) {
-        widget.onNext();
-      } else if (target == -1) {
-        widget.onPrevious();
-      }
-    });
+    _controller
+        .animateWith(simulation)
+        .whenCompleteOrCancel(() => _commitSettle(target, generation));
+  }
+
+  void _commitSettle(int target, int generation) {
+    if (!mounted || generation != _settleGeneration || _settleTarget != target) {
+      return;
+    }
+    if (target == 1) {
+      widget.onNext();
+    } else if (target == -1) {
+      widget.onPrevious();
+    }
   }
 
   bool animateTo(int direction) {
@@ -146,11 +188,42 @@ class ArtworkPagerState extends State<ArtworkPager>
     return true;
   }
 
+  void _syncTiles() {
+    final sizeChanged = widget.size != _tileSize;
+    if (sizeChanged) _tileSize = widget.size;
+
+    if (sizeChanged || _currentSource != widget.current) {
+      _currentSource = widget.current;
+      _currentTile = _buildTile(widget.current);
+    }
+
+    final previous = widget.previous;
+    if (sizeChanged || _previousSource != previous) {
+      _previousSource = previous;
+      _previousTile = previous == null ? null : _buildTile(previous);
+    }
+
+    final next = widget.next;
+    if (sizeChanged || _nextSource != next) {
+      _nextSource = next;
+      _nextTile = next == null ? null : _buildTile(next);
+    }
+  }
+
+  Widget _buildTile(ArtworkSource source) => Center(
+        child: _ArtworkTile(size: widget.size, source: source),
+      );
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         _width = constraints.maxWidth;
+        _syncTiles();
+
+        final previous = _previousTile;
+        final current = _currentTile!;
+        final next = _nextTile;
 
         return GestureDetector(
           onHorizontalDragStart: _onDragStart,
@@ -161,13 +234,14 @@ class ArtworkPagerState extends State<ArtworkPager>
             builder: (context, _) {
               final t = _controller.value;
 
+              // Дети между кадрами — те же самые объекты, поэтому Flutter не
+              // перестраивает поддеревья обложек: меняется только сдвиг.
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (widget.previous != null)
-                    _slide(-1 - t, widget.previous!),
-                  _slide(-t, widget.current),
-                  if (widget.next != null) _slide(1 - t, widget.next!),
+                  if (previous != null) _slide(-1 - t, previous),
+                  _slide(-t, current),
+                  if (next != null) _slide(1 - t, next),
                 ],
               );
             },
@@ -177,12 +251,10 @@ class ArtworkPagerState extends State<ArtworkPager>
     );
   }
 
-  Widget _slide(double offset, ArtworkSource source) {
+  Widget _slide(double offset, Widget tile) {
     return FractionalTranslation(
       translation: Offset(offset, 0),
-      child: Center(
-        child: _ArtworkTile(size: widget.size, source: source),
-      ),
+      child: tile,
     );
   }
 }
@@ -214,6 +286,8 @@ class _ArtworkTile extends StatelessWidget {
       );
     }
 
+    // Обложка живёт в собственном слое: при свайпе меняется только его
+    // положение, готовый растр не перерисовывается заново каждый кадр.
     return RepaintBoundary(
       child: ClipRRect(
         borderRadius: AppRadius.large,

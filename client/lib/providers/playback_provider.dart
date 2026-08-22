@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:math';
 import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:flutter/scheduler.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:spotify_sdk/models/player_state.dart';
@@ -31,6 +32,10 @@ class PlaybackProvider extends ChangeNotifier {
   String? _lastImageUri;
   Timer? _pollingTimer;
   Timer? _trackChangeTimer;
+  // Защита от наложения REST-запросов: таймер тикает независимо от того,
+  // вернулся ли предыдущий ответ.
+  bool _playerStateRequestInFlight = false;
+  bool _trackChangeRequestInFlight = false;
   bool _isAdvancingQueue = false;
   int _lastActivePositionMs = 0;
   int _lastActiveDurationMs = 0;
@@ -62,6 +67,10 @@ class PlaybackProvider extends ChangeNotifier {
 
   String? _pendingTrackUri;
   DateTime? _pendingSince;
+
+  /// Трек, метаданные которого уже дополнены данными очереди: повторно
+  /// искать его в очереди на каждом событии SDK не нужно.
+  String? _queueEnrichedUri;
 
   static const _pendingTrackTimeout = Duration(milliseconds: 1500);
 
@@ -145,6 +154,61 @@ class PlaybackProvider extends ChangeNotifier {
   DateTime? _positionAnchorAt;
   Uint8List? get currentImageBytes => _currentImageBytes;
 
+  /// Позиция меняется несколько раз в секунду. Она вынесена в отдельный
+  /// notifier, чтобы прогресс-бар не перестраивал весь UI, подписанный на
+  /// провайдер: слушают его только те виджеты, которым нужна позиция.
+  final ValueNotifier<int> positionNotifier = ValueNotifier<int>(0);
+
+  /// Цвет обложки: слушают только фон и мини-плеер.
+  final ValueNotifier<Color?> artworkColorNotifier = ValueNotifier<Color?>(null);
+
+  /// Увеличивается, когда в кэш палитр добавляется новый цвет. Нужен, чтобы
+  /// готовая палитра перестраивала только фон/цветных потребителей.
+  final ValueNotifier<int> paletteVersion = ValueNotifier<int>(0);
+
+  bool _disposed = false;
+
+  /// Единственный визуальный тикер позиции. Источник истины — якоря
+  /// (_positionAnchorAt / _syncAnchorServerTime), таймер лишь просит UI
+  /// перечитать вычисленное значение, поэтому дрейф не накапливается.
+  Timer? _positionTicker;
+  static const _positionTickInterval = Duration(milliseconds: 250);
+
+  void _publishPosition() {
+    if (_disposed) return;
+    final value = positionMs;
+    if (positionNotifier.value != value) positionNotifier.value = value;
+  }
+
+  void _syncPositionTicker() {
+    if (_disposed) {
+      _positionTicker?.cancel();
+      _positionTicker = null;
+      return;
+    }
+
+    final bool shouldRun = _isPlaying && !(_sessionMode && _sessionPaused);
+
+    if (shouldRun) {
+      _positionTicker ??=
+          Timer.periodic(_positionTickInterval, (_) => _publishPosition());
+    } else {
+      _positionTicker?.cancel();
+      _positionTicker = null;
+    }
+  }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    // Любое изменение состояния может сдвинуть позицию или запустить/
+    // остановить воспроизведение — держим тикер и позицию в актуальном
+    // состоянии здесь, а не в двух десятках мест.
+    _publishPosition();
+    _syncPositionTicker();
+    super.notifyListeners();
+  }
+
   bool get isSyncing =>
       _sessionMode &&
       (_isSessionSeeking ||
@@ -164,6 +228,72 @@ class PlaybackProvider extends ChangeNotifier {
 
   final Map<String, PaletteGenerator> _paletteCache = {};
   Map<String, PaletteGenerator> get paletteCache => _paletteCache;
+
+  /// Кэш палитр ограничен: оптимизация FPS не должна превращаться в
+  /// бесконечный рост памяти.
+  static const int _paletteCacheLimit = 60;
+
+  /// Изображения, для которых PaletteGenerator уже работает. Проверки
+  /// containsKey по кэшу недостаточно: расчёт асинхронный и может ещё идти,
+  /// поэтому повторные запросы переиспользуют тот же Future.
+  final Map<String, Future<PaletteGenerator?>> _palettePending = {};
+
+  /// Кладёт готовую палитру в общий кэш (с ограничением размера) и сообщает
+  /// об этом только потребителям цвета.
+  void cachePalette(String key, PaletteGenerator palette) =>
+      _cachePalette(key, palette);
+
+  void _cachePalette(String key, PaletteGenerator palette) {
+    if (!_paletteCache.containsKey(key) &&
+        _paletteCache.length >= _paletteCacheLimit) {
+      _paletteCache.remove(_paletteCache.keys.first);
+    }
+    _paletteCache[key] = palette;
+    if (!_disposed) paletteVersion.value++;
+  }
+
+  /// O(1)-поиск по очереди: trackKey -> index. Индексы строятся один раз при
+  /// смене очереди вместо indexWhere на каждом событии Spotify.
+  final Map<String, int> _sessionQueueIndexByKey = {};
+  final Map<String, int> _playlistIndexByKey = {};
+
+  static void _rebuildQueueIndex(
+    Map<String, int> index,
+    List<dynamic>? tracks,
+  ) {
+    index.clear();
+    if (tracks == null) return;
+    for (int i = 0; i < tracks.length; i++) {
+      final key = _trackKeyOf(tracks[i]);
+      // Первое вхождение выигрывает — так же, как вёл себя indexWhere.
+      if (key != null) index.putIfAbsent(key, () => i);
+    }
+  }
+
+  void _setSessionQueue(List<Map<String, dynamic>> tracks) {
+    _sessionQueue = tracks;
+    _rebuildQueueIndex(_sessionQueueIndexByKey, tracks);
+    _invalidateNeighbourCache();
+  }
+
+  void _setPlaylistTracks(List<dynamic>? tracks) {
+    _currentPlaylistTracks = tracks;
+    _rebuildQueueIndex(_playlistIndexByKey, tracks);
+    _invalidateNeighbourCache();
+  }
+
+  /// Индекс трека в очереди. Для известных очередей — O(1) по карте, для
+  /// чужих списков сохраняется прежний последовательный поиск.
+  int _indexInQueue(List<dynamic> tracks, String? key) {
+    if (key == null) return -1;
+    if (identical(tracks, _sessionQueue)) {
+      return _sessionQueueIndexByKey[key] ?? -1;
+    }
+    if (identical(tracks, _currentPlaylistTracks)) {
+      return _playlistIndexByKey[key] ?? -1;
+    }
+    return tracks.indexWhere((t) => _trackKeyOf(t) == key);
+  }
 
   static const _clientId = '809ce8e069a64cb5970c20e356024786';
   static const _redirectUrl = 'syncm://callback';
@@ -227,10 +357,12 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   void setSessionQueue(List<dynamic> tracks) {
-    _sessionQueue = tracks.asMap().entries
-        .map((e) => mapSessionTrack(e.value, e.key))
-        .where((t) => (t['uri'] as String?)?.isNotEmpty == true)
-        .toList();
+    final mapped = <Map<String, dynamic>>[];
+    for (int i = 0; i < tracks.length; i++) {
+      final track = mapSessionTrack(tracks[i], i);
+      if ((track['uri'] as String?)?.isNotEmpty == true) mapped.add(track);
+    }
+    _setSessionQueue(mapped);
     notifyListeners();
   }
 
@@ -287,6 +419,7 @@ class PlaybackProvider extends ChangeNotifier {
         _positionMs = 0;
         _positionAnchorAt = DateTime.now();
         _durationMs = (track['durationMs'] as num?)?.toInt() ?? 0;
+        _advancingToUri = track['uri'] as String?;
         notifyListeners();
 
         final trackId = (track['uri'] as String).split(':').last;
@@ -299,20 +432,46 @@ class PlaybackProvider extends ChangeNotifier {
       } else {
         await _stopAtQueueEnd();
         _isAdvancingQueue = false;
+        _advancingToUri = null;
       }
     } catch (e) {
       debugPrint('[SyncM] _advanceSessionQueue error: $e');
       _isAdvancingQueue = false;
+      _advancingToUri = null;
     }
   }
 
   Timer? _advanceResetTimer;
+
+  /// Трек, на который переключается очередь. Нужен, чтобы снять
+  /// _isAdvancingQueue по факту старта нового трека, а не по таймауту.
+  String? _advancingToUri;
+
   void _scheduleAdvanceFlagReset() {
     _advanceResetTimer?.cancel();
 
+    // Сторожевой таймер: срабатывает, только если подтверждение о старте
+    // нового трека так и не пришло (обрыв связи, отказ SDK).
     _advanceResetTimer = Timer(const Duration(milliseconds: 3500), () {
       _isAdvancingQueue = false;
+      _advancingToUri = null;
     });
+  }
+
+  /// Переход очереди подтверждён: новый трек реально играет. Подтверждаем
+  /// только на играющем состоянии — на паузе _lastActivePositionMs ещё
+  /// хранит конец прошлого трека, и снятие флага вызвало бы второй advance.
+  void _confirmQueueAdvance(String trackUri) {
+    if (!_isAdvancingQueue) return;
+
+    final target = _advancingToUri;
+    if (target == null) return;
+    if (_trackKeyOf({'uri': trackUri}) != _trackKeyOf({'uri': target})) return;
+
+    _advanceResetTimer?.cancel();
+    _advanceResetTimer = null;
+    _isAdvancingQueue = false;
+    _advancingToUri = null;
   }
 
   Future<void> _stopAtQueueEnd() async {
@@ -357,14 +516,18 @@ class PlaybackProvider extends ChangeNotifier {
       if (_sessionMode) {
         _positionMs = positionMs;
         if (_isHost) _checkSessionTrackEnd();
-      } else if (_durationMs > 0) {
-        _positionMs = (_positionMs + 500).clamp(0, _durationMs);
-        _positionAnchorAt = DateTime.now();
-        notifyListeners();
       }
+      // Вне сессии позиция никуда не «дописывается»: значение считается из
+      // якоря (_positionAnchorAt) реальным временем, а тикер позиции сам
+      // обновляет UI. Прибавление ровно 500 мс за тик давало искусственный
+      // дрейф, потому что таймер срабатывает не ровно раз в 500 мс.
 
       tickCount++;
       if (tickCount % 6 == 0 && !_sessionMode) {
+        // Предыдущий REST-запрос ещё не вернулся — второй параллельный
+        // запрос состояния плеера не нужен.
+        if (_playerStateRequestInFlight) return;
+        _playerStateRequestInFlight = true;
         try {
           final state = await _apiService?.getPlayerState();
           if (state == null) return;
@@ -388,6 +551,8 @@ class PlaybackProvider extends ChangeNotifier {
           notifyListeners();
         } catch (e) {
           debugPrint('[Polling] error: $e');
+        } finally {
+          _playerStateRequestInFlight = false;
         }
       }
     });
@@ -408,7 +573,7 @@ class PlaybackProvider extends ChangeNotifier {
 
     socketService.emit('join_session', {'sessionId': sessionId});
     socketService.setActiveSession(sessionId);
-    _startSessionUiTicker();
+    _syncPositionTicker();
     SessionForegroundService.start(
       keepScreenOn: LocalStore.readBool(StoreKeys.keepScreenOn, defaultValue: true),
     );
@@ -440,6 +605,8 @@ class PlaybackProvider extends ChangeNotifier {
       }
 
       if (delayMs > 0) {
+        // Не «дать время», а ждать назначенный сервером момент старта:
+        // это и есть механизм синхронного запуска у всех участников.
         await Future.delayed(Duration(milliseconds: delayMs));
       }
 
@@ -633,7 +800,7 @@ class PlaybackProvider extends ChangeNotifier {
       debugPrint('[Socket Play] Сервер приказал включить трек: $uri');
 
       Map<String, dynamic> fullTrackData = {'uri': uri};
-      final index = _sessionQueue.indexWhere((t) => t['uri'] == uri);
+      final index = _indexInQueue(_sessionQueue, _trackKeyOf({'uri': uri}));
 
       if (index >= 0) {
         fullTrackData = Map<String, dynamic>.from(_sessionQueue[index]);
@@ -679,6 +846,8 @@ class PlaybackProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint('[Socket Seek] Ошибка физической перемотки: $e');
       } finally {
+        // Окно, в котором прилетает эхо собственной перемотки: снимаем флаг
+        // позже события, иначе своя же позиция уедет обратно на сервер.
         await Future.delayed(const Duration(milliseconds: 300));
         _isSeekingFromRemote = false;
       }
@@ -713,29 +882,18 @@ class PlaybackProvider extends ChangeNotifier {
     });
   }
 
-  Timer? _sessionUiTicker;
-  void _startSessionUiTicker() {
-    _sessionUiTicker?.cancel();
-    _sessionUiTicker = Timer.periodic(const Duration(milliseconds: 300), (_) {
-      if (_sessionMode && _isPlaying && !_sessionPaused && _syncAnchorServerTime != null) {
-        notifyListeners();
-      }
-    });
-  }
-
-  void _stopSessionUiTicker() {
-    _sessionUiTicker?.cancel();
-    _sessionUiTicker = null;
-  }
-
   void _setSyncAnchor(int positionMs, int serverTime) {
     _syncAnchorPositionMs = positionMs;
     _syncAnchorServerTime = serverTime;
     _positionMs = positionMs;
+    // Якорь сервера остаётся единственным источником истины для позиции
+    // в сессии; общий тикер лишь показывает вычисленное по нему значение.
+    _publishPosition();
   }
 
   void _clearSyncAnchor() {
     _syncAnchorServerTime = null;
+    _publishPosition();
   }
 
   Future<void> _restoreVolumeIfMuted() async {
@@ -752,7 +910,7 @@ class PlaybackProvider extends ChangeNotifier {
 
   Future<void> _playAtPosition(String uriOrId, int positionMs) async {
     final fullUri = uriOrId.startsWith('spotify:') ? uriOrId : 'spotify:track:$uriOrId';
-    final index = _sessionQueue.indexWhere((t) => t['uri'] == fullUri);
+    final index = _indexInQueue(_sessionQueue, _trackKeyOf({'uri': fullUri}));
     if (index < 0) return;
 
     _sessionMode = true;
@@ -838,6 +996,11 @@ class PlaybackProvider extends ChangeNotifier {
   void _subscribeToPlayerState() {
     _playerStateSub?.cancel();
     _playerStateSub = SpotifySdk.subscribePlayerState().listen((PlayerState state) async {
+      // Это горячий путь: события приходят по нескольку раз в секунду.
+      // Ниже всё, что можно, делается только при реальном изменении.
+      final bool wasPlaying = _isPlaying;
+      final int previousDuration = _durationMs;
+
       _isPlaying = !state.isPaused;
       _durationMs = state.track?.duration ?? 0;
       _positionMs = state.playbackPosition;
@@ -856,16 +1019,41 @@ class PlaybackProvider extends ChangeNotifier {
         final imageUriId = state.track!.imageUri.raw;
         final trackChanged = trackUri != _currentTrack?['uri'];
         final imageChanged = imageUriId != _lastImageUri;
+        final title = state.track!.name;
+        final artist = state.track!.artist.name;
 
-        final fromQueue = _findInQueue(trackUri);
+        if (trackChanged) {
+          // Трек реально сменился — подтверждение скипа, ждать таймаут
+          // незачем. Своё уведомление не нужно: смена трека и так его даёт.
+          _releaseSkipLock(notify: false);
+          _queueEnrichedUri = null;
+        }
+        if (!state.isPaused) _confirmQueueAdvance(trackUri);
 
-        _currentTrack = {
-          ...(trackChanged ? const <String, dynamic>{} : _currentTrack ?? {}),
-          if (fromQueue != null) ...fromQueue,
-          'title': state.track!.name,
-          'artist': state.track!.artist.name,
-          'uri': trackUri,
-        };
+        // Очередь опрашиваем один раз на трек (или пока она не подгрузилась),
+        // а не на каждом событии SDK.
+        final fromQueue =
+            _queueEnrichedUri == trackUri ? null : _findInQueue(trackUri);
+        if (fromQueue != null) _queueEnrichedUri = trackUri;
+
+        final bool metadataChanged = trackChanged ||
+            fromQueue != null ||
+            _currentTrack?['title'] != title ||
+            _currentTrack?['artist'] != artist;
+
+        if (metadataChanged) {
+          _currentTrack = {
+            ...(trackChanged ? const <String, dynamic>{} : _currentTrack ?? {}),
+            if (fromQueue != null) ...fromQueue,
+            'title': title,
+            'artist': artist,
+            'uri': trackUri,
+          };
+        }
+
+        final bool visualChanged = metadataChanged ||
+            wasPlaying != _isPlaying ||
+            previousDuration != _durationMs;
 
         if (imageChanged) {
           _lastImageUri = imageUriId;
@@ -885,8 +1073,11 @@ class PlaybackProvider extends ChangeNotifier {
             _currentImageBytes = null;
             notifyListeners();
           }
-        } else {
+        } else if (visualChanged) {
           notifyListeners();
+        } else {
+          // Изменилась только позиция — обновляем её слушателей, а не весь UI.
+          _publishPosition();
         }
 
         if (_preparedTrackId != null && !_isReadySent) {
@@ -973,6 +1164,8 @@ class PlaybackProvider extends ChangeNotifier {
           );
 
           if (positionMs != null && positionMs > 0) {
+            // Web API отвечает на /play до того, как устройство реально
+            // начало трек; seek сразу после этого отбрасывается.
             await Future.delayed(const Duration(milliseconds: 300));
             try {
               await _apiService?.seekToPosition(positionMs);
@@ -987,18 +1180,18 @@ class PlaybackProvider extends ChangeNotifier {
           if (playlistId != null) {
             _currentPlaylistId = playlistId.startsWith('spotify:') ? playlistId : 'spotify:playlist:$playlistId';
             if (knownPlaylistTracks != null) {
-              _currentPlaylistTracks = knownPlaylistTracks;
+              _setPlaylistTracks(knownPlaylistTracks);
             } else {
               try {
                 final tracks = await _apiService?.getPlaylistTracks(playlistId);
-                _currentPlaylistTracks = tracks;
+                _setPlaylistTracks(tracks);
               } catch (e) {
                 debugPrint('[PlaybackProvider] Failed to prefetch playlist tracks: $e');
               }
             }
           } else {
             _currentPlaylistId = null;
-            _currentPlaylistTracks = null;
+            _setPlaylistTracks(null);
           }
 
           if (track['imageUrl'] != null && !_paletteCache.containsKey(track['imageUrl'])) {
@@ -1022,6 +1215,8 @@ class PlaybackProvider extends ChangeNotifier {
 
         if (!sameContext) {
           await SpotifySdk.play(spotifyUri: contextUri);
+          // SDK принимает skipToIndex только после того, как контекст
+          // плейлиста реально загружен; без паузы индекс игнорируется.
           await Future.delayed(const Duration(milliseconds: 500));
         }
 
@@ -1034,6 +1229,7 @@ class PlaybackProvider extends ChangeNotifier {
       }
 
       if (positionMs != null && positionMs > 0) {
+        // seekTo сразу после play SDK теряет: трек ещё не начал играть.
         await Future.delayed(const Duration(milliseconds: 300));
         await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
       }
@@ -1041,18 +1237,18 @@ class PlaybackProvider extends ChangeNotifier {
       if (playlistId != null) {
         _currentPlaylistId = playlistId.startsWith('spotify:') ? playlistId : 'spotify:playlist:$playlistId';
         if (knownPlaylistTracks != null) {
-          _currentPlaylistTracks = knownPlaylistTracks;
+          _setPlaylistTracks(knownPlaylistTracks);
         } else {
           try {
             final tracks = await _apiService?.getPlaylistTracks(playlistId);
-            _currentPlaylistTracks = tracks;
+            _setPlaylistTracks(tracks);
           } catch (e) {
             debugPrint('[PlaybackProvider] Failed to prefetch playlist tracks: $e');
           }
         }
       } else {
         _currentPlaylistId = null;
-        _currentPlaylistTracks = null;
+        _setPlaylistTracks(null);
       }
 
       _currentTrack = track;
@@ -1192,13 +1388,20 @@ class PlaybackProvider extends ChangeNotifier {
   void _pollForTrackChange() {
     final oldUri = _currentTrack?['uri'];
     _trackChangeTimer?.cancel();
+    _trackChangeRequestInFlight = false;
     int attempts = 0;
     _trackChangeTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
+      // Тик пропускается, пока предыдущий запрос не вернулся: иначе к
+      // Spotify уходит очередь параллельных одинаковых запросов.
+      if (_trackChangeRequestInFlight) return;
+
       attempts++;
       if (attempts > 10) {
         timer.cancel();
         return;
       }
+
+      _trackChangeRequestInFlight = true;
       try {
         final state = await _apiService?.getPlayerState();
         if (state == null) return;
@@ -1206,10 +1409,13 @@ class PlaybackProvider extends ChangeNotifier {
         final newUri = track?['uri'];
         if (newUri != null && newUri != oldUri) {
           timer.cancel();
+          _releaseSkipLock();
           _updateFromPlayerState(state);
         }
       } catch (e) {
         debugPrint('[Poll] error: $e');
+      } finally {
+        _trackChangeRequestInFlight = false;
       }
     });
   }
@@ -1240,7 +1446,7 @@ class PlaybackProvider extends ChangeNotifier {
         : (_currentPlaylistTracks ?? const []);
     if (tracks.isEmpty) return null;
 
-    final found = tracks.indexWhere((t) => _trackKeyOf(t) == key);
+    final found = _indexInQueue(tracks, key);
     if (found < 0) return null;
 
     return mapSessionTrack(tracks[found], found);
@@ -1252,8 +1458,7 @@ class PlaybackProvider extends ChangeNotifier {
 
       final key = _trackKeyOf(_currentTrack);
       if (key != null) {
-        final found =
-            _sessionQueue.indexWhere((t) => _trackKeyOf(t) == key);
+        final found = _indexInQueue(_sessionQueue, key);
         if (found >= 0) {
           _sessionQueueIndex = found;
           return (tracks: _sessionQueue, position: found);
@@ -1283,7 +1488,7 @@ class PlaybackProvider extends ChangeNotifier {
 
     final key = _trackKeyOf(_currentTrack);
     if (key != null) {
-      final found = tracks.indexWhere((t) => _trackKeyOf(t) == key);
+      final found = _indexInQueue(tracks, key);
       if (found >= 0) {
         _currentTrack?['index'] = found;
         return found;
@@ -1296,6 +1501,15 @@ class PlaybackProvider extends ChangeNotifier {
     return null;
   }
 
+  // Соседей по очереди спрашивают по нескольку раз за кадр (фон, пейджер,
+  // прогрев обложек). Нормализуем трек один раз на состояние очереди, чтобы
+  // не создавать новую Map на каждый вызов геттера.
+  int? _neighbourCacheToken;
+  Map<String, dynamic>? _cachedPreviousTrack;
+  Map<String, dynamic>? _cachedNextTrack;
+
+  void _invalidateNeighbourCache() => _neighbourCacheToken = null;
+
   Map<String, dynamic>? _queueNeighbour(int offset) {
     if (!canControlQueue) return null;
 
@@ -1304,6 +1518,25 @@ class PlaybackProvider extends ChangeNotifier {
     final queue = _activeQueue;
     if (queue == null) return null;
 
+    final token = Object.hash(
+      identityHashCode(queue.tracks),
+      queue.tracks.length,
+      queue.position,
+    );
+
+    if (token != _neighbourCacheToken) {
+      _neighbourCacheToken = token;
+      _cachedPreviousTrack = _normalizedNeighbour(queue, -1);
+      _cachedNextTrack = _normalizedNeighbour(queue, 1);
+    }
+
+    return offset > 0 ? _cachedNextTrack : _cachedPreviousTrack;
+  }
+
+  Map<String, dynamic>? _normalizedNeighbour(
+    ({List<dynamic> tracks, int position}) queue,
+    int offset,
+  ) {
     final target = queue.position + offset;
     if (target < 0 || target >= queue.tracks.length) return null;
 
@@ -1362,29 +1595,49 @@ class PlaybackProvider extends ChangeNotifier {
         .toColor();
   }
 
+  /// Только ближайшие соседи: следующий трек важнее предыдущего, всё, что
+  /// дальше, греть незачем — это лишние загрузки и лишние палитры.
   List<String> get neighbourArtworkUrls {
     if (_shuffleActive) return const [];
 
-    final queue = _activeQueue;
-    if (queue == null) return const [];
+    final next = nextQueueTrack;
+    final previous = previousQueueTrack;
+    if (next == null && previous == null) return const [];
 
     final urls = <String>[];
-    for (final offset in const [-1, 1, 2]) {
-      final target = queue.position + offset;
-      if (target < 0 || target >= queue.tracks.length) continue;
+    final nextUrl = next?['imageUrl'] as String?;
+    if (nextUrl != null && nextUrl.isNotEmpty) urls.add(nextUrl);
 
-      final url = mapSessionTrack(queue.tracks[target], target)['imageUrl']
-          as String?;
-      if (url != null && url.isNotEmpty) urls.add(url);
-    }
+    final previousUrl = previous?['imageUrl'] as String?;
+    if (previousUrl != null && previousUrl.isNotEmpty) urls.add(previousUrl);
+
     return urls;
+  }
+
+  void _setArtworkColor(Color? color) {
+    if (_artworkColor == color) return;
+    _artworkColor = color;
+    if (_disposed) return;
+
+    // Цвет обложки — точечное обновление: перестраиваются только фон и
+    // мини-плеер, а не весь UI, подписанный на провайдер. ensureArtworkColor
+    // вызывается из build, поэтому сброс цвета переносим за кадр.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!_disposed) artworkColorNotifier.value = _artworkColor;
+      });
+      return;
+    }
+
+    artworkColorNotifier.value = color;
   }
 
   void ensureArtworkColor() {
     final track = _currentTrack;
     if (track == null) {
       if (_artworkColor != null) {
-        _artworkColor = null;
+        _setArtworkColor(null);
         _artworkColorKey = null;
         _artworkColorPending = null;
       }
@@ -1420,13 +1673,8 @@ class PlaybackProvider extends ChangeNotifier {
     }
 
     try {
-      final palette = _paletteCache[key] ??
-          await PaletteGenerator.fromImageProvider(
-            provider,
-            size: const Size(64, 64),
-            maximumColorCount: 8,
-          );
-      _paletteCache[key] = palette;
+      final palette = await _generatePalette(key, provider);
+      if (palette == null) return;
 
       if (key != _artworkColorPending) return;
 
@@ -1436,11 +1684,10 @@ class PlaybackProvider extends ChangeNotifier {
       _artworkColorKey = key;
 
       final hsl = HSLColor.fromColor(base);
-      _artworkColor = hsl
+      _setArtworkColor(hsl
           .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.6))
           .withLightness(0.28)
-          .toColor();
-      notifyListeners();
+          .toColor());
     } catch (err) {
       debugPrint('Не удалось получить цвет обложки: $err');
     } finally {
@@ -1448,30 +1695,89 @@ class PlaybackProvider extends ChangeNotifier {
     }
   }
 
-  void preloadPalettes(Iterable<String> urls) {
-    for (final url in urls) {
-      if (url.isEmpty || _paletteCache.containsKey(url)) continue;
-      unawaited(_preloadPalette(url));
-    }
+  /// Одна картинка — максимум один одновременно работающий PaletteGenerator:
+  /// повторные запросы получают тот же Future, а не второй тяжёлый расчёт.
+  Future<PaletteGenerator?> _generatePalette(String key, ImageProvider provider) {
+    final cached = _paletteCache[key];
+    if (cached != null) return Future<PaletteGenerator?>.value(cached);
+
+    final running = _palettePending[key];
+    if (running != null) return running;
+
+    final future = _runPaletteGeneration(key, provider);
+    _palettePending[key] = future;
+    return future;
   }
 
-  Future<void> _preloadPalette(String imageUrl) async {
+  Future<PaletteGenerator?> _runPaletteGeneration(
+    String key,
+    ImageProvider provider,
+  ) async {
     try {
       final palette = await PaletteGenerator.fromImageProvider(
-        NetworkImage(imageUrl),
+        provider,
         size: const Size(64, 64),
         maximumColorCount: 8,
       );
-      _paletteCache[imageUrl] = palette;
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Preload palette error: $e');
+      // Готовая палитра не перестраивает весь UI: об этом узнают только
+      // потребители цвета (paletteVersion / artworkColorNotifier).
+      _cachePalette(key, palette);
+      return palette;
+    } catch (err) {
+      debugPrint('[SyncM] Палитра обложки не рассчиталась: $err');
+      return null;
+    } finally {
+      _palettePending.remove(key);
     }
+  }
+
+  void preloadPalettes(Iterable<String> urls) {
+    for (final url in urls) {
+      if (url.isEmpty ||
+          _paletteCache.containsKey(url) ||
+          _palettePending.containsKey(url)) {
+        continue;
+      }
+      _preloadPalette(url);
+    }
+  }
+
+  /// Палитра считается на UI-изоляте, поэтому предзагрузка соседей ставится
+  /// в очередь планировщика с низким приоритетом: во время drag/spring кадры
+  /// важнее, чем цвет соседней обложки.
+  void _preloadPalette(String imageUrl) {
+    SchedulerBinding.instance.scheduleTask<void>(
+      () {
+        if (_disposed || _paletteCache.containsKey(imageUrl)) return;
+        unawaited(_generatePalette(imageUrl, NetworkImage(imageUrl)));
+      },
+      Priority.idle,
+    );
+  }
+
+  Timer? _skipLockTimer;
+
+  /// Замок скипа снимается по факту смены трека (событие player state или
+  /// REST-поллинг). Таймер — только страховка, если событие не придёт.
+  static const _skipLockTimeout = Duration(milliseconds: 1500);
+
+  void _acquireSkipLock() {
+    _isSkipping = true;
+    _skipLockTimer?.cancel();
+    _skipLockTimer = Timer(_skipLockTimeout, _releaseSkipLock);
+  }
+
+  void _releaseSkipLock({bool notify = true}) {
+    _skipLockTimer?.cancel();
+    _skipLockTimer = null;
+    if (!_isSkipping) return;
+    _isSkipping = false;
+    if (notify) notifyListeners();
   }
 
   Future<void> skipNext() async {
     if (_isSkipping) return;
-    _isSkipping = true;
+    _acquireSkipLock();
 
     try {
       if (_sessionMode) {
@@ -1500,10 +1806,7 @@ class PlaybackProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Skip next error: $e');
-    } finally {
-      await Future.delayed(const Duration(milliseconds: 500));
-      _isSkipping = false;
-      notifyListeners();
+      _releaseSkipLock();
     }
   }
 
@@ -1555,7 +1858,7 @@ class PlaybackProvider extends ChangeNotifier {
         for (int i = 0; i < tracks.length; i++) {
           if (tracks[i]['index'] == null) tracks[i]['index'] = i;
         }
-        _currentPlaylistTracks = tracks;
+        _setPlaylistTracks(tracks);
       }
     } catch (e) {
       debugPrint('[PlaybackProvider] Could not load playlist tracks: $e');
@@ -1595,6 +1898,9 @@ class PlaybackProvider extends ChangeNotifier {
     };
 
     _suppressAutoCorrection = true;
+    // Окно, пока Spotify переключается на выбранный случайный трек: без него
+    // проверка «трек не из плейлиста» сработает на ещё старом треке и
+    // запустит второй случайный выбор.
     Future.delayed(const Duration(seconds: 2), () {
       _suppressAutoCorrection = false;
     });
@@ -1609,6 +1915,7 @@ class PlaybackProvider extends ChangeNotifier {
         notifyListeners();
       } else {
         await SpotifySdk.play(spotifyUri: contextUri);
+        // Как и выше: skipToIndex работает только по загруженному контексту.
         await Future.delayed(const Duration(milliseconds: 500));
         await SpotifySdk.skipToIndex(spotifyUri: contextUri, trackIndex: trackMap['index'] as int? ?? 0);
         _currentTrack = trackMap;
@@ -1717,13 +2024,13 @@ class PlaybackProvider extends ChangeNotifier {
     _currentImageBytes = null;
     _lastImageUri = null;
     _currentPlaylistId = null;
-    _currentPlaylistTracks = null;
+    _setPlaylistTracks(null);
     _suppressAutoCorrection = false;
     _sessionMode = false;
-    _sessionQueue = [];
+    _setSessionQueue([]);
     _sessionQueueIndex = -1;
     _queueEnded = false;
-    _stopSessionUiTicker();
+    _syncPositionTicker();
     _clearSyncAnchor();
     notifyListeners();
   }
@@ -1821,6 +2128,8 @@ class PlaybackProvider extends ChangeNotifier {
 
       try {
         await _apiService?.playTrack(spotifyUri);
+        // Пауза сразу после /play не доходит до устройства: трек должен
+        // успеть встать в позицию 0, иначе client_ready уйдёт впустую.
         await Future.delayed(const Duration(milliseconds: 250));
         await _apiService?.pausePlayback();
         _isReadySent = true;
@@ -1841,14 +2150,22 @@ class PlaybackProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+
     _pollingTimer?.cancel();
     _trackChangeTimer?.cancel();
-    _sessionUiTicker?.cancel();
+    _positionTicker?.cancel();
+    _positionTicker = null;
     _sessionSeekingTimer?.cancel();
     _advanceResetTimer?.cancel();
+    _skipLockTimer?.cancel();
 
     _sessionSubscriptions.cancelAll();
     _playerStateSub?.cancel();
+
+    positionNotifier.dispose();
+    artworkColorNotifier.dispose();
+    paletteVersion.dispose();
 
     super.dispose();
   }

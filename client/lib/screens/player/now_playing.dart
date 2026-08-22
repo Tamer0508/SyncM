@@ -60,20 +60,21 @@ class NowPlayingScreen extends StatefulWidget {
 
 class _NowPlayingScreenState extends State<NowPlayingScreen>
     with TickerProviderStateMixin {
-  Timer? _timer;
-  int _positionMs = 0;
-  bool _dragging = false;
-
-  int? _lastSyncPosition;
+  /// Позиция, которую пользователь тянет пальцем. null — показываем живую
+  /// позицию из провайдера.
+  final ValueNotifier<int?> _seekPreview = ValueNotifier<int?>(null);
 
   late AnimationController _colorAnimController;
   late Animation<Color?> _colorDominantAnim;
   late Animation<Color?> _colorVibrantAnim;
 
-  Color _displayDominant = Colors.deepPurple;
-  Color _displayVibrant = Colors.purpleAccent;
   Color _targetDominant = Colors.deepPurple;
   Color _targetVibrant = Colors.purpleAccent;
+
+  // Текущий цвет читается прямо из анимации, поэтому перекраска
+  // перестраивает только фон и цветные элементы, а не весь экран.
+  Color get _displayDominant => _colorDominantAnim.value ?? _targetDominant;
+  Color get _displayVibrant => _colorVibrantAnim.value ?? _targetVibrant;
 
   String? _lastTrackUri;
   int? _lastPaletteImageSig;
@@ -180,8 +181,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
     _colorAnimController.stop();
     setState(() {
-      _displayDominant = color;
       _targetDominant = color;
+      _colorDominantAnim =
+          ColorTween(begin: color, end: color).animate(_colorAnimController);
     });
   }
 
@@ -222,60 +224,32 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   @override
   void initState() {
     super.initState();
-    final pb = Provider.of<PlaybackProvider>(context, listen: false);
-    _positionMs = pb.positionMs;
 
     _entrance = AnimationController(vsync: this, duration: AppMotion.page)
       ..forward();
 
-    _startTimer();
+    // Своего таймера позиции здесь нет: её тикает один общий механизм в
+    // провайдере, а слушает только полоса прогресса.
 
     _colorAnimController = AnimationController(
       vsync: this,
       duration: AppMotion.tint,
     );
-    _colorDominantAnim = ColorTween(begin: _displayDominant, end: _displayDominant)
+    _colorDominantAnim = ColorTween(begin: _targetDominant, end: _targetDominant)
         .animate(_colorAnimController);
-    _colorVibrantAnim = ColorTween(begin: _displayVibrant, end: _displayVibrant)
+    _colorVibrantAnim = ColorTween(begin: _targetVibrant, end: _targetVibrant)
         .animate(_colorAnimController);
-
-    _colorAnimController.addListener(() {
-      setState(() {
-        _displayDominant = _colorDominantAnim.value!;
-        _displayVibrant = _colorVibrantAnim.value!;
-      });
-    });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _routeAnimation?.removeStatusListener(_onRouteAnimation);
     _swipeProgress.dispose();
+    _seekPreview.dispose();
     _entrance.dispose();
     _colorAnimController.dispose();
     super.dispose();
   }
-
-  void _startTimer() {
-  _timer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-    if (!mounted) return;
-    final pb = Provider.of<PlaybackProvider>(context, listen: false);
-
-    if (_dragging) return;
-
-    if (pb.sessionMode) {
-      final serverPos = pb.positionMs;
-      if (serverPos != _positionMs) {
-        setState(() => _positionMs = serverPos);
-      }
-    } else if (pb.isPlaying) {
-      setState(() {
-        _positionMs = (_positionMs + 200).clamp(0, pb.durationMs);
-      });
-    }
-  });
-}
 
 
   int _imageSignature(Uint8List bytes, String? uri) {
@@ -358,12 +332,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
       if (!mounted || request != _paletteRequest) return;
 
-      if (cacheKey != null) {
-        if (provider.paletteCache.length > 60) {
-          provider.paletteCache.remove(provider.paletteCache.keys.first);
-        }
-        provider.paletteCache[cacheKey] = palette;
-      }
+      if (cacheKey != null) provider.cachePalette(cacheKey, palette);
 
       _applyPalette(palette, trackUri, provider);
     } catch (err) {
@@ -402,12 +371,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
         _warmUpcoming(pb.neighbourArtworkUrls);
 
-        if (!_dragging) {
-          if (_lastSyncPosition != pb.positionMs) {
-            _positionMs = pb.positionMs;
-            _lastSyncPosition = pb.positionMs;
-          }
-        }
+        // Соседей опрашиваем один раз за перестроение экрана, а не на
+        // каждом кадре свайпа.
+        final previousTrack = pb.previousQueueTrack;
+        final nextTrack = pb.nextQueueTrack;
+        final previousArtworkUrl = previousTrack?['imageUrl'] as String?;
+        final nextArtworkUrl = nextTrack?['imageUrl'] as String?;
 
         if (currentUri != _lastTrackUri) {
           _lastTrackUri = currentUri;
@@ -471,16 +440,19 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
               if (context.watch<AppearanceProvider>().artworkBackground)
                 Positioned.fill(
                   child: RepaintBoundary(
-                    child: ValueListenableBuilder<double>(
-                      valueListenable: _swipeProgress,
-                      builder: (context, swipe, _) {
+                    child: AnimatedBuilder(
+                      // Кадр свайпа и перекраска обложки — единственные
+                      // причины пересчитать фон. Цвета соседей берутся из
+                      // кэша палитр заранее, а не на каждом кадре.
+                      animation: Listenable.merge(
+                        [_swipeProgress, _colorAnimController, pb.paletteVersion],
+                      ),
+                      builder: (context, _) {
+                        final swipe = _swipeProgress.value;
                         final surface = context.colors.surface;
 
-                        final neighbour = swipe > 0
-                            ? pb.dominantColorForUrl(
-                                pb.nextQueueTrack?['imageUrl'] as String?)
-                            : pb.dominantColorForUrl(
-                                pb.previousQueueTrack?['imageUrl'] as String?);
+                        final neighbour = pb.dominantColorForUrl(
+                            swipe > 0 ? nextArtworkUrl : previousArtworkUrl);
 
                         final progress = swipe.abs().clamp(0.0, 1.0);
                         final Color base;
@@ -589,35 +561,53 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                               _rise(
                                 delay: 0.2,
                                 offset: 20,
-                                child: _NowPlayingProgressBar(
-                                positionMs: _positionMs,
-                                durationMs: duration,
-                                accentColor: _displayVibrant,
-                                onSeekStart: () => setState(() => _dragging = true),
-                                onSeekChanged: (v) => setState(() => _positionMs = v),
-                                onSeekEnd: (v) {
-                                  setState(() {
-                                    _positionMs = v;
-                                    _dragging = false;
-                                  });
-                                  pb.seekTo(v);
-                                },
+                                // Позицию и цвет слушает только сама полоса:
+                                // тик прогресса не трогает остальной экран.
+                                child: AnimatedBuilder(
+                                  animation: Listenable.merge([
+                                    pb.positionNotifier,
+                                    _seekPreview,
+                                    _colorAnimController,
+                                  ]),
+                                  builder: (context, _) {
+                                    final position = _seekPreview.value ??
+                                        pb.positionNotifier.value;
+
+                                    return _NowPlayingProgressBar(
+                                      positionMs: position,
+                                      durationMs: duration,
+                                      accentColor: _displayVibrant,
+                                      onSeekStart: () => _seekPreview.value =
+                                          pb.positionNotifier.value,
+                                      onSeekChanged: (v) =>
+                                          _seekPreview.value = v,
+                                      onSeekEnd: (v) {
+                                        _seekPreview.value = null;
+                                        pb.seekTo(v);
+                                      },
+                                    );
+                                  },
                                 ),
                               ),
                               const SizedBox(height: AppSpacing.md),
                               _rise(
                                 delay: 0.28,
                                 offset: 16,
-                                child: _Controls(
-                                isPlaying: pb.isPlaying,
-                                accentColor: _displayVibrant,
-                                onPrevious: () => _slideTo(-1, pb.goToPrevious),
-                                onNext: () => _slideTo(1, pb.goToNext),
-                                onToggle: pb.togglePlay,
-                                isShuffle: pb.shuffleActive,
-                                repeatMode: pb.repeatMode,
-                                onShuffle: () => pb.setShuffle(!pb.shuffleActive),
-                                onRepeat: pb.cycleRepeatMode,
+                                child: AnimatedBuilder(
+                                  animation: _colorAnimController,
+                                  builder: (context, _) => _Controls(
+                                    isPlaying: pb.isPlaying,
+                                    accentColor: _displayVibrant,
+                                    onPrevious: () =>
+                                        _slideTo(-1, pb.goToPrevious),
+                                    onNext: () => _slideTo(1, pb.goToNext),
+                                    onToggle: pb.togglePlay,
+                                    isShuffle: pb.shuffleActive,
+                                    repeatMode: pb.repeatMode,
+                                    onShuffle: () =>
+                                        pb.setShuffle(!pb.shuffleActive),
+                                    onRepeat: pb.cycleRepeatMode,
+                                  ),
                                 ),
                               ),
                             ],

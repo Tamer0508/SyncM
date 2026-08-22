@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -72,8 +71,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
 
     pb.ensureArtworkColor();
     _warmUpcoming(pb.neighbourArtworkUrls);
-    final artworkColor = pb.artworkColor;
-    final background = artworkColor ?? colors.surfaceContainerHigh;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -82,27 +79,37 @@ class _MiniPlayerState extends State<MiniPlayer> {
         AppSpacing.sm,
         AppSpacing.xs,
       ),
-      child: TweenAnimationBuilder<Color?>(
-        tween: ColorTween(end: background),
-        duration: AppMotion.tint,
-        curve: AppMotion.move,
-        builder: (context, animated, child) {
-          final bg = animated ?? background;
+      // Цвет обложки приходит отдельным notifier'ом: его готовность
+      // перестраивает только мини-плеер, а не всех слушателей провайдера.
+      child: ValueListenableBuilder<Color?>(
+        valueListenable: pb.artworkColorNotifier,
+        builder: (context, artworkColor, _) {
+          final background = artworkColor ?? colors.surfaceContainerHigh;
 
-          final light = ThemeData.estimateBrightnessForColor(bg) == Brightness.light;
-          final onBackground = light ? Colors.black : Colors.white;
-          final onBackgroundMuted = onBackground.withValues(alpha: 0.7);
+          return TweenAnimationBuilder<Color?>(
+            tween: ColorTween(end: background),
+            duration: AppMotion.tint,
+            curve: AppMotion.move,
+            builder: (context, animated, child) {
+              final bg = animated ?? background;
 
-          return _MiniPlayerBody(
-            track: track,
-            imageUrl: imageUrl,
-            imageBytes: imageBytes,
-            isCompact: isCompact,
-            artSize: artSize,
-            background: bg,
-            onBackground: onBackground,
-            onBackgroundMuted: onBackgroundMuted,
-            onOpen: () => _openPlayer(context, track, imageUrl),
+              final light =
+                  ThemeData.estimateBrightnessForColor(bg) == Brightness.light;
+              final onBackground = light ? Colors.black : Colors.white;
+              final onBackgroundMuted = onBackground.withValues(alpha: 0.7);
+
+              return _MiniPlayerBody(
+                track: track,
+                imageUrl: imageUrl,
+                imageBytes: imageBytes,
+                isCompact: isCompact,
+                artSize: artSize,
+                background: bg,
+                onBackground: onBackground,
+                onBackgroundMuted: onBackgroundMuted,
+                onOpen: () => _openPlayer(context, track, imageUrl),
+              );
+            },
           );
         },
       ),
@@ -320,46 +327,33 @@ class _Artwork extends StatelessWidget {
   }
 }
 
-class _MiniProgress extends StatefulWidget {
+class _MiniProgress extends StatelessWidget {
   const _MiniProgress({required this.color});
 
   final Color color;
 
   @override
-  State<_MiniProgress> createState() => _MiniProgressState();
-}
-
-class _MiniProgressState extends State<_MiniProgress> {
-  Timer? _ticker;
-
-  @override
-  void initState() {
-    super.initState();
-    _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final pb = context.read<PlaybackProvider>();
-    final duration = pb.durationMs;
-    final progress =
-        duration <= 0 ? 0.0 : (pb.positionMs / duration).clamp(0.0, 1.0);
 
-    return SizedBox(
-      height: 3,
-      child: LinearProgressIndicator(
-        value: progress,
-        backgroundColor: widget.color.withValues(alpha: 0.2),
-        valueColor: AlwaysStoppedAnimation<Color>(widget.color),
-      ),
+    // Свой таймер больше не нужен: позицию тикает один общий механизм в
+    // провайдере, здесь перестраивается только сама полоска.
+    return ValueListenableBuilder<int>(
+      valueListenable: pb.positionNotifier,
+      builder: (context, positionMs, _) {
+        final duration = pb.durationMs;
+        final progress =
+            duration <= 0 ? 0.0 : (positionMs / duration).clamp(0.0, 1.0);
+
+        return SizedBox(
+          height: 3,
+          child: LinearProgressIndicator(
+            value: progress,
+            backgroundColor: color.withValues(alpha: 0.2),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        );
+      },
     );
   }
 }

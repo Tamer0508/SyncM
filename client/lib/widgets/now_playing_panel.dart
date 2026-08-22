@@ -72,12 +72,7 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
 
       if (!mounted || request != _paletteRequest) return;
 
-      if (imageUrl != null) {
-        if (pb.paletteCache.length > 60) {
-          pb.paletteCache.remove(pb.paletteCache.keys.first);
-        }
-        pb.paletteCache[imageUrl] = palette;
-      }
+      if (imageUrl != null) pb.cachePalette(imageUrl, palette);
 
       _applyPalette(palette);
     } catch (err) {
@@ -113,10 +108,6 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
       final imageBytes = pb.currentImageBytes;
       final imageUrl = track['imageUrl'] as String?;
       final durationMs = pb.durationMs;
-      final positionMs = pb.positionMs;
-      final fraction = durationMs > 0
-          ? (_dragging ? _dragValue : (positionMs / durationMs).clamp(0.0, 1.0))
-          : 0.0;
 
       final textColor = theme.colorScheme.onSurface;
       final subtitleColor = theme.colorScheme.onSurface.withValues(alpha: 0.7);
@@ -179,33 +170,50 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 12),
-                    _CompactProgressBar(
-                        fraction: fraction,
-                        onSeek: (val) {
-                          setState(() {
-                            _dragValue = val;
-                            _dragging = true;
-                          });
-                        },
-                        onSeekEnd: (val) {
-                          setState(() => _dragging = false);
-                          pb.seekTo((val * durationMs).toInt());
-                        },
-                        activeColor: _effectiveVibrant,
-                        inactiveColor: inactiveTrackColor),
-                    const SizedBox(height: 4),
-                    Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(_formatMs(positionMs),
-                                  style: TextStyle(
-                                      color: timeColor, fontSize: 12)),
-                              Text(_formatMs(durationMs),
-                                  style:
-                                      TextStyle(color: timeColor, fontSize: 12))
-                            ])),
+                    // Позиция слушается отдельно: её тик перестраивает
+                    // только полосу прогресса и таймкод.
+                    ValueListenableBuilder<int>(
+                      valueListenable: pb.positionNotifier,
+                      builder: (context, positionMs, _) {
+                        final fraction = durationMs > 0
+                            ? (_dragging
+                                ? _dragValue
+                                : (positionMs / durationMs).clamp(0.0, 1.0))
+                            : 0.0;
+
+                        return Column(mainAxisSize: MainAxisSize.min, children: [
+                          _CompactProgressBar(
+                              fraction: fraction,
+                              onSeek: (val) {
+                                setState(() {
+                                  _dragValue = val;
+                                  _dragging = true;
+                                });
+                              },
+                              onSeekEnd: (val) {
+                                setState(() => _dragging = false);
+                                pb.seekTo((val * durationMs).toInt());
+                              },
+                              activeColor: _effectiveVibrant,
+                              inactiveColor: inactiveTrackColor),
+                          const SizedBox(height: 4),
+                          Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(_formatMs(positionMs),
+                                        style: TextStyle(
+                                            color: timeColor, fontSize: 12)),
+                                    Text(_formatMs(durationMs),
+                                        style: TextStyle(
+                                            color: timeColor, fontSize: 12))
+                                  ])),
+                        ]);
+                      },
+                    ),
                     const SizedBox(height: 12),
                     Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
