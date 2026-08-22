@@ -71,6 +71,7 @@ class PlaybackProvider extends ChangeNotifier {
 
   String? _pendingTrackUri;
   DateTime? _pendingSince;
+  Timer? _pendingResolveTimer;
 
   /// Трек, метаданные которого уже дополнены данными очереди: повторно
   /// искать его в очереди на каждом событии SDK не нужно.
@@ -81,11 +82,33 @@ class PlaybackProvider extends ChangeNotifier {
   void _markPendingTrack(String? uri) {
     _pendingTrackUri = uri;
     _pendingSince = uri == null ? null : DateTime.now();
+    _pendingResolveTimer?.cancel();
+    _pendingResolveTimer = null;
 
     if (uri != null) {
       _currentImageBytes = null;
       _lastImageUri = null;
+      _pendingResolveTimer = Timer(_pendingTrackTimeout, _resolvePendingTrack);
       notifyListeners();
+    }
+  }
+
+  /// SDK присылает состояние только по событиям. Если запрошенный трек так и
+  /// не начался, новых событий не будет — и экран до самой паузы показывал бы
+  /// нажатый трек вместо звучащего. По истечении окна ожидания состояние
+  /// забирается принудительно, чтобы метаданные соответствовали звуку.
+  Future<void> _resolvePendingTrack() async {
+    _pendingResolveTimer = null;
+    if (_disposed || _pendingTrackUri == null) return;
+
+    _markPendingTrack(null);
+    if (_isWindows || _isWeb || !_isConnected) return;
+
+    try {
+      final state = await SpotifySdk.getPlayerState();
+      if (state != null && !_disposed) await _handlePlayerState(state);
+    } catch (e) {
+      debugPrint('[Spotify] Не удалось перечитать состояние плеера: $e');
     }
   }
 
@@ -357,7 +380,28 @@ class PlaybackProvider extends ChangeNotifier {
       'imageUrl': imageUrl,
       'durationMs': t['durationMs'] ?? t['duration_ms'],
       'index': index,
+      // Позиция в контексте Spotify приходит с сервера и переживает
+      // нормализацию: по ней переключается плеер.
+      if (t['contextIndex'] != null) 'contextIndex': t['contextIndex'],
     };
+  }
+
+  int? _positionOfCurrentIfStillValid(Map<String, dynamic> track, String uri) {
+    final index = track['index'];
+    final tracks = _currentPlaylistTracks;
+    if (index is! int || tracks == null) return null;
+    if (index < 0 || index >= tracks.length) return null;
+    return _trackKeyOf(tracks[index]) == _trackKeyOf({'uri': uri})
+        ? index
+        : null;
+  }
+
+  static int? _contextIndexOf(Map<String, dynamic> track) {
+    final ctx = track['contextIndex'];
+    if (ctx is num && ctx >= 0) return ctx.toInt();
+    final index = track['index'];
+    if (index is num && index >= 0) return index.toInt();
+    return null;
   }
 
   void setSessionQueue(List<dynamic> tracks) {
@@ -999,142 +1043,166 @@ class PlaybackProvider extends ChangeNotifier {
 
   void _subscribeToPlayerState() {
     _playerStateSub?.cancel();
-    _playerStateSub = SpotifySdk.subscribePlayerState().listen((PlayerState state) async {
-      // Это горячий путь: события приходят по нескольку раз в секунду.
-      // Ниже всё, что можно, делается только при реальном изменении.
-      final bool wasPlaying = _isPlaying;
-      final int previousDuration = _durationMs;
+    _playerStateSub = SpotifySdk.subscribePlayerState().listen(
+      _handlePlayerState,
+      onError: (err) => debugPrint('[Spotify] PlayerState stream error: $err'),
+    );
+  }
 
-      _isPlaying = !state.isPaused;
-      _durationMs = state.track?.duration ?? 0;
-      _positionMs = state.playbackPosition;
-      _positionAnchorAt = DateTime.now();
+  bool _syncPlaybackOptions(PlayerState state) {
+    final options = state.playbackOptions;
+    final String mode = switch (options.repeatMode.name) {
+      'track' => 'track',
+      'context' => 'context',
+      _ => 'off',
+    };
 
-      if (!state.isPaused) {
-        _lastActivePositionMs = state.playbackPosition;
-        if (state.track != null) _lastActiveDurationMs = state.track!.duration;
+    final bool changed =
+        options.isShuffling != _shuffleActive || mode != _repeatMode;
+    _shuffleActive = options.isShuffling;
+    _repeatMode = mode;
+    if (changed) _invalidateNeighbourCache();
+    return changed;
+  }
+
+  Future<void> _handlePlayerState(PlayerState state) async {
+    final incomingUri = state.track?.uri;
+    if (incomingUri != null && _shouldIgnoreSdkTrack(incomingUri)) return;
+
+    final bool wasPlaying = _isPlaying;
+    final bool optionsChanged = _syncPlaybackOptions(state);
+    final int previousDuration = _durationMs;
+
+    _isPlaying = !state.isPaused;
+    _durationMs = state.track?.duration ?? 0;
+    _positionMs = state.playbackPosition;
+    _positionAnchorAt = DateTime.now();
+
+    if (!state.isPaused) {
+      _lastActivePositionMs = state.playbackPosition;
+      if (state.track != null) _lastActiveDurationMs = state.track!.duration;
+    }
+
+    if (state.track != null) {
+      final trackUri = state.track!.uri;
+
+      final imageUriId = state.track!.imageUri.raw;
+      final trackChanged = trackUri != _currentTrack?['uri'];
+      final imageChanged = imageUriId != _lastImageUri;
+      final title = state.track!.name;
+      final artist = state.track!.artist.name;
+
+      if (trackChanged) {
+        _releaseSkipLock(notify: false);
+        _queueEnrichedUri = null;
+      }
+      if (!state.isPaused) _confirmQueueAdvance(trackUri);
+
+      final fromQueue =
+          _queueEnrichedUri == trackUri ? null : _findInQueue(trackUri);
+      if (fromQueue != null) _queueEnrichedUri = trackUri;
+
+      final bool metadataChanged = trackChanged ||
+          fromQueue != null ||
+          _currentTrack?['title'] != title ||
+          _currentTrack?['artist'] != artist;
+
+      if (metadataChanged) {
+        final previous = trackChanged
+            ? const <String, dynamic>{}
+            : (_currentTrack ?? const <String, dynamic>{});
+        final keptIndex = _positionOfCurrentIfStillValid(previous, trackUri);
+
+        _currentTrack = {
+          ...previous,
+          if (fromQueue != null) ...fromQueue,
+          if (keptIndex != null) 'index': keptIndex,
+          'title': title,
+          'artist': artist,
+          'uri': trackUri,
+        };
       }
 
-      if (state.track != null) {
-        final trackUri = state.track!.uri;
+      final bool visualChanged = metadataChanged ||
+          optionsChanged ||
+          wasPlaying != _isPlaying ||
+          previousDuration != _durationMs;
 
-        if (_shouldIgnoreSdkTrack(trackUri)) return;
-
-        final imageUriId = state.track!.imageUri.raw;
-        final trackChanged = trackUri != _currentTrack?['uri'];
-        final imageChanged = imageUriId != _lastImageUri;
-        final title = state.track!.name;
-        final artist = state.track!.artist.name;
-
-        if (trackChanged) {
-          // Трек реально сменился — подтверждение скипа, ждать таймаут
-          // незачем. Своё уведомление не нужно: смена трека и так его даёт.
-          _releaseSkipLock(notify: false);
-          _queueEnrichedUri = null;
-        }
-        if (!state.isPaused) _confirmQueueAdvance(trackUri);
-
-        // Очередь опрашиваем один раз на трек (или пока она не подгрузилась),
-        // а не на каждом событии SDK.
-        final fromQueue =
-            _queueEnrichedUri == trackUri ? null : _findInQueue(trackUri);
-        if (fromQueue != null) _queueEnrichedUri = trackUri;
-
-        final bool metadataChanged = trackChanged ||
-            fromQueue != null ||
-            _currentTrack?['title'] != title ||
-            _currentTrack?['artist'] != artist;
-
-        if (metadataChanged) {
-          _currentTrack = {
-            ...(trackChanged ? const <String, dynamic>{} : _currentTrack ?? {}),
-            if (fromQueue != null) ...fromQueue,
-            'title': title,
-            'artist': artist,
-            'uri': trackUri,
-          };
-        }
-
-        final bool visualChanged = metadataChanged ||
-            wasPlaying != _isPlaying ||
-            previousDuration != _durationMs;
-
-        if (imageChanged) {
-          _lastImageUri = imageUriId;
-          _currentImageBytes = null;
-          notifyListeners();
-          try {
-            final imageBytes = await SpotifySdk.getImage(
-              imageUri: state.track!.imageUri,
-              dimension: ImageDimension.large,
-            );
-            if (_lastImageUri == imageUriId) {
-              _currentImageBytes = imageBytes;
-              notifyListeners();
-            }
-          } catch (e) {
-            debugPrint('[Spotify] Ошибка скачивания обложки: $e');
-            _currentImageBytes = null;
+      if (imageChanged) {
+        _lastImageUri = imageUriId;
+        _currentImageBytes = null;
+        notifyListeners();
+        try {
+          final imageBytes = await SpotifySdk.getImage(
+            imageUri: state.track!.imageUri,
+            dimension: ImageDimension.large,
+          );
+          if (_lastImageUri == imageUriId) {
+            _currentImageBytes = imageBytes;
             notifyListeners();
           }
-        } else if (visualChanged) {
+        } catch (e) {
+          debugPrint('[Spotify] Ошибка скачивания обложки: $e');
+          _currentImageBytes = null;
           notifyListeners();
-        } else {
-          // Изменилась только позиция — обновляем её слушателей, а не весь UI.
-          _publishPosition();
         }
+      } else if (visualChanged) {
+        notifyListeners();
+      } else {
+        // Изменилась только позиция — обновляем её слушателей, а не весь UI.
+        _publishPosition();
+      }
 
-        if (_preparedTrackId != null && !_isReadySent) {
-          final activeTrackId = trackUri.split(':').last;
-          if (activeTrackId == _preparedTrackId && state.isPaused) {
-            _isReadySent = true;
-            debugPrint('[SyncPlay] Spotify загрузил трек. Отправляем client_ready');
-            _socketService?.emit('client_ready', {
-              'sessionId': _currentSessionId,
-              'trackId': _preparedTrackId,
-            });
-          }
-        }
-
-        if (trackChanged && _currentSessionId != null && !_sessionMode) {
-          _socketService?.emit('next_track', {
+      if (_preparedTrackId != null && !_isReadySent) {
+        final activeTrackId = trackUri.split(':').last;
+        if (activeTrackId == _preparedTrackId && state.isPaused) {
+          _isReadySent = true;
+          debugPrint('[SyncPlay] Spotify загрузил трек. Отправляем client_ready');
+          _socketService?.emit('client_ready', {
             'sessionId': _currentSessionId,
-            'spotifyUri': trackUri,
+            'trackId': _preparedTrackId,
           });
         }
-
-        final bool isIntentionalPreparePause = _preparedTrackId != null && !_isReadySent;
-        if (_sessionMode &&
-            _isHost &&
-            state.isPaused &&
-            !_isAdvancingQueue &&
-            !_isSessionSeeking &&
-            !isIntentionalPreparePause) {
-          final dur = _lastActiveDurationMs;
-          if (dur > 0 && _lastActivePositionMs >= dur - 1200) {
-            debugPrint('[SyncM] Трек завершился. Переключаем...');
-            _isAdvancingQueue = true;
-            _advanceSessionQueue();
-          }
-        }
-
-        if (!_sessionMode &&
-            trackChanged &&
-            _shuffleActive &&
-            _currentPlaylistId != null &&
-            !_suppressAutoCorrection) {
-          try {
-            await _ensurePlaylistTracksLoaded();
-            final found = _currentPlaylistTracks?.any((t) => (t['uri'] as String?) == trackUri) ?? false;
-            if (!found) _playRandomFromCurrentPlaylist();
-          } catch (e) {
-            debugPrint('[PlaybackProvider] Error validating track against playlist: $e');
-          }
-        }
-      } else {
-        notifyListeners();
       }
-    }, onError: (err) => debugPrint('[Spotify] PlayerState stream error: $err'));
+
+      if (trackChanged && _currentSessionId != null && !_sessionMode) {
+        _socketService?.emit('next_track', {
+          'sessionId': _currentSessionId,
+          'spotifyUri': trackUri,
+        });
+      }
+
+      final bool isIntentionalPreparePause = _preparedTrackId != null && !_isReadySent;
+      if (_sessionMode &&
+          _isHost &&
+          state.isPaused &&
+          !_isAdvancingQueue &&
+          !_isSessionSeeking &&
+          !isIntentionalPreparePause) {
+        final dur = _lastActiveDurationMs;
+        if (dur > 0 && _lastActivePositionMs >= dur - 1200) {
+          debugPrint('[SyncM] Трек завершился. Переключаем...');
+          _isAdvancingQueue = true;
+          _advanceSessionQueue();
+        }
+      }
+
+      if (!_sessionMode &&
+          trackChanged &&
+          _shuffleActive &&
+          _currentPlaylistId != null &&
+          !_suppressAutoCorrection) {
+        try {
+          await _ensurePlaylistTracksLoaded();
+          final found = _currentPlaylistTracks?.any((t) => (t['uri'] as String?) == trackUri) ?? false;
+          if (!found) _playRandomFromCurrentPlaylist();
+        } catch (e) {
+          debugPrint('[PlaybackProvider] Error validating track against playlist: $e');
+        }
+      }
+    } else {
+      notifyListeners();
+    }
   }
 
   Future<void> playTrack(Map<String, dynamic> track,
@@ -1165,7 +1233,8 @@ class PlaybackProvider extends ChangeNotifier {
           await _apiService?.playTrack(
             uri,
             contextUri: contextUri,
-            offset: track['index'] as int?,
+            offset: _contextIndexOf(track),
+            offsetUri: contextUri != null ? uri : null,
           );
 
           if (positionMs != null && positionMs > 0) {
@@ -1227,8 +1296,10 @@ class PlaybackProvider extends ChangeNotifier {
 
         await SpotifySdk.skipToIndex(
           spotifyUri: contextUri,
-          trackIndex: track['index'] as int? ?? 0,
+          trackIndex: _contextIndexOf(track) ?? 0,
         );
+
+        unawaited(_ensureRequestedTrackStarted(uri, positionMs: positionMs));
       } else {
         await SpotifySdk.play(spotifyUri: uri);
       }
@@ -1285,6 +1356,52 @@ class PlaybackProvider extends ChangeNotifier {
       } catch (e2) {
         debugPrint('[Spotify] Fallback play error: $e2');
       }
+    }
+  }
+
+  Future<void> _ensureRequestedTrackStarted(String uri, {int? positionMs}) async {
+    if (_isWindows || _isWeb) return;
+
+    for (final delay in const [
+      Duration(milliseconds: 600),
+      Duration(milliseconds: 700),
+    ]) {
+      await Future.delayed(delay);
+      if (_disposed) return;
+      // Пользователь успел нажать другой трек — проверять больше нечего.
+      if (_pendingTrackUri != null && _pendingTrackUri != uri) return;
+
+      PlayerState? state;
+      try {
+        state = await SpotifySdk.getPlayerState();
+      } catch (e) {
+        debugPrint('[Spotify] Не удалось проверить запущенный трек: $e');
+        return;
+      }
+
+      final playing = state?.track?.uri;
+      if (playing == null) continue;
+      if (playing == uri) {
+        _markPendingTrack(null);
+        await _handlePlayerState(state!);
+        return;
+      }
+
+      if (state!.playbackOptions.isShuffling) break;
+    }
+
+    if (_disposed) return;
+    if (_pendingTrackUri != null && _pendingTrackUri != uri) return;
+
+    debugPrint('[Spotify] skipToIndex попал не в тот трек — включаем по uri');
+    try {
+      await SpotifySdk.play(spotifyUri: uri);
+      if (positionMs != null && positionMs > 0) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        await SpotifySdk.seekTo(positionedMilliseconds: positionMs);
+      }
+    } catch (e) {
+      debugPrint('[Spotify] Резервный запуск по uri не удался: $e');
     }
   }
 
@@ -1498,6 +1615,16 @@ class PlaybackProvider extends ChangeNotifier {
     if (tracks == null || tracks.isEmpty) return null;
 
     final key = _trackKeyOf(_currentTrack);
+    final index = _currentTrack?['index'] as int?;
+
+    if (key != null &&
+        index != null &&
+        index >= 0 &&
+        index < tracks.length &&
+        _trackKeyOf(tracks[index]) == key) {
+      return index;
+    }
+
     if (key != null) {
       final found = _indexInQueue(tracks, key);
       if (found >= 0) {
@@ -1506,7 +1633,6 @@ class PlaybackProvider extends ChangeNotifier {
       }
     }
 
-    final index = _currentTrack?['index'] as int?;
     if (index != null && index >= 0 && index < tracks.length) return index;
 
     return null;
@@ -1922,6 +2048,7 @@ class PlaybackProvider extends ChangeNotifier {
     final trackMap = {
       'uri': selectedUri,
       'index': sel['index'] ?? index,
+      'contextIndex': sel['contextIndex'],
       'title': sel['name'] ?? sel['title'] ?? '',
       'artist': sel['artist'] ?? '',
       'imageUrl': sel['imageUrl'] ?? sel['album']?['images']?[0]?['url'],
@@ -2173,6 +2300,7 @@ class PlaybackProvider extends ChangeNotifier {
     _sessionSeekingTimer?.cancel();
     _advanceResetTimer?.cancel();
     _skipLockTimer?.cancel();
+    _pendingResolveTimer?.cancel();
 
     _sessionSubscriptions.cancelAll();
     _playerStateSub?.cancel();

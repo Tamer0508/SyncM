@@ -1,6 +1,5 @@
 const crypto = require('crypto');
 const { get, set, acquireLock, releaseLock, isRedisAvailable } = require('../infrastructure/redis');
-const { resolveUserId } = require('./requireAuth');
 const logger = require('../infrastructure/logger');
 
 const DEFAULT_RESULT_TTL_SECONDS = 30;
@@ -15,6 +14,8 @@ function stableStringify(value) {
   const keys = Object.keys(value).sort();
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
 }
+
+const resolveUserId = (req) => req.userId || req.session?.userId || null;
 
 function requestFingerprint(req) {
   const payload = stableStringify({

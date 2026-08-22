@@ -55,6 +55,7 @@ const playBodySchema = z
     deviceId: z.string().min(1).optional(),
     contextUri: z.string().min(1).optional(),
     offset: z.number().int().min(0).optional(),
+    offsetUri: z.string().min(1).optional(),
   })
   .refine((b) => b.uri || b.contextUri, {
     message: 'Требуется uri или contextUri',
@@ -142,7 +143,9 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
     // только после собственного запроса к Spotify, который и решает, есть ли
     // у него доступ. Инвалидация по namespace при этом продолжает гасить
     // копии всех пользователей разом.
-    const tracks = await getOrSet(`spotify:playlist-tracks:${playlistId}`, `user:${userId}`, CACHE_TTL.playlistTracks, async () => {
+    // v2 в ключе: записи прошлой версии не содержат contextIndex, и без
+    // смены ключа клиенты полчаса продолжали бы получать список без него.
+    const tracks = await getOrSet(`spotify:playlist-tracks:${playlistId}`, `user:${userId}:v2`, CACHE_TTL.playlistTracks, async () => {
       const spotifyUser = await requireSpotifyUser(userId);
 
       const itemsUrl =
@@ -154,9 +157,9 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
       );
 
       return collected
-        .map((item) => extractTrack(item))
-        .filter((track) => track !== null && track.id)
-        .map((track) => ({
+        .map((item, contextIndex) => ({ track: extractTrack(item), contextIndex }))
+        .filter(({ track }) => track !== null && track.id)
+        .map(({ track, contextIndex }) => ({
           id: track.id,
           name: track.name,
           artist: track.artists?.map((a) => a.name).join(', ') ?? '',
@@ -164,6 +167,7 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
           uri: track.uri,
           durationMs: track.duration_ms,
           album: track.album?.name ?? '',
+          contextIndex,
         }));
     });
 
@@ -232,7 +236,7 @@ router.post('/play', rateLimitMiddleware(15, 60), asyncHandler(async (req, res) 
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const { uri, deviceId, contextUri, offset } = playBodySchema.parse(req.body);
+  const { uri, deviceId, contextUri, offset, offsetUri } = playBodySchema.parse(req.body);
 
   try {
     const spotifyUser = await requireSpotifyUser(userId);
@@ -240,8 +244,14 @@ router.post('/play', rateLimitMiddleware(15, 60), asyncHandler(async (req, res) 
       ? `https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(deviceId)}`
       : 'https://api.spotify.com/v1/me/player/play';
 
+    const contextOffset = offsetUri
+      ? { offset: { uri: offsetUri } }
+      : offset !== undefined
+        ? { offset: { position: offset } }
+        : {};
+
     const body = contextUri
-      ? { context_uri: contextUri, ...(offset !== undefined && { offset: { position: offset } }) }
+      ? { context_uri: contextUri, ...contextOffset }
       : { uris: [uri] };
 
     await spotifyRequest(spotifyUser, { method: 'put', url: playUrl, data: body });

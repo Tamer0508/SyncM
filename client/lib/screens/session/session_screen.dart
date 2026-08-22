@@ -118,11 +118,12 @@ class _SessionScreenState extends State<SessionScreen> {
     final uri = track['uri'] as String?;
     if (uri == null || uri.isEmpty) return;
 
-    await auth.api.logPlay(
+    // История не должна задерживать старт трека.
+    unawaited(auth.api.logPlay(
       uri,
       track['title'] as String? ?? '',
       track['artist'] as String? ?? '',
-    );
+    ));
 
     if (_isWindows && auth.user?.spotifyConnected != true) {
       if (mounted) {

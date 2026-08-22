@@ -1,4 +1,6 @@
-﻿import 'package:cached_network_image/cached_network_image.dart';
+﻿import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import '../../widgets/mini_player.dart';
@@ -119,7 +121,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     final api = auth.api;
     final pb = Provider.of<PlaybackProvider>(context, listen: false);
 
-    await api.logPlay(uri, trackName, artistName);
+    unawaited(api.logPlay(uri, trackName, artistName));
 
     if (_isWindows) {
       if (auth.user?.spotifyConnected != true) {
@@ -130,38 +132,30 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         }
         return;
       }
-
-      await pb.playTrack(
-        {
-          'title': track['name'],
-          'artist': track['artist'],
-          'imageUrl': track['imageUrl'],
-          'uri': uri,
-          'index': index,
-        },
-        playlistId: widget.isCustom ? null : widget.playlistId,
-      );
-    } else {
-      if (!pb.isConnected) {
-        final connected = await pb.connect();
-        if (!connected && mounted) {
+    } else if (!pb.isConnected) {
+      final connected = await pb.connect();
+      if (!connected) {
+        if (mounted) {
           showAppNotification(context,
               message: 'Не удалось подключиться к Spotify',
               type: NotificationType.error);
-          return;
         }
+        return;
       }
-      await pb.playTrack(
-        {
-          'title': track['name'],
-          'artist': track['artist'],
-          'imageUrl': track['imageUrl'],
-          'uri': uri,
-          'index': index,
-        },
-        playlistId: widget.isCustom ? null : widget.playlistId,
-      );
     }
+
+    await pb.playTrack(
+      {
+        'title': track['name'],
+        'artist': track['artist'],
+        'imageUrl': track['imageUrl'],
+        'uri': uri,
+        'index': index,
+        'contextIndex': track['contextIndex'],
+      },
+      playlistId: widget.isCustom ? null : widget.playlistId,
+      knownPlaylistTracks: widget.isCustom ? null : _tracks,
+    );
 
     if (!mounted) return;
 

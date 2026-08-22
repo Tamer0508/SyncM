@@ -754,12 +754,21 @@ class ApiService {
     }
   }
 
-  Future<bool> playTrack(String uri, {String? deviceId, String? contextUri, int? offset}) async {
-    final operation = 'playTrack:$uri:${contextUri ?? ''}:${deviceId ?? ''}:$offset';
+  Future<bool> playTrack(String uri,
+      {String? deviceId,
+      String? contextUri,
+      int? offset,
+      String? offsetUri}) async {
+    final operation =
+        'playTrack:$uri:${contextUri ?? ''}:${deviceId ?? ''}:${offsetUri ?? offset}';
     final body = <String, dynamic>{};
     if (contextUri != null) {
       body['contextUri'] = contextUri;
-      if (offset != null) body['offset'] = offset;
+      if (offsetUri != null) {
+        body['offsetUri'] = offsetUri;
+      } else if (offset != null) {
+        body['offset'] = offset;
+      }
     } else {
       body['uri'] = uri;
     }
