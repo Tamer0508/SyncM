@@ -202,11 +202,13 @@ function initQueues() {
         const trackRows = trackItems
           .map(entry => ({ track: entry.item || entry.track, addedAt: entry.added_at }))
           .filter(({ track }) => track?.id && track?.uri)
-          .map(({ track, addedAt }) => ({
+          .map(({ track, addedAt }, index) => ({
             spotifyUri: track.uri,
             trackName: track.name,
             artistName: track.artists?.map(a => a.name).join(', ') || '',
+            imageUrl: track.album?.images?.[0]?.url || null,
             durationMs: track.duration_ms ?? null,
+            position: index,
             addedAt: new Date(addedAt || Date.now()),
           }));
 

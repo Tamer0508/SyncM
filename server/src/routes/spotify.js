@@ -49,6 +49,11 @@ const playlistIdParamsSchema = z.object({
   playlistId: z.string().min(1),
 });
 
+const searchQuerySchema = z.object({
+  q: z.string().trim().min(1, 'Пустой запрос').max(100),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(30),
+});
+
 const playBodySchema = z
   .object({
     uri: z.string().min(1).optional(),
@@ -174,6 +179,38 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
     res.json(tracks);
   } catch (error) {
     return handleSpotifyError(res, error, { userId, playlistId, route: '/playlists/:id/tracks' });
+  }
+}));
+
+router.get('/search', rateLimitMiddleware(40, 60), asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+  const { q, limit } = searchQuerySchema.parse(req.query);
+
+  try {
+    const spotifyUser = await requireSpotifyUser(userId);
+    const url =
+      'https://api.spotify.com/v1/search' +
+      `?q=${encodeURIComponent(q)}&type=track&limit=${limit}`;
+
+    const data = await spotifyGet(spotifyUser, url);
+
+    const tracks = (data?.tracks?.items ?? [])
+      .filter((track) => track && track.id)
+      .map((track) => ({
+        id: track.id,
+        name: track.name,
+        artist: track.artists?.map((a) => a.name).join(', ') ?? '',
+        imageUrl: track.album?.images?.[0]?.url || null,
+        uri: track.uri,
+        durationMs: track.duration_ms,
+        album: track.album?.name ?? '',
+      }));
+
+    res.json(tracks);
+  } catch (error) {
+    return handleSpotifyError(res, error, { userId, route: '/search' });
   }
 }));
 

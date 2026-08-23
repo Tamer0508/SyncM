@@ -10,6 +10,7 @@ class AppMenuEntry<T> {
     required this.label,
     this.danger = false,
     this.iconColor,
+    this.separated = false,
   });
 
   final T value;
@@ -19,7 +20,10 @@ class AppMenuEntry<T> {
   final bool danger;
 
   final Color? iconColor;
+
+  final bool separated;
 }
+
 class AppMenuButton<T> extends StatelessWidget {
   const AppMenuButton({
     super.key,
@@ -42,22 +46,11 @@ class AppMenuButton<T> extends StatelessWidget {
       return IconButton(
         icon: Icon(icon, color: iconColor),
         tooltip: tooltip,
-        onPressed: () => showAppSheet<void>(
+        onPressed: () => showAppMenuSheet<T>(
           context: context,
+          entries: entries,
+          onSelected: onSelected,
           title: tooltip,
-          builder: (ctx) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final entry in entries)
-                AppSheetAction(
-                  icon: entry.icon,
-                  label: entry.label,
-                  danger: entry.danger,
-                  iconColor: entry.iconColor,
-                  onTap: () => onSelected(entry.value),
-                ),
-            ],
-          ),
         ),
       );
     }
@@ -76,17 +69,76 @@ class AppMenuButton<T> extends StatelessWidget {
         icon: Icon(icon, color: iconColor),
         tooltip: tooltip,
         onSelected: onSelected,
-        itemBuilder: (context) => [
-          for (final entry in entries)
-            PopupMenuItem<T>(
-              value: entry.value,
-              padding: EdgeInsets.zero,
-              child: _MenuRow(entry: entry),
-            ),
-        ],
+        itemBuilder: (context) => _popupItems(entries),
       ),
     );
   }
+}
+
+Future<void> showAppMenuSheet<T>({
+  required BuildContext context,
+  required List<AppMenuEntry<T>> entries,
+  required ValueChanged<T> onSelected,
+  String? title,
+}) {
+  return showAppSheet<void>(
+    context: context,
+    title: title,
+    builder: (ctx) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final entry in entries) ...[
+          if (entry.separated)
+            const Divider(height: AppSpacing.md, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+          AppSheetAction(
+            icon: entry.icon,
+            label: entry.label,
+            danger: entry.danger,
+            iconColor: entry.iconColor,
+            onTap: () => onSelected(entry.value),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+Future<T?> showAppContextMenu<T>({
+  required BuildContext context,
+  required Offset globalPosition,
+  required List<AppMenuEntry<T>> entries,
+}) {
+  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+  if (overlay == null) return Future<T?>.value();
+
+  final theme = Theme.of(context);
+
+  return showMenu<T>(
+    context: context,
+    popUpAnimationStyle: AppMotion.menu,
+    menuPadding: AppSizes.menuPadding,
+    position: RelativeRect.fromRect(
+      Rect.fromPoints(globalPosition, globalPosition),
+      Offset.zero & overlay.size,
+    ),
+    items: _popupItems(entries),
+    color: theme.popupMenuTheme.color,
+  );
+}
+
+List<PopupMenuEntry<T>> _popupItems<T>(List<AppMenuEntry<T>> entries) {
+  final items = <PopupMenuEntry<T>>[];
+  for (final entry in entries) {
+    if (entry.separated) items.add(const PopupMenuDivider());
+    items.add(
+      PopupMenuItem<T>(
+        value: entry.value,
+        padding: EdgeInsets.zero,
+        child: _MenuRow(entry: entry),
+      ),
+    );
+  }
+  return items;
 }
 
 class _MenuRow<T> extends StatefulWidget {

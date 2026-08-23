@@ -9,9 +9,17 @@ import '../../theme.dart';
 import '../../utils/notifications.dart';
 
 class AvatarCropScreen extends StatefulWidget {
-  const AvatarCropScreen({super.key, required this.imageBytes});
+  const AvatarCropScreen({
+    super.key,
+    required this.imageBytes,
+    this.title = 'Кадрирование',
+    this.hint = 'Область всегда квадратная — так аватар выглядит одинаково везде.',
+  });
 
   final Uint8List imageBytes;
+
+  final String title;
+  final String hint;
 
   static const int outputSize = 512;
 
@@ -82,7 +90,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
-        title: const Text('Кадрирование'),
+        title: Text(widget.title),
         actions: [
           TextButton(
             onPressed: _processing ? null : _apply,
@@ -126,7 +134,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
               child: Column(
                 children: [
                   Text(
-                    'Область всегда квадратная — так аватар выглядит одинаково везде.',
+                    widget.hint,
                     textAlign: TextAlign.center,
                     style: context.texts.bodySmall?.copyWith(color: Colors.white70),
                   ),

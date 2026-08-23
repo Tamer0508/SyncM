@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../providers/appearance_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../theme.dart';
+import '../../widgets/add_to_playlist_sheet.dart';
 import 'artwork_pager.dart';
 import '../../utils/image_cache.dart';
 
@@ -708,9 +709,37 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 48),
+          _AddCurrentTrackButton(fg: fg),
         ],
       ),
+    );
+  }
+}
+
+class _AddCurrentTrackButton extends StatelessWidget {
+  const _AddCurrentTrackButton({required this.fg});
+
+  final _Foreground fg;
+
+  @override
+  Widget build(BuildContext context) {
+    final track = context.select<PlaybackProvider, Map<String, dynamic>?>(
+      (pb) => pb.currentTrack,
+    );
+
+    if (track == null) return const SizedBox(width: 48);
+
+    return IconButton(
+      onPressed: () => showAddToPlaylistSheet(context, {
+        'uri': track['uri'],
+        'name': track['title'] ?? track['name'],
+        'artist': track['artist'],
+        'imageUrl': track['imageUrl'],
+        'durationMs': track['durationMs'],
+      }),
+      icon: const Icon(Icons.playlist_add_rounded, size: 26),
+      color: fg.primary,
+      tooltip: 'Добавить в плейлист',
     );
   }
 }

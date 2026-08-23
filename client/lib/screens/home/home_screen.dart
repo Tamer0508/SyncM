@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:syncm/screens/playlist/playlist_tracks_screen.dart';
 import 'package:syncm/screens/settings/play_history_screen.dart';
@@ -14,8 +13,8 @@ import 'package:syncm/screens/friends/search_users_screen.dart';
 import 'package:syncm/screens/friends/friend_requests_screen.dart';
 import 'package:syncm/services/prefetch_service.dart';
 import 'package:syncm/services/socket_service.dart';
-import '../../services/api_service.dart';
 import '../../widgets/playlist_card.dart';
+import '../../widgets/playlist_actions.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
 import '../../widgets/app_icon_button.dart';
@@ -32,6 +31,7 @@ import '../../widgets/now_playing_panel.dart';
 import '../../providers/session_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
+import '../../providers/playlists_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../friends/friends_screen.dart';
@@ -48,10 +48,6 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = LocalStore.readDouble(StoreKeys.startTab, defaultValue: 0)
       .round()
       .clamp(0, 2);
-  List<dynamic> _customPlaylists = LocalStore.readList(StoreKeys.customPlaylists);
-  List<dynamic> _spotifyPlaylists = LocalStore.readList(StoreKeys.spotifyPlaylists);
-  bool _loadingCustom = false;
-  bool _loadingSpotify = false;
   Map<String, dynamic>? _selectedPlaylist;
   final _prefetch = PrefetchService();
 
@@ -180,54 +176,13 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
   Future<void> _loadAllPlaylists({bool refresh = false}) async {
-    if (!mounted) return;
-    setState(() {
-      _loadingCustom = true;
-      _loadingSpotify = true;
-    });
-
-    final api = Provider.of<AuthProvider>(context, listen: false).api;
-
-    await Future.wait([
-      _loadCustomPlaylists(api, refresh: refresh),
-      _loadSpotifyPlaylists(api, refresh: refresh),
-    ]);
-  }
-
-  Future<void> _loadCustomPlaylists(ApiService api, {required bool refresh}) async {
     try {
-      final custom = await api.getMyPlaylists(refresh: refresh);
-      if (!mounted) return;
-      setState(() => _customPlaylists = custom);
-      _savePlaylists(StoreKeys.customPlaylists, custom);
+      await context.read<PlaylistsProvider>().loadAll(refresh: refresh);
     } catch (e) {
       // showError сам молчит про 429 и внутренние сбои, поэтому проверку
       // suppressUiNotification повторять здесь не нужно.
       if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _loadingCustom = false);
     }
-  }
-
-  Future<void> _loadSpotifyPlaylists(ApiService api, {required bool refresh}) async {
-    try {
-      final spotify = await api.getPlaylists(refresh: refresh);
-      if (!mounted) return;
-      setState(() => _spotifyPlaylists = spotify);
-      _savePlaylists(StoreKeys.spotifyPlaylists, spotify);
-    } catch (e) {
-      // Отсутствие подключения к Spotify — не ошибка: раздел просто
-      // покажет предложение подключить аккаунт, ругаться на это незачем.
-      final notConnected = e is ApiException && e.statusCode == 409;
-      if (mounted && !notConnected) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _loadingSpotify = false);
-    }
-  }
-
-  void _savePlaylists(String key, List<dynamic> playlists) {
-    final items = playlists.whereType<Map>().map(Map<String, dynamic>.from).toList();
-    LocalStore.saveList(key, items).ignore();
   }
 
   /// Вкладка «Сейчас» — что происходит прямо сейчас.
@@ -365,12 +320,42 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   Widget _buildPlaylistsTab(bool isCustom) {
-    final playlists = isCustom ? _customPlaylists : _spotifyPlaylists;
-    final loading = isCustom ? _loadingCustom : _loadingSpotify;
-    final isDesktop = context.isWideWindow;
+    final provider = context.watch<PlaylistsProvider>();
+    final playlists = isCustom ? provider.custom : provider.spotify;
+    final loading = isCustom ? provider.loadingCustom : provider.loadingSpotify;
+
     if (loading && playlists.isEmpty) return const SkeletonPlaylistRow();
-    if (playlists.isEmpty) {
-      return Center(
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (isCustom)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.md,
+              AppSpacing.xs,
+            ),
+            child: FilledButton.tonalIcon(
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Создать плейлист'),
+              onPressed: _createCustomPlaylist,
+            ),
+          ),
+        Expanded(
+          child: playlists.isEmpty
+              ? _buildEmptyPlaylists(isCustom)
+              : _buildPlaylistList(playlists, isCustom: isCustom),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyPlaylists(bool isCustom) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -381,169 +366,116 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              isCustom ? 'Своих плейлистов пока нет' : 'Плейлисты Spotify недоступны',
+              isCustom
+                  ? 'Своих плейлистов пока нет — создайте первый.'
+                  : 'Плейлисты Spotify недоступны',
               style: context.texts.bodyMedium?.copyWith(
                 color: context.colors.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: AppSpacing.sm + 4),
-            // tonal вместо elevated: это подсказка внутри раздела, а не
-            // главное действие экрана, и залитая кнопка перетягивала бы
-            // внимание с приветственной карточки выше.
-            FilledButton.tonalIcon(
-              icon: Icon(isCustom ? Icons.add_rounded : Icons.link_rounded),
-              label: Text(isCustom ? 'Создать' : 'Подключить Spotify'),
-              onPressed: () => isCustom
-                  ? _createCustomPlaylist()
-                  : _openOwnProfile(isDesktop),
-            ),
+            if (!isCustom) ...[
+              const SizedBox(height: AppSpacing.sm + 4),
+              FilledButton.tonalIcon(
+                icon: const Icon(Icons.link_rounded),
+                label: const Text('Подключить Spotify'),
+                onPressed: () => _openOwnProfile(context.isWideWindow),
+              ),
+            ],
           ],
         ),
-      );
-    }
-    // Список, а не сетка.
-    //
-    // Крупные карточки хороши для витрины, но плейлисты — рабочий
-    // инструмент: их открывают, чтобы добраться до треков. В списке на экран
-    // помещается вчетверо больше позиций, названия видны целиком, а не в
-    // две строки с обрезкой, и глаз идёт по одной колонке вместо зигзага.
-    // Так устроены библиотеки в Spotify и Apple Music — по этой же причине.
-    return ListView.separated(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.sm,
-          AppSpacing.sm,
-          AppSpacing.sm,
-          AppSpacing.xl,
-        ),
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
-        itemCount: playlists.length,
-        itemBuilder: (_, i) {
-          final p = playlists[i];
-          return PlaylistCard(
-            dense: true,
-            name: p['name'] ?? '',
-            description: p['description'] ?? '',
-            imageUrl: p['imageUrl'],
-            onTap: () {
-              if (isDesktop) {
-                setState(() {
-                  _selectedPlaylist = {
-                    'id': p['id'],
-                    'name': p['name'],
-                    'imageUrl': p['imageUrl'],
-                    'isCustom': isCustom
-                  };
-                });
-              } else {
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => PlaylistTracksScreen(
-                        playlistId: p['id'] ?? '',
-                        playlistName: p['name'] ?? '',
-                        imageUrl: p['imageUrl'],
-                        isCustom: isCustom)));
-              }
-            },
-          );
-        });
+      ),
+    );
   }
 
-  Future<void> _createCustomPlaylist() async {
-    final nameController = TextEditingController();
-    String? nameError;
-    bool valid = false;
+  Widget _buildPlaylistList(
+    List<Map<String, dynamic>> playlists, {
+    required bool isCustom,
+  }) {
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.xl,
+      ),
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
+      itemCount: playlists.length,
+      itemBuilder: (_, i) {
+        final playlist = playlists[i];
+        void open() => _openPlaylist(playlist, isCustom: isCustom);
 
-    void validate(String text) {
-      final trimmed = text.trim();
-      if (trimmed.isEmpty) {
-        nameError = 'Название не может быть пустым';
-        valid = false;
-      } else if (trimmed.length < 2) {
-        nameError = 'Минимум 2 символа';
-        valid = false;
-      } else if (trimmed.length > 50) {
-        nameError = 'Не более 50 символов';
-        valid = false;
-      } else if (!RegExp(r'^[а-яА-ЯёЁa-zA-Z0-9 ._\-()]+$').hasMatch(trimmed)) {
-        nameError = 'Только буквы, цифры, пробелы и ._-()';
-        valid = false;
-      } else {
-        nameError = null;
-        valid = true;
-      }
-    }
-
-    validate(nameController.text);
-
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return AlertDialog(
-              // Форма, цвета и шрифты берутся из dialogTheme.
-              //
-              // Раньше здесь вручную задавались радиус 24, радиусы рамок
-              // поля, цвета границ в трёх состояниях и цвета кнопки — всё
-              // это дублировало значения из темы и при смене палитры
-              // расходилось с остальным интерфейсом.
-              icon: const Icon(Icons.playlist_add_rounded),
-              title: const Text('Новый плейлист'),
-              content: TextField(
-                controller: nameController,
-                autofocus: true,
-                maxLength: 50,
-                maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                textCapitalization: TextCapitalization.sentences,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(
-                    RegExp(r'[а-яА-ЯёЁa-zA-Z0-9 ._\-()]'),
-                  ),
-                ],
-                decoration: InputDecoration(
-                  labelText: 'Название',
-                  counterText: '',
-                  errorText: nameError,
-                ),
-                onChanged: (value) {
-                  validate(value);
-                  setDialogState(() {});
-                },
-                onSubmitted: (value) {
-                  if (valid) Navigator.of(ctx).pop(value.trim());
-                },
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Отмена'),
-                ),
-                FilledButton(
-                  // Отключённое состояние оформляет сама тема: прежний код
-                  // вручную подбирал цвета фона и текста для неактивной
-                  // кнопки, и они не совпадали с остальными кнопками.
-                  onPressed: valid
-                      ? () => Navigator.of(ctx).pop(nameController.text.trim())
-                      : null,
-                  child: const Text('Создать'),
-                ),
-              ],
-            );
-          },
+        return PlaylistContextMenuRegion(
+          playlist: playlist,
+          onOpen: open,
+          onDeleted: () => _closePlaylistIfOpen(playlist.playlistId),
+          child: PlaylistCard(
+            dense: true,
+            name: playlist.playlistName,
+            description: _playlistSubtitle(playlist),
+            imageUrl: playlist.playlistImageUrl,
+            onTap: open,
+            trailing: PlaylistActionsButton(
+              playlist: playlist,
+              includeOpen: false,
+              onOpen: open,
+              onDeleted: () => _closePlaylistIfOpen(playlist.playlistId),
+            ),
+          ),
         );
       },
     );
-
-    if (name != null && name.isNotEmpty) {
-      try {
-        final api = Provider.of<AuthProvider>(context, listen: false).api;
-        await api.createCustomPlaylist(name);
-        await _loadAllPlaylists();
-      } catch (e) {
-        if (mounted) showError(context, e);
-      }
-    }
   }
+
+  String _playlistSubtitle(Map<String, dynamic> playlist) {
+    final description = playlist.playlistDescription;
+    if (description.isNotEmpty) return description;
+
+    final count = playlist.playlistTrackCount;
+    if (count == 0) return 'Пусто';
+
+    final mod100 = count % 100;
+    final word = (mod100 >= 11 && mod100 <= 14)
+        ? 'треков'
+        : switch (count % 10) {
+            1 => 'трек',
+            2 || 3 || 4 => 'трека',
+            _ => 'треков',
+          };
+    return '$count $word';
+  }
+
+  void _openPlaylist(Map<String, dynamic> playlist, {required bool isCustom}) {
+    if (context.isWideWindow) {
+      setState(() {
+        _selectedPlaylist = {
+          'id': playlist.playlistId,
+          'name': playlist.playlistName,
+          'imageUrl': playlist.playlistImageUrl,
+          'isCustom': isCustom,
+        };
+      });
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlaylistTracksScreen(
+          playlistId: playlist.playlistId,
+          playlistName: playlist.playlistName,
+          imageUrl: playlist.playlistImageUrl,
+          isCustom: isCustom,
+        ),
+      ),
+    );
+  }
+
+  void _closePlaylistIfOpen(String playlistId) {
+    if (_selectedPlaylist?['id'] != playlistId) return;
+    setState(() => _selectedPlaylist = null);
+  }
+
+  Future<void> _createCustomPlaylist() => showCreatePlaylistDialog(context);
 
   Widget _buildRightPanel() {
     final colors = context.colors;
@@ -657,7 +589,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return _DesktopHeaderShell(
       title: _selectedPlaylist != null
-          ? _selectedPlaylist!['name'] as String? ?? 'Плейлист'
+          ? (context
+                  .watch<PlaylistsProvider>()
+                  .byId(_selectedPlaylist!['id'] as String? ?? '')
+                  ?.playlistName ??
+              _selectedPlaylist!['name'] as String? ??
+              'Плейлист')
           : tabTitles[_currentIndex.clamp(0, tabTitles.length - 1)],
       titleKey: ValueKey(_selectedPlaylist?['id'] ?? _currentIndex),
       onBack: _selectedPlaylist != null
@@ -750,7 +687,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
     final layout = context.layout;
     final isDesktop = layout.showRail;
     // Вкладок теперь три в обеих раскладках — подрезать индекс не нужно.
@@ -916,6 +852,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                         }))
                                 : _selectedPlaylist != null
                                     ? PlaylistTracksScreen(
+                                        key: ValueKey(
+                                            _selectedPlaylist!['id']),
                                         playlistId:
                                             _selectedPlaylist!['id'] ?? '',
                                         playlistName:
@@ -925,7 +863,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         isCustom:
                                             _selectedPlaylist!['isCustom'] ??
                                                 false,
-                                        embedded: true)
+                                        embedded: true,
+                                        onDeleted: () => setState(
+                                            () => _selectedPlaylist = null))
                                     : Center(
                                         child: ConstrainedBox(
                                             constraints: BoxConstraints(

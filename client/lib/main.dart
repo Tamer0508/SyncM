@@ -6,6 +6,7 @@ import 'providers/auth_provider.dart';
 import 'providers/friends_provider.dart';
 import 'providers/session_provider.dart';
 import 'providers/playback_provider.dart';
+import 'providers/playlists_provider.dart';
 import 'providers/appearance_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/socket_service.dart';
@@ -57,6 +58,15 @@ class MyApp extends StatelessWidget {
               session?.syncCookie(auth.cookie!);
             }
             return session ?? SessionProvider();
+          },
+        ),
+        ChangeNotifierProxyProvider<AuthProvider, PlaylistsProvider>(
+          create: (_) => PlaylistsProvider(),
+          update: (_, auth, playlists) {
+            if (auth.cookie != null) {
+              playlists?.syncCookie(auth.cookie!);
+            }
+            return playlists ?? PlaylistsProvider();
           },
         ),
         ChangeNotifierProxyProvider<AuthProvider, PlaybackProvider>(

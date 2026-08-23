@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -13,6 +12,7 @@ class PlaylistCard extends StatelessWidget {
     this.onTap,
     this.width = 150,
     this.dense = false,
+    this.trailing,
   });
 
   final bool dense;
@@ -22,6 +22,8 @@ class PlaylistCard extends StatelessWidget {
   final String? imageUrl;
   final VoidCallback? onTap;
   final double width;
+
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +146,8 @@ class PlaylistCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
+              trailing ??
+                  Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
             ],
           ),
         ),

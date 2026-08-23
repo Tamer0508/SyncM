@@ -1261,7 +1261,7 @@ class PlaybackProvider extends ChangeNotifier {
             }
           } else {
             _currentPlaylistId = null;
-            _setPlaylistTracks(null);
+            _setPlaylistTracks(knownPlaylistTracks);
           }
 
           if (track['imageUrl'] != null && !_paletteCache.containsKey(track['imageUrl'])) {
@@ -1320,7 +1320,7 @@ class PlaybackProvider extends ChangeNotifier {
         }
       } else {
         _currentPlaylistId = null;
-        _setPlaylistTracks(null);
+        _setPlaylistTracks(knownPlaylistTracks);
       }
 
       _currentTrack = track;

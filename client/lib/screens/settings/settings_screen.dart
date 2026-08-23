@@ -23,6 +23,7 @@ import '../../utils/local_store.dart';
 import '../../config.dart';
 import '../../models/user.dart';
 import '../../providers/playback_provider.dart';
+import '../../providers/playlists_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/session_foreground_service.dart';
 import '../../services/spotify_link_service.dart';
@@ -1180,6 +1181,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
     // чужим треком.
     await context.read<PlaybackProvider>().stopAndClear();
     if (!mounted) return;
+
+    context.read<PlaylistsProvider>().reset();
 
     await context.read<AuthProvider>().logout();
     if (!mounted) return;

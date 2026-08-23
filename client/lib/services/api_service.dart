@@ -660,6 +660,51 @@ class ApiService {
     });
   }
 
+  Future<Map<String, dynamic>> updatePlaylist(
+    String playlistId, {
+    String? name,
+    String? description,
+    String? imageUrl,
+    bool clearDescription = false,
+    bool clearImage = false,
+  }) async {
+    final body = <String, dynamic>{
+      if (name != null) 'name': name,
+      if (clearDescription) 'description': null else if (description != null) 'description': description,
+      if (clearImage) 'imageUrl': null else if (imageUrl != null) 'imageUrl': imageUrl,
+    };
+
+    final operation = 'updatePlaylist:$playlistId';
+    return _retryMutable(operation, () async {
+      final res = await _client.patch(
+        _uri('/playlists/$playlistId'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode(body),
+      ).timeout(timeout);
+      if (res.statusCode == 200) {
+        _invalidate('GET /playlists');
+        return _decode(res.body) as Map<String, dynamic>;
+      }
+      throw ApiException('Ошибка изменения плейлиста', res.statusCode, _extractError(res));
+    });
+  }
+
+  Future<Map<String, dynamic>> duplicatePlaylist(String playlistId, {String? name}) async {
+    final operation = 'duplicatePlaylist:$playlistId';
+    return _retryMutable(operation, () async {
+      final res = await _client.post(
+        _uri('/playlists/$playlistId/duplicate'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({if (name != null) 'name': name}),
+      ).timeout(timeout);
+      if (res.statusCode == 201) {
+        _invalidate('GET /playlists');
+        return _decode(res.body) as Map<String, dynamic>;
+      }
+      throw ApiException('Ошибка копирования плейлиста', res.statusCode, _extractError(res));
+    });
+  }
+
   Future<void> deletePlaylist(String playlistId) async {
     final operation = 'deletePlaylist:$playlistId';
     return _retryMutable(operation, () async {
@@ -674,7 +719,50 @@ class ApiService {
     });
   }
 
-  Future<Map<String, dynamic>> addTrackToPlaylist(String playlistId, String trackUri, String trackName, String artistName, {int? durationMs}) async {
+  Future<Map<String, dynamic>> uploadPlaylistCover(
+    String playlistId,
+    Uint8List bytes,
+    String fileName,
+  ) async {
+    final operation = 'uploadPlaylistCover:$playlistId';
+    return _retryMutable(operation, () async {
+      final request = http.MultipartRequest('POST', _uri('/playlists/$playlistId/cover'));
+      request.headers['Authorization'] = _headers['Authorization'] ?? '';
+      request.headers['Idempotency-Key'] = _getIdempotencyKey(operation);
+      request.files.add(http.MultipartFile.fromBytes('cover', bytes, filename: fileName));
+      final streamed = await request.send().timeout(Config.uploadTimeout);
+      final res = await http.Response.fromStream(streamed);
+      if (res.statusCode == 200) {
+        _invalidate('GET /playlists');
+        return _decode(res.body) as Map<String, dynamic>;
+      }
+      throw ApiException('Ошибка загрузки обложки', res.statusCode, _extractError(res));
+    });
+  }
+
+  Future<Map<String, dynamic>> deletePlaylistCover(String playlistId) async {
+    final operation = 'deletePlaylistCover:$playlistId';
+    return _retryMutable(operation, () async {
+      final res = await _client.delete(
+        _uri('/playlists/$playlistId/cover'),
+        headers: _headersWithIdempotency(operation),
+      ).timeout(timeout);
+      if (res.statusCode == 200) {
+        _invalidate('GET /playlists');
+        return _decode(res.body) as Map<String, dynamic>;
+      }
+      throw ApiException('Ошибка удаления обложки', res.statusCode, _extractError(res));
+    });
+  }
+
+  Future<Map<String, dynamic>> addTrackToPlaylist(
+    String playlistId,
+    String trackUri,
+    String trackName,
+    String artistName, {
+    int? durationMs,
+    String? imageUrl,
+  }) async {
     final operation = 'addTrackToPlaylist:$playlistId:$trackUri';
     return _retryMutable(operation, () async {
       final res = await _client.post(
@@ -685,18 +773,99 @@ class ApiService {
           'trackName': trackName,
           'artistName': artistName,
           'durationMs': durationMs,
+          'imageUrl': imageUrl,
         }),
       ).timeout(timeout);
       if (res.statusCode == 201) {
-        _invalidate('GET /playlists/$playlistId/tracks');
+        _invalidatePlaylistCaches(playlistId);
         return _decode(res.body) as Map<String, dynamic>;
       }
       throw ApiException('Ошибка добавления трека', res.statusCode, _extractError(res));
     });
   }
 
-  // Returns `null` when access is forbidden (HTTP 403) so the UI can
-  // display a soft placeholder instead of treating it as an error.
+  Future<({int added, int skipped})> addTracksToPlaylist(
+    String playlistId,
+    List<Map<String, dynamic>> tracks,
+  ) async {
+    final operation = 'addTracksToPlaylist:$playlistId';
+    return _retryMutable(operation, () async {
+      final res = await _client.post(
+        _uri('/playlists/$playlistId/tracks/bulk'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({'tracks': tracks}),
+      ).timeout(timeout);
+      if (res.statusCode == 200) {
+        _invalidatePlaylistCaches(playlistId);
+        final body = _decode(res.body) as Map;
+        return (
+          added: (body['added'] as num?)?.toInt() ?? 0,
+          skipped: (body['skipped'] as num?)?.toInt() ?? 0,
+        );
+      }
+      throw ApiException('Ошибка добавления треков', res.statusCode, _extractError(res));
+    });
+  }
+
+  Future<void> reorderPlaylistTracks(String playlistId, List<String> trackUris) async {
+    final operation = 'reorderPlaylistTracks:$playlistId';
+    return _retryMutable(operation, () async {
+      final res = await _client.put(
+        _uri('/playlists/$playlistId/tracks/order'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode({'trackUris': trackUris}),
+      ).timeout(timeout);
+      if (res.statusCode != 200) {
+        throw ApiException('Ошибка сохранения порядка', res.statusCode, _extractError(res));
+      }
+      _invalidatePlaylistCaches(playlistId);
+    });
+  }
+
+  Future<void> removeTrackFromPlaylist(String playlistId, String trackUri) async {
+    final operation = 'removeTrackFromPlaylist:$playlistId:$trackUri';
+    return _retryMutable(operation, () async {
+      final res = await _client.delete(
+        _uri('/playlists/$playlistId/tracks/${Uri.encodeComponent(trackUri)}'),
+        headers: _headersWithIdempotency(operation),
+      ).timeout(timeout);
+      if (res.statusCode != 200) {
+        throw ApiException('Ошибка удаления трека', res.statusCode, _extractError(res));
+      }
+      _invalidatePlaylistCaches(playlistId);
+    });
+  }
+
+  Future<void> clearPlaylist(String playlistId) async {
+    final operation = 'clearPlaylist:$playlistId';
+    return _retryMutable(operation, () async {
+      final res = await _client.delete(
+        _uri('/playlists/$playlistId/tracks'),
+        headers: _headersWithIdempotency(operation),
+      ).timeout(timeout);
+      if (res.statusCode != 200) {
+        throw ApiException('Ошибка очистки плейлиста', res.statusCode, _extractError(res));
+      }
+      _invalidatePlaylistCaches(playlistId);
+    });
+  }
+
+  void _invalidatePlaylistCaches(String playlistId) {
+    _invalidate('GET /playlists/$playlistId/tracks');
+    _invalidate('GET /playlists');
+  }
+
+  Future<List<dynamic>> searchSpotifyTracks(String query, {int limit = 30}) async {
+    final res = await _client
+        .get(
+          _uri('/spotify/search?q=${Uri.encodeQueryComponent(query)}&limit=$limit'),
+          headers: _headers,
+        )
+        .timeout(timeout);
+    if (res.statusCode == 200) return _decode(res.body) as List<dynamic>;
+    throw ApiException('Ошибка поиска', res.statusCode, _extractError(res));
+  }
+
   Future<List<dynamic>?> getPlaylistTracksById(String playlistId, {bool refresh = false}) {
     return _cachedGet('GET /playlists/$playlistId/tracks', refresh: refresh, () async {
       final res = await _client.get(_uri('/playlists/$playlistId/tracks'), headers: _headers).timeout(timeout);

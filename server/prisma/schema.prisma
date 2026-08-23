@@ -119,12 +119,15 @@ model PlaylistTrack {
   spotifyUri  String
   trackName   String
   artistName  String
+  imageUrl    String?
   durationMs  Int?
+  position    Int      @default(0)
   addedAt     DateTime @default(now())
 
   playlist    Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade) // already cascade
 
   @@unique([playlistId, spotifyUri])
+  @@index([playlistId, position])
 }
 
 model LikedTrack {
