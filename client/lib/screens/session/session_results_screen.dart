@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/screen_chrome.dart';
 
 class SessionResultsScreen extends StatelessWidget {
   const SessionResultsScreen({
@@ -34,34 +36,35 @@ class SessionResultsScreen extends StatelessWidget {
         const <Map>[];
     final hasResults = tracks.isNotEmpty;
 
-    return Scaffold(
-      // Во встроенном виде своя шапка не нужна: экран занимает лишь
-      // центральную часть, а над ней уже есть шапка главного экрана.
-      appBar: embedded ? null : AppBar(title: const Text('Итоги сессии')),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: hasResults
-                  ? _ResultsList(tracks: tracks)
-                  : const _NoMatchesView(),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: FilledButton(
-                onPressed: () {
-                  if (embedded) {
-                    onClose?.call();
-                    return;
-                  }
-                  Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
-                },
-                child: Text(embedded ? 'Готово' : 'На главную'),
-              ),
-            ),
-          ],
+    final body = Column(
+      children: [
+        Expanded(
+          child: hasResults ? _ResultsList(tracks: tracks) : const _NoMatchesView(),
         ),
+        Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: FilledButton(
+            onPressed: () {
+              if (embedded) {
+                onClose?.call();
+                return;
+              }
+              Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+            },
+            child: Text(embedded ? 'Готово' : 'На главную'),
+          ),
+        ),
+      ],
+    );
+
+    if (embedded) return SafeArea(child: body);
+
+    return ScreenChrome(
+      header: ScreenHeader(
+        title: 'Итоги сессии',
+        onBack: () => Navigator.of(context).pop(),
       ),
+      child: body,
     );
   }
 }
@@ -137,7 +140,7 @@ class _MatchTile extends StatelessWidget {
     final texts = context.texts;
 
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.sm + 4),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
         borderRadius: AppRadius.large,
@@ -188,32 +191,11 @@ class _NoMatchesView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.music_off_rounded,
-              size: 72,
-              color: colors.primary.withValues(alpha: 0.4),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Text('Совпадений нет', style: texts.titleLarge, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'В этот раз вкусы разошлись. Попробуйте ещё одну сессию — '
-              'с другой подборкой результат может быть иным.',
-              textAlign: TextAlign.center,
-              style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ),
+    return const EmptyState(
+      icon: Icons.music_off_rounded,
+      title: 'Совпадений нет',
+      message: 'В этот раз вкусы разошлись. Попробуйте ещё одну сессию — '
+          'с другой подборкой результат может быть иным.',
     );
   }
 }

@@ -69,7 +69,7 @@ class _PillState extends State<_Pill> {
     final foreground = widget.selected ? colors.surface : colors.onSurface;
 
     return AnimatedScale(
-      scale: _pressed && !context.reduceMotion ? 0.96 : 1.0,
+      scale: _pressed && !context.reduceMotion ? AppScale.control : 1.0,
       duration: AppMotion.press,
       curve: AppMotion.enter,
       child: Material(

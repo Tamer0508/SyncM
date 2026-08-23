@@ -9,6 +9,7 @@ import '../../providers/playback_provider.dart';
 import '../../theme.dart';
 import '../../widgets/add_to_playlist_sheet.dart';
 import 'artwork_pager.dart';
+import '../../utils/duration_text.dart';
 import '../../utils/image_cache.dart';
 
 class NowPlayingScreen extends StatefulWidget {
@@ -709,10 +710,10 @@ class _Header extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              'Сейчас играет',
+              'СЕЙЧАС ИГРАЕТ',
               textAlign: TextAlign.center,
-              style: context.texts.labelLarge?.copyWith(
-                letterSpacing: 2,
+              style: context.texts.labelSmall?.copyWith(
+                letterSpacing: 1.2,
                 fontWeight: FontWeight.w600,
                 color: fg.muted,
               ),
@@ -939,13 +940,6 @@ class _NowPlayingProgressBar extends StatelessWidget {
   final ValueChanged<int> onSeekChanged;
   final ValueChanged<int> onSeekEnd;
 
-  String _format(int ms) {
-    final totalSeconds = ms ~/ 1000;
-    final minutes = totalSeconds ~/ 60;
-    final seconds = totalSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final safeDuration = durationMs > 0 ? durationMs : 1;
@@ -976,11 +970,11 @@ class _NowPlayingProgressBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                _format(positionMs),
+                formatDuration(positionMs),
                 style: context.timecode(color: fg.muted),
               ),
               Text(
-                _format(durationMs),
+                formatDuration(durationMs),
                 style: context.timecode(color: fg.muted),
               ),
             ],

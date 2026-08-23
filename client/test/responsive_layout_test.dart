@@ -394,7 +394,7 @@ void main() {
       await tester.pump();
 
       final wide = tester
-          .getSize(find.byIcon(Icons.music_note).hitTestable())
+          .getSize(find.byIcon(Icons.music_note_rounded).hitTestable())
           .width;
 
       await _withWindow(tester, const Size(1100, 800));
@@ -402,7 +402,7 @@ void main() {
       await tester.pump();
 
       final narrow = tester
-          .getSize(find.byIcon(Icons.music_note).hitTestable())
+          .getSize(find.byIcon(Icons.music_note_rounded).hitTestable())
           .width;
 
       expect(narrow, lessThan(wide));

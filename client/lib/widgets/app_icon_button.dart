@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme.dart';
 import 'pressable.dart';
 
 class AppIconButton extends StatelessWidget {
@@ -22,7 +23,7 @@ class AppIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Pressable(
       enabled: onPressed != null,
-      scale: 0.9,
+      scale: AppScale.control,
       child: IconButton(
         onPressed: onPressed,
         icon: Icon(icon, size: size),

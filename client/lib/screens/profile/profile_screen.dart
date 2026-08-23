@@ -11,6 +11,7 @@ import '../../utils/artwork_color_store.dart';
 import '../../utils/image_cache.dart';
 import '../../utils/local_store.dart';
 import '../../utils/error_utils.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/mini_player.dart';
 import '../../widgets/app_menu.dart';
 import '../../widgets/skeleton.dart';
@@ -118,33 +119,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _confirmBlock(BuildContext context, String name) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.block_rounded, color: ctx.colors.error),
-        title: Text('Заблокировать $name?'),
-        content: const Text(
-          'Он не найдёт вас в поиске, не сможет отправить заявку или позвать '
-          'в сессию. Дружба будет удалена. Уведомления он не получит.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: ctx.colors.error,
-              foregroundColor: ctx.colors.onError,
-            ),
-            child: const Text('Заблокировать'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      icon: Icons.block_rounded,
+      title: 'Заблокировать $name?',
+      message: 'Он не найдёт вас в поиске, не сможет отправить заявку или '
+          'позвать в сессию. Дружба будет удалена. Уведомления он не получит.',
+      confirmLabel: 'Заблокировать',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     final targetId = _displayId;
     if (targetId == null) return;

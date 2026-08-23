@@ -6,7 +6,7 @@ class Pressable extends StatefulWidget {
   const Pressable({
     super.key,
     required this.child,
-    this.scale = 0.97,
+    this.scale = AppScale.control,
     this.enabled = true,
   });
 

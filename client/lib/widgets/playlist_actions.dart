@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../utils/error_utils.dart';
 import '../utils/notifications.dart';
 import 'app_menu.dart';
+import 'confirm_dialog.dart';
 
 enum PlaylistAction {
   open,
@@ -140,27 +141,29 @@ Future<void> runPlaylistAction(
         }
 
       case PlaylistAction.clear:
-        final confirmed = await _confirm(
+        final confirmed = await showConfirmDialog(
           context,
+          icon: Icons.playlist_remove_rounded,
           title: 'Очистить плейлист?',
           message: 'Из «${playlist.playlistName}» будут удалены все треки. '
               'Сам плейлист останется.',
           confirmLabel: 'Очистить',
         );
-        if (confirmed != true) return;
+        if (!confirmed) return;
         await playlists.clearTracks(id);
         onTracksChanged?.call();
         if (context.mounted) showSuccess(context, 'Плейлист очищен');
 
       case PlaylistAction.delete:
-        final confirmed = await _confirm(
+        final confirmed = await showConfirmDialog(
           context,
+          icon: Icons.delete_outline_rounded,
           title: 'Удалить плейлист?',
           message: '«${playlist.playlistName}» и его список треков будут '
               'удалены. Сами треки останутся в Spotify.',
           confirmLabel: 'Удалить',
         );
-        if (confirmed != true) return;
+        if (!confirmed) return;
         await playlists.delete(id);
         onDeleted?.call();
         if (context.mounted) showSuccess(context, 'Плейлист удалён');
@@ -384,37 +387,6 @@ Future<PlaylistDraft?> _showPlaylistForm(
     ),
   );
 }
-
-Future<bool?> _confirm(
-  BuildContext context, {
-  required String title,
-  required String message,
-  required String confirmLabel,
-}) {
-  return showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      icon: Icon(Icons.warning_amber_rounded, color: context.colors.error),
-      title: Text(title),
-      content: Text(message),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Отмена'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: context.colors.error,
-            foregroundColor: context.colors.onError,
-          ),
-          onPressed: () => Navigator.of(ctx).pop(true),
-          child: Text(confirmLabel),
-        ),
-      ],
-    ),
-  );
-}
-
 
 Future<void> _pickAndUploadCover(
   BuildContext context,

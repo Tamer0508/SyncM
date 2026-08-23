@@ -47,7 +47,7 @@ class _FriendTileState extends State<FriendTile> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedScale(
-        scale: _pressed && !context.reduceMotion ? 0.99 : 1.0,
+        scale: _pressed && !context.reduceMotion ? AppScale.row : 1.0,
         duration: AppMotion.press,
         curve: AppMotion.enter,
         child: Material(
@@ -63,7 +63,7 @@ class _FriendTileState extends State<FriendTile> {
             },
             child: Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm + 4,
+            horizontal: AppSpacing.sm,
             vertical: AppSpacing.xs + 2,
           ),
           child: Row(

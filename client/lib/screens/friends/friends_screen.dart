@@ -8,8 +8,10 @@ import '../../providers/friends_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/animated_notification_button.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/app_icon_button.dart';
 import '../../widgets/friend_tile.dart';
+import '../../widgets/screen_chrome.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/skeleton.dart';
 
@@ -52,60 +54,27 @@ class _FriendsScreenState extends State<FriendsScreen> {
     });
   }
 
-  Future<bool> _confirmRemove(String name) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.person_remove_rounded, color: ctx.colors.error),
-        title: const Text('Удалить из друзей?'),
-        content: Text('$name пропадёт из вашего списка друзей.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: ctx.colors.error,
-              foregroundColor: ctx.colors.onError,
-            ),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+  Future<bool> _confirmRemove(String name) {
+    return showConfirmDialog(
+      context,
+      icon: Icons.person_remove_rounded,
+      title: 'Удалить из друзей?',
+      message: '$name пропадёт из вашего списка друзей.',
+      confirmLabel: 'Удалить',
     );
-    return result ?? false;
   }
 
   Future<void> _blockFriend(Friend friend) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.block_rounded, color: ctx.colors.error),
-        title: Text('Заблокировать ${friend.name}?'),
-        content: const Text(
-          'Он не найдёт вас в поиске, не сможет отправить заявку или позвать '
-          'в сессию. Дружба будет удалена. Уведомления он не получит.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: ctx.colors.error,
-              foregroundColor: ctx.colors.onError,
-            ),
-            child: const Text('Заблокировать'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      icon: Icons.block_rounded,
+      title: 'Заблокировать ${friend.name}?',
+      message: 'Он не найдёт вас в поиске, не сможет отправить заявку или '
+          'позвать в сессию. Дружба будет удалена. Уведомления он не получит.',
+      confirmLabel: 'Заблокировать',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     try {
       final ok = await context.read<AuthProvider>().api.blockUser(friend.id);
@@ -158,14 +127,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
   Widget build(BuildContext context) {
     final prov = context.watch<FriendsProvider>();
 
-    // Свои кнопки нужны там, где их не даёт оболочка.
-    //
-    // В широкой раскладке действия друзей стоят в шапке центральной панели —
-    // второй такой же ряд был бы дублем. В узкой шапка показывает только
-    // название раздела, и кнопки рисует сам экран.
-    //
-    // Раньше здесь было собственное измерение окна (< 900), не совпадавшее с
-    // тем, по которому появляется шапка: в промежутке кнопки двоились.
     final needsOwnActions = !context.isWideWindow;
 
     final enablePullToRefresh = !kIsWeb &&
@@ -224,7 +185,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
         tooltip: 'Заявки в друзья',
         onPressed: () => Navigator.of(context).pushNamed('/friends/requests'),
       ),
-      const SizedBox(width: AppSpacing.xs),
     ];
 
     if (widget.embedded) {
@@ -232,7 +192,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       return Column(
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.xs),
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
             child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions),
           ),
           Expanded(child: body),
@@ -240,16 +200,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Друзья'), actions: actions),
-      body: body,
-      floatingActionButton: prov.friends.isEmpty
-          ? null
-          : FloatingActionButton(
-              onPressed: _openSearch,
-              tooltip: 'Найти друзей',
-              child: const Icon(Icons.person_add_rounded),
-            ),
+    return ScreenChrome(
+      header: ScreenHeader(
+        title: 'Друзья',
+        onBack: () => Navigator.of(context).pop(),
+        actions: actions,
+      ),
+      child: body,
     );
   }
 }

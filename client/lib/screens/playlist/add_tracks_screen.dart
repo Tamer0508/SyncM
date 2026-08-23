@@ -321,6 +321,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
           title: title,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Назад',
             onPressed: () => Navigator.of(context).pop(_changed),
           ),
         ),

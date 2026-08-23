@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/playback_provider.dart';
 import '../theme.dart';
+import '../utils/duration_text.dart';
 import '../utils/image_cache.dart';
 import 'animated_equalizer.dart';
 
@@ -83,13 +83,6 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
     _bounceController.forward(from: 0);
   }
 
-  String _formatDuration(int ms) {
-    final totalSeconds = ms ~/ 1000;
-    final minutes = totalSeconds ~/ 60;
-    final seconds = totalSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
@@ -108,7 +101,7 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
     }
 
     return AnimatedScale(
-      scale: _pressed && !context.reduceMotion ? 0.985 : 1.0,
+      scale: _pressed && !context.reduceMotion ? AppScale.row : 1.0,
       duration: AppMotion.press,
       curve: AppMotion.enter,
       child: Material(
@@ -124,7 +117,7 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
           },
           child: Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm + 2,
+            horizontal: AppSpacing.sm,
             vertical: AppSpacing.sm,
           ),
           child: Column(
@@ -185,7 +178,7 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
                   if (widget.durationMs != null && widget.durationMs! > 0) ...[
                     const SizedBox(width: AppSpacing.sm),
                     Text(
-                      _formatDuration(widget.durationMs!),
+                      formatDuration(widget.durationMs!),
                       // context.timecode вместо ручной настройки цифр:
                       // длительность — это время, а у времени в приложении
                       // теперь свой голос. Табличные цифры внутри стиля, так

@@ -7,6 +7,7 @@ import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/screen_chrome.dart';
 import '../../widgets/tappable_avatar.dart';
@@ -53,30 +54,15 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
   Future<void> _declineRequest(String requestId, String senderName) async {
     if (_loadingIds.contains(requestId)) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.person_remove_rounded, color: ctx.colors.error),
-        title: const Text('Отклонить заявку?'),
-        content: Text('$senderName не увидит, что вы отклонили заявку.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: ctx.colors.error,
-              foregroundColor: ctx.colors.onError,
-            ),
-            child: const Text('Отклонить'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      icon: Icons.person_remove_rounded,
+      title: 'Отклонить заявку?',
+      message: '$senderName не увидит, что вы отклонили заявку.',
+      confirmLabel: 'Отклонить',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     setState(() => _loadingIds.add(requestId));
     try {

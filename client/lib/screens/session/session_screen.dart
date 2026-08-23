@@ -13,6 +13,7 @@ import '../../models/sync_phase.dart';
 import '../../theme.dart';
 import '../../utils/local_store.dart';
 import '../../utils/error_utils.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/screen_chrome.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/tappable_avatar.dart';
@@ -276,36 +277,14 @@ class _SessionScreenState extends State<SessionScreen> {
       return;
     }
 
-    final theme = Theme.of(context);
-    final confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: Row(children: [
-                Icon(Icons.stop_circle,
-                    color: theme.colorScheme.error, size: 28),
-                const SizedBox(width: 12),
-                Text('Завершить сессию?',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700))
-              ]),
-              content: const Text('Сессия будет закрыта для всех участников.'),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Отмена')),
-                ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.error,
-                        foregroundColor: theme.colorScheme.onError,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12))),
-                    child: const Text('Завершить')),
-              ],
-            ));
-    if (confirm != true || !mounted) return;
+    final confirm = await showConfirmDialog(
+      context,
+      icon: Icons.stop_circle_outlined,
+      title: 'Завершить сессию?',
+      message: 'Сессия будет закрыта для всех участников.',
+      confirmLabel: 'Завершить',
+    );
+    if (!confirm || !mounted) return;
 
     await _doEndSession();
   }
@@ -765,7 +744,14 @@ class _RatingButtons extends StatelessWidget {
             padding: const EdgeInsets.only(right: AppSpacing.xs),
             child: Tooltip(
               message: 'Второй участник уже оценил',
-              child: Icon(Icons.circle, size: 7, color: colors.onSurfaceVariant),
+              child: Semantics(
+                label: 'Второй участник уже оценил',
+                child: Icon(
+                  Icons.circle_rounded,
+                  size: 8,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
         _RatingButton(

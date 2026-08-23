@@ -15,6 +15,7 @@ import 'package:syncm/services/prefetch_service.dart';
 import 'package:syncm/services/socket_service.dart';
 import '../../widgets/playlist_card.dart';
 import '../../widgets/playlist_actions.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
 import '../../widgets/app_icon_button.dart';
@@ -349,38 +350,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildEmptyPlaylists(bool isCustom) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isCustom ? Icons.playlist_add_rounded : Icons.link_rounded,
-              size: 36,
-              color: context.colors.onSurfaceVariant,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              isCustom
-                  ? 'Своих плейлистов пока нет — создайте первый.'
-                  : 'Плейлисты Spotify недоступны',
-              style: context.texts.bodyMedium?.copyWith(
-                color: context.colors.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (!isCustom) ...[
-              const SizedBox(height: AppSpacing.sm + 4),
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.link_rounded),
-                label: const Text('Подключить Spotify'),
-                onPressed: () => _openOwnProfile(context.isWideWindow),
-              ),
-            ],
-          ],
-        ),
-      ),
+    if (isCustom) {
+      return const EmptyState(
+        icon: Icons.playlist_add_rounded,
+        title: 'Своих плейлистов пока нет',
+        message: 'Соберите первый — и его можно будет включить в сессии.',
+      );
+    }
+
+    return EmptyState(
+      icon: Icons.link_rounded,
+      title: 'Плейлисты Spotify недоступны',
+      message: 'Подключите аккаунт Spotify, чтобы видеть здесь свою библиотеку.',
+      actionLabel: 'Подключить Spotify',
+      onAction: () => _openOwnProfile(context.isWideWindow),
     );
   }
 
@@ -1128,7 +1111,7 @@ class _HomeTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.sm + 4),
+          padding: const EdgeInsets.all(AppSpacing.md),
           child: Row(
             children: [
               Container(

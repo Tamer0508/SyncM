@@ -1,20 +1,26 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/playback_provider.dart';
+import '../theme.dart';
+import '../utils/duration_text.dart';
+import '../utils/image_cache.dart';
 import 'app_icon_button.dart';
 import 'glow_background.dart';
 
 class NowPlayingPanelCompact extends StatefulWidget {
   const NowPlayingPanelCompact({super.key});
+
   @override
-  State<NowPlayingPanelCompact> createState() =>
-      NowPlayingPanelCompactState();
+  State<NowPlayingPanelCompact> createState() => NowPlayingPanelCompactState();
 }
 
 class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
-  double _dragValue = 0.0;
-  bool _dragging = false;
+  int? _seekPreviewMs;
+
   String? _lastTrackUri;
   Color? _dominantColor;
   Color? _vibrantColor;
@@ -27,8 +33,10 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
     _refreshPaletteIfNeeded();
   }
 
-  Color get _fallbackDominant => Theme.of(context).colorScheme.surfaceContainerHigh;
-  Color get _fallbackVibrant => Theme.of(context).colorScheme.primaryContainer;
+  Color get _effectiveDominant =>
+      _dominantColor ?? context.colors.surfaceContainerHigh;
+
+  Color get _effectiveVibrant => _vibrantColor ?? context.colors.primary;
 
   void _refreshPaletteIfNeeded() {
     final pb = context.read<PlaybackProvider>();
@@ -68,281 +76,309 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
     if (!mounted) return;
     setState(() {
       _dominantColor = palette.dominantColor?.color;
-      _vibrantColor = palette.vibrantColor?.color ?? palette.lightVibrantColor?.color;
+      _vibrantColor =
+          palette.vibrantColor?.color ?? palette.lightVibrantColor?.color;
     });
   }
 
-  Color get _effectiveDominant => _dominantColor ?? _fallbackDominant;
-  Color get _effectiveVibrant => _vibrantColor ?? _fallbackVibrant;
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Consumer<PlaybackProvider>(builder: (_, pb, _) {
       final track = pb.currentTrack;
       if (track == null) return const SizedBox.shrink();
+
       final currentUri = track['uri'] as String?;
       if (currentUri != _lastTrackUri) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _refreshPaletteIfNeeded();
         });
       }
-      final title = track['title'] ?? '';
-      final artist = track['artist'] ?? '';
+
+      final colors = context.colors;
+      final texts = context.texts;
+
+      final title = track['title'] as String? ?? 'Неизвестный трек';
+      final artist = track['artist'] as String? ?? '';
       final imageBytes = pb.currentImageBytes;
       final imageUrl = track['imageUrl'] as String?;
       final durationMs = pb.durationMs;
 
-      final textColor = theme.colorScheme.onSurface;
-      final subtitleColor = theme.colorScheme.onSurface.withValues(alpha: 0.7);
-      final timeColor = theme.colorScheme.onSurface.withValues(alpha: 0.6);
-      final iconColor = theme.iconTheme.color ?? theme.colorScheme.onSurface;
-      final inactiveTrackColor = theme.colorScheme.onSurface.withValues(alpha: 0.24);
-
       return LayoutBuilder(builder: (context, constraints) {
-      final widthBudget = constraints.maxWidth - 32;
-      final heightBudget =
-          constraints.hasBoundedHeight ? constraints.maxHeight - 230 : widthBudget;
-      final artSize =
-          (widthBudget < heightBudget ? widthBudget : heightBudget)
-              .clamp(88.0, 320.0);
+        // Бюджет под обложку: ширина за вычетом отступов панели, высота — за
+        // вычетом того, что стоит ниже (подписи, полоса, таймкоды, контролы).
+        const belowArtwork = 232.0;
+        final widthBudget = constraints.maxWidth - AppSpacing.md * 2;
+        final heightBudget = constraints.hasBoundedHeight
+            ? constraints.maxHeight - belowArtwork
+            : widthBudget;
+        final artSize =
+            (widthBudget < heightBudget ? widthBudget : heightBudget)
+                .clamp(88.0, 320.0);
 
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface.withValues(alpha: 0.25),
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-                color: theme.shadowColor.withValues(alpha: 0.08),
-                blurRadius: 16,
-                offset: const Offset(0, 4))
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
+        return Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerLow,
+            borderRadius: AppRadius.large,
+          ),
           child: Stack(
             children: [
               Positioned.fill(
-                  child: GlowBackground(
-                      dominantColor: _effectiveDominant,
-                      vibrantColor: _effectiveVibrant)),
+                child: GlowBackground(
+                  dominantColor: _effectiveDominant,
+                  vibrantColor: _effectiveVibrant,
+                ),
+              ),
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.md),
                 child: SingleChildScrollView(
-                    child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: imageBytes != null
-                          ? Image.memory(imageBytes,
-                              width: artSize, height: artSize, fit: BoxFit.cover)
-                          : imageUrl != null && imageUrl.isNotEmpty
-                              ? Image.network(imageUrl,
-                                  width: artSize,
-                                  height: artSize,
-                                  fit: BoxFit.cover)
-                              : Container(
-                                  width: artSize,
-                                  height: artSize,
-                                  color: theme.colorScheme.primary
-                                      .withValues(alpha: 0.2),
-                                  child: Icon(Icons.music_note,
-                                      size: artSize * 0.4,
-                                      color: theme.colorScheme.primary)),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(title,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700, color: textColor),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _Artwork(
+                        size: artSize,
+                        bytes: imageBytes,
+                        url: imageUrl,
+                        colors: colors,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      Text(
+                        title,
+                        style: texts.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 4),
-                    Text(artist,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: subtitleColor),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 12),
-                    // Позиция слушается отдельно: её тик перестраивает
-                    // только полосу прогресса и таймкод.
-                    ValueListenableBuilder<int>(
-                      valueListenable: pb.positionNotifier,
-                      builder: (context, positionMs, _) {
-                        final fraction = durationMs > 0
-                            ? (_dragging
-                                ? _dragValue
-                                : (positionMs / durationMs).clamp(0.0, 1.0))
-                            : 0.0;
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (artist.isNotEmpty) ...[
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          artist,
+                          style: texts.bodySmall
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: AppSpacing.md),
 
-                        return Column(mainAxisSize: MainAxisSize.min, children: [
-                          _CompactProgressBar(
-                              fraction: fraction,
-                              onSeek: (val) {
-                                setState(() {
-                                  _dragValue = val;
-                                  _dragging = true;
-                                });
-                              },
-                              onSeekEnd: (val) {
-                                setState(() => _dragging = false);
-                                pb.seekTo((val * durationMs).toInt());
-                              },
-                              activeColor: _effectiveVibrant,
-                              inactiveColor: inactiveTrackColor),
-                          const SizedBox(height: 4),
-                          Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
-                              child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(_formatMs(positionMs),
-                                        style: TextStyle(
-                                            color: timeColor, fontSize: 12)),
-                                    Text(_formatMs(durationMs),
-                                        style: TextStyle(
-                                            color: timeColor, fontSize: 12))
-                                  ])),
-                        ]);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          AppIconButton(
-                              icon: Icons.shuffle,
-                              onPressed: () => pb.setShuffle(!pb.shuffleActive),
-                              color: pb.shuffleActive
-                                  ? _effectiveVibrant
-                                  : iconColor.withValues(alpha: 0.7),
-                              size: 22),
-                          AppIconButton(
-                              icon: Icons.skip_previous,
-                              onPressed: () {
-                                pb.goToPrevious();
-                                setState(() => _dragValue = 0);
-                              },
-                              size: 28,
-                              color: iconColor),
-                          Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                  shape: BoxShape.circle, color: _effectiveVibrant),
-                              child: AppIconButton(
-                                  icon: pb.isPlaying
-                                      ? Icons.pause
-                                      : Icons.play_arrow,
-                                  onPressed: () => pb.togglePlay(),
-                                  color: theme.colorScheme.onPrimary,
-                                  size: 28)),
-                          AppIconButton(
-                              icon: Icons.skip_next,
-                              onPressed: () {
-                                pb.goToNext();
-                                setState(() => _dragValue = 0);
-                              },
-                              size: 28,
-                              color: iconColor),
-                          AppIconButton(
-                              icon: pb.repeatMode == 'track'
-                                  ? Icons.repeat_one
-                                  : Icons.repeat,
-                              onPressed: () => pb.cycleRepeatMode(),
-                              color: pb.repeatActive
-                                  ? _effectiveVibrant
-                                  : iconColor.withValues(alpha: 0.7),
-                              size: 22),
-                        ]),
-                  ],
-                )),
+                      ValueListenableBuilder<int>(
+                        valueListenable: pb.positionNotifier,
+                        builder: (context, positionMs, _) {
+                          return _PanelProgressBar(
+                            positionMs: _seekPreviewMs ?? positionMs,
+                            durationMs: durationMs,
+                            accentColor: _effectiveVibrant,
+                            onSeekStart: () =>
+                                setState(() => _seekPreviewMs = positionMs),
+                            onSeekChanged: (value) =>
+                                setState(() => _seekPreviewMs = value),
+                            onSeekEnd: (value) {
+                              setState(() => _seekPreviewMs = null);
+                              pb.seekTo(value);
+                            },
+                          );
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _PanelControls(
+                        pb: pb,
+                        accentColor: _effectiveVibrant,
+                        onSeekReset: () =>
+                            setState(() => _seekPreviewMs = null),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
-        ),
-      );
+        );
       });
     });
   }
-
-  String _formatMs(int ms) {
-    final d = Duration(milliseconds: ms);
-    return '${d.inMinutes.remainder(60).toString().padLeft(2, '0')}:${d.inSeconds.remainder(60).toString().padLeft(2, '0')}';
-  }
 }
 
-class _CompactProgressBar extends StatelessWidget {
-  final double fraction;
-  final Function(double) onSeek;
-  final Function(double) onSeekEnd;
-  final Color activeColor;
-  final Color inactiveColor;
-  const _CompactProgressBar(
-      {required this.fraction,
-      required this.onSeek,
-      required this.onSeekEnd,
-      required this.activeColor,
-      required this.inactiveColor});
+class _Artwork extends StatelessWidget {
+  const _Artwork({
+    required this.size,
+    required this.bytes,
+    required this.url,
+    required this.colors,
+  });
+
+  final double size;
+  final Uint8List? bytes;
+  final String? url;
+  final ColorScheme colors;
 
   @override
   Widget build(BuildContext context) {
-    // LayoutBuilder, а не context.findRenderObject().
-    //
-    // Прежний код брал размер у контекста самого виджета — то есть у
-    // RenderPadding, который шире полосы на 32 точки (по 16 с каждой стороны),
-    // тогда как localPosition отсчитывается от GestureDetector уже ВНУТРИ
-    // отступа. Знаменатель был завышен, начало координат смещено: нажатие по
-    // левому краю не давало нуля, по правому — единицы, а расхождение на
-    // панели шириной 300 доходило до пяти процентов длины трека.
-    //
-    // Здесь constraints.maxWidth — ширина ровно той области, внутри которой
-    // считается localPosition.
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          double fractionAt(Offset local) =>
-              width <= 0 ? 0.0 : (local.dx / width).clamp(0.0, 1.0);
-
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (details) => onSeek(fractionAt(details.localPosition)),
-            onTapUp: (details) => onSeekEnd(fractionAt(details.localPosition)),
-            onHorizontalDragStart: (details) =>
-                onSeek(fractionAt(details.localPosition)),
-            onHorizontalDragUpdate: (details) =>
-                onSeek(fractionAt(details.localPosition)),
-            onHorizontalDragEnd: (_) => onSeekEnd(fraction),
-            child: SizedBox(
-              height: 20,
-              width: width,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Stack(children: [
-                  Container(
-                      width: width,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: inactiveColor,
-                          borderRadius: BorderRadius.circular(2))),
-                  FractionallySizedBox(
-                      widthFactor: fraction,
-                      child: Container(
-                          height: 4,
-                          decoration: BoxDecoration(
-                              color: activeColor,
-                              borderRadius: BorderRadius.circular(2)))),
-                ]),
-              ),
-            ),
-          );
-        },
+    final placeholder = ColoredBox(
+      color: colors.primaryContainer,
+      child: Icon(
+        Icons.music_note_rounded,
+        size: size * 0.4,
+        color: colors.onPrimaryContainer,
       ),
+    );
+
+    Widget image;
+    if (bytes != null) {
+      image = Image.memory(bytes!, width: size, height: size, fit: BoxFit.cover);
+    } else if (url != null && url!.isNotEmpty && !url!.startsWith('data:')) {
+      image = AppNetworkImage(
+        url: url!,
+        width: size,
+        height: size,
+        placeholder: placeholder,
+      );
+    } else {
+      image = placeholder;
+    }
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ClipRRect(borderRadius: AppRadius.medium, child: image),
+    );
+  }
+}
+
+class _PanelProgressBar extends StatelessWidget {
+  const _PanelProgressBar({
+    required this.positionMs,
+    required this.durationMs,
+    required this.accentColor,
+    required this.onSeekStart,
+    required this.onSeekChanged,
+    required this.onSeekEnd,
+  });
+
+  final int positionMs;
+  final int durationMs;
+  final Color accentColor;
+  final VoidCallback onSeekStart;
+  final ValueChanged<int> onSeekChanged;
+  final ValueChanged<int> onSeekEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final safeDuration = durationMs > 0 ? durationMs : 1;
+    final value = positionMs.clamp(0, safeDuration).toDouble();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: accentColor,
+            inactiveTrackColor: colors.onSurface.withValues(alpha: 0.24),
+            thumbColor: colors.onSurface,
+            overlayColor: accentColor.withValues(alpha: 0.2),
+            trackHeight: 4,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+          ),
+          child: Slider(
+            value: value,
+            max: safeDuration.toDouble(),
+            onChangeStart: (_) => onSeekStart(),
+            onChanged: (v) => onSeekChanged(v.round()),
+            onChangeEnd: (v) => onSeekEnd(v.round()),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(formatDuration(positionMs), style: context.timecode()),
+              Text(formatDuration(durationMs), style: context.timecode()),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PanelControls extends StatelessWidget {
+  const _PanelControls({
+    required this.pb,
+    required this.accentColor,
+    required this.onSeekReset,
+  });
+
+  final PlaybackProvider pb;
+  final Color accentColor;
+  final VoidCallback onSeekReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final muted = colors.onSurfaceVariant;
+
+    final onAccent =
+        ThemeData.estimateBrightnessForColor(accentColor) == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF1A1A1A);
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        AppIconButton(
+          icon: Icons.shuffle_rounded,
+          size: 22,
+          color: pb.shuffleActive ? accentColor : muted,
+          tooltip: pb.shuffleActive ? 'Перемешивание включено' : 'Перемешать',
+          onPressed: () => pb.setShuffle(!pb.shuffleActive),
+        ),
+        AppIconButton(
+          icon: Icons.skip_previous_rounded,
+          size: 28,
+          color: colors.onSurface,
+          tooltip: 'Предыдущий трек',
+          onPressed: () {
+            pb.goToPrevious();
+            onSeekReset();
+          },
+        ),
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: accentColor),
+          child: AppIconButton(
+            icon: pb.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            size: 28,
+            color: onAccent,
+            tooltip: pb.isPlaying ? 'Пауза' : 'Воспроизвести',
+            onPressed: pb.togglePlay,
+          ),
+        ),
+        AppIconButton(
+          icon: Icons.skip_next_rounded,
+          size: 28,
+          color: colors.onSurface,
+          tooltip: 'Следующий трек',
+          onPressed: () {
+            pb.goToNext();
+            onSeekReset();
+          },
+        ),
+        AppIconButton(
+          icon: pb.repeatMode == 'track'
+              ? Icons.repeat_one_rounded
+              : Icons.repeat_rounded,
+          size: 22,
+          color: pb.repeatActive ? accentColor : muted,
+          tooltip: switch (pb.repeatMode) {
+            'track' => 'Повтор одного трека',
+            'context' => 'Повтор списка',
+            _ => 'Повтор выключен',
+          },
+          onPressed: pb.cycleRepeatMode,
+        ),
+      ],
     );
   }
 }

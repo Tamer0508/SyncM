@@ -51,6 +51,16 @@ class AppMotion {
   static const Curve spring = bounce;
 }
 
+class AppScale {
+  const AppScale._();
+
+  static const double row = 0.99;
+
+  static const double card = 0.98;
+
+  static const double control = 0.96;
+}
+
 class AppRadius {
   const AppRadius._();
 

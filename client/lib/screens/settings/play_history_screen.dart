@@ -5,6 +5,7 @@ import '../../providers/auth_provider.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/screen_chrome.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/skeleton.dart';
@@ -46,30 +47,15 @@ class _PlayHistoryScreenState extends State<PlayHistoryScreen> {
   }
 
   Future<void> _clear() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.delete_outline_rounded, color: ctx.colors.error),
-        title: const Text('Очистить историю?'),
-        content: const Text('Записи о прослушанных треках будут удалены.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: ctx.colors.error,
-              foregroundColor: ctx.colors.onError,
-            ),
-            child: const Text('Очистить'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      icon: Icons.delete_outline_rounded,
+      title: 'Очистить историю?',
+      message: 'Записи о прослушанных треках будут удалены.',
+      confirmLabel: 'Очистить',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     try {
       final ok = await context.read<AuthProvider>().api.clearPlayHistory();

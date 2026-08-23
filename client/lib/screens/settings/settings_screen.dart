@@ -29,6 +29,7 @@ import '../../services/session_foreground_service.dart';
 import '../../services/spotify_link_service.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
+import '../../widgets/confirm_dialog.dart';
 import '../../widgets/tappable_avatar.dart';
 import 'avatar_crop_screen.dart';
 
@@ -691,30 +692,15 @@ class _SettingsBodyState extends State<_SettingsBody> {
     String sessionId,
     String name,
   ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.stop_circle_outlined, color: ctx.colors.error),
-        title: const Text('Завершить сессию?'),
-        content: Text('«$name» закроется у всех участников.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: ctx.colors.error,
-              foregroundColor: ctx.colors.onError,
-            ),
-            child: const Text('Завершить'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      icon: Icons.stop_circle_outlined,
+      title: 'Завершить сессию?',
+      message: '«$name» закроется у всех участников.',
+      confirmLabel: 'Завершить',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     try {
       await context.read<SessionProvider>().endSession(sessionId);
@@ -1100,33 +1086,16 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.warning_amber_rounded, color: ctx.colors.error),
-        title: const Text('Удалить аккаунт?'),
-        content: const Text(
-          'Профиль, друзья и история сессий будут удалены безвозвратно. '
+    final confirmed = await showConfirmDialog(
+      context,
+      icon: Icons.warning_amber_rounded,
+      title: 'Удалить аккаунт?',
+      message: 'Профиль, друзья и история сессий будут удалены безвозвратно. '
           'Это действие нельзя отменить.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: ctx.colors.error,
-              foregroundColor: ctx.colors.onError,
-            ),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Удалить',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     try {
       // Останавливаем воспроизведение до удаления: проигрыватель переживает
@@ -1151,30 +1120,15 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   Future<void> _confirmLogout(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.logout_rounded, color: ctx.colors.error),
-        title: const Text('Выйти из аккаунта?'),
-        content: const Text('Придётся войти заново, чтобы вернуться.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: ctx.colors.error,
-              foregroundColor: ctx.colors.onError,
-            ),
-            child: const Text('Выйти'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      icon: Icons.logout_rounded,
+      title: 'Выйти из аккаунта?',
+      message: 'Придётся войти заново, чтобы вернуться.',
+      confirmLabel: 'Выйти',
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     // Останавливаем воспроизведение до выхода: проигрыватель переживает
     // смену аккаунта, и без этого следующий вошедший видел бы панель с
