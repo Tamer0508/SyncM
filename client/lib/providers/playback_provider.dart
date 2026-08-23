@@ -70,6 +70,16 @@ class PlaybackProvider extends ChangeNotifier {
 
   int _autoCorrectionGeneration = 0;
 
+  bool _playlistEnded = false;
+
+  int _lastQueuePosition = -1;
+
+  String? _autoAdvanceGuardUri;
+
+  String? _lastRequestedUri;
+
+  static const int _trackEndLeadMs = 700;
+
   String? _pendingTrackUri;
   DateTime? _pendingSince;
   Timer? _pendingResolveTimer;
@@ -150,6 +160,8 @@ class PlaybackProvider extends ChangeNotifier {
   bool get sessionMode => _sessionMode;
   bool get queueEnded => _queueEnded;
 
+  bool get playlistEnded => _playlistEnded;
+
   Map<String, dynamic>? get currentTrack => _currentTrack;
   bool get isPlaying => _isPlaying;
 
@@ -218,8 +230,10 @@ class PlaybackProvider extends ChangeNotifier {
     final bool shouldRun = _isPlaying && !(_sessionMode && _sessionPaused);
 
     if (shouldRun) {
-      _positionTicker ??=
-          Timer.periodic(_positionTickInterval, (_) => _publishPosition());
+      _positionTicker ??= Timer.periodic(_positionTickInterval, (_) {
+        _publishPosition();
+        _checkSoloTrackEnd();
+      });
     } else {
       _positionTicker?.cancel();
       _positionTicker = null;
@@ -580,23 +594,7 @@ class PlaybackProvider extends ChangeNotifier {
           final state = await _apiService?.getPlayerState();
           if (state == null) return;
           if (_sessionPaused) return;
-          _isPlaying = state['is_playing'] ?? false;
-          _positionMs = state['progress_ms'] ?? 0;
-          _positionAnchorAt = DateTime.now();
-          _durationMs = state['item']?['duration_ms'] ?? 0;
-          final track = state['item'];
-          if (track != null) {
-            _currentTrack = {
-              'title': track['name'],
-              'artist': (track['artists'] as List?)
-                      ?.map((a) => a['name'])
-                      .join(', ') ??
-                  '',
-              'imageUrl': track['album']?['images']?[0]?['url'],
-              'uri': track['uri'],
-            };
-          }
-          notifyListeners();
+          await _updateFromPlayerState(state);
         } catch (e) {
           debugPrint('[Polling] error: $e');
         } finally {
@@ -1047,7 +1045,12 @@ class PlaybackProvider extends ChangeNotifier {
     );
   }
 
+  bool get _ownsQueue =>
+      _sessionMode || (_currentPlaylistTracks?.isNotEmpty ?? false);
+
   bool _syncPlaybackOptions(PlayerState state) {
+    if (_ownsQueue) return false;
+
     final options = state.playbackOptions;
     final String mode = switch (options.repeatMode.name) {
       'track' => 'track',
@@ -1070,6 +1073,8 @@ class PlaybackProvider extends ChangeNotifier {
     final bool wasPlaying = _isPlaying;
     final bool optionsChanged = _syncPlaybackOptions(state);
     final int previousDuration = _durationMs;
+    final int previousActivePositionMs = _lastActivePositionMs;
+    final int previousActiveDurationMs = _lastActiveDurationMs;
 
     _isPlaying = !state.isPaused;
     _durationMs = state.track?.duration ?? 0;
@@ -1093,6 +1098,7 @@ class PlaybackProvider extends ChangeNotifier {
       if (trackChanged) {
         _releaseSkipLock(notify: false);
         _queueEnrichedUri = null;
+        _autoAdvanceGuardUri = null;
       }
       if (!state.isPaused) _confirmQueueAdvance(trackUri);
 
@@ -1185,17 +1191,15 @@ class PlaybackProvider extends ChangeNotifier {
         }
       }
 
-      if (!_sessionMode &&
-          trackChanged &&
-          _shuffleActive &&
-          _currentPlaylistId != null &&
-          !_suppressAutoCorrection) {
+      if (trackChanged) {
         try {
-          await _ensurePlaylistTracksLoaded();
-          final found = _currentPlaylistTracks?.any((t) => (t['uri'] as String?) == trackUri) ?? false;
-          if (!found) _playRandomFromCurrentPlaylist();
+          await _keepPlaybackInsideQueue(
+            trackUri,
+            previousPositionMs: previousActivePositionMs,
+            previousDurationMs: previousActiveDurationMs,
+          );
         } catch (e) {
-          debugPrint('[PlaybackProvider] Error validating track against playlist: $e');
+          debugPrint('[PlaybackProvider] Error keeping playback in queue: $e');
         }
       }
     } else {
@@ -1213,6 +1217,8 @@ class PlaybackProvider extends ChangeNotifier {
     if (uri == null) return;
 
     _markPendingTrack(uri);
+    _lastRequestedUri = uri;
+    _playlistEnded = false;
 
     if (!fromSession) _sessionMode = false;
 
@@ -1473,6 +1479,9 @@ class PlaybackProvider extends ChangeNotifier {
 
   Future<void> _updateFromPlayerState(dynamic state) async {
     if (state == null) return;
+    final String? previousUri = _currentTrack?['uri'] as String?;
+    final int previousPositionMs = _positionMs;
+    final int previousDurationMs = _durationMs;
     _isPlaying = state['is_playing'] ?? false;
     _positionMs = state['progress_ms'] ?? 0;
     _positionAnchorAt = DateTime.now();
@@ -1492,19 +1501,17 @@ class PlaybackProvider extends ChangeNotifier {
         _preloadPalette(newImageUrl);
       }
 
-      if (!_sessionMode &&
-          _shuffleActive &&
-          _currentPlaylistId != null &&
-          !_suppressAutoCorrection) {
+      final uri = _currentTrack?['uri'] as String?;
+      if (uri != null && uri != previousUri) {
+        _autoAdvanceGuardUri = null;
         try {
-          await _ensurePlaylistTracksLoaded();
-          final uri = _currentTrack?['uri'] as String?;
-          final found = _currentPlaylistTracks?.any((t) => (t['uri'] as String?) == uri) ?? false;
-          if (!found) {
-            _playRandomFromCurrentPlaylist();
-          }
+          await _keepPlaybackInsideQueue(
+            uri,
+            previousPositionMs: previousPositionMs,
+            previousDurationMs: previousDurationMs,
+          );
         } catch (e) {
-          debugPrint('[PlaybackProvider] Error checking playlist membership: $e');
+          debugPrint('[PlaybackProvider] Error keeping playback in queue: $e');
         }
       }
     }
@@ -1620,20 +1627,27 @@ class PlaybackProvider extends ChangeNotifier {
         index >= 0 &&
         index < tracks.length &&
         _trackKeyOf(tracks[index]) == key) {
-      return index;
+      return _rememberQueuePosition(index);
     }
 
     if (key != null) {
       final found = _indexInQueue(tracks, key);
       if (found >= 0) {
         _currentTrack?['index'] = found;
-        return found;
+        return _rememberQueuePosition(found);
       }
     }
 
-    if (index != null && index >= 0 && index < tracks.length) return index;
+    if (index != null && index >= 0 && index < tracks.length) {
+      return _rememberQueuePosition(index);
+    }
 
     return null;
+  }
+
+  int _rememberQueuePosition(int position) {
+    _lastQueuePosition = position;
+    return position;
   }
 
   // Соседей по очереди спрашивают по нескольку раз за кадр (фон, пейджер,
@@ -1657,6 +1671,7 @@ class PlaybackProvider extends ChangeNotifier {
       identityHashCode(queue.tracks),
       queue.tracks.length,
       queue.position,
+      _repeatMode,
     );
 
     if (token != _neighbourCacheToken) {
@@ -1672,44 +1687,206 @@ class PlaybackProvider extends ChangeNotifier {
     ({List<dynamic> tracks, int position}) queue,
     int offset,
   ) {
-    final target = queue.position + offset;
-    if (target < 0 || target >= queue.tracks.length) return null;
+    final target = _resolveQueueIndex(queue, offset, automatic: false);
+    if (target == null || target == queue.position) return null;
 
     return mapSessionTrack(queue.tracks[target], target);
   }
 
-  Future<void> goToNext() async {
-    if (await playQueueNeighbour(1)) return;
-    await skipNext();
+  Future<void> goToNext() => _skip(1);
+
+  Future<void> goToPrevious() => _skip(-1);
+
+  Future<void> handleTrackCompleted() => _stepQueue(1, automatic: true);
+
+  String? get currentPlaylistId => _currentPlaylistId;
+
+  int? get currentQueueIndex =>
+      _sessionMode ? _sessionQueueIndex : _queuePosition;
+
+  int? _resolveQueueIndex(
+    ({List<dynamic> tracks, int position}) queue,
+    int direction, {
+    required bool automatic,
+  }) {
+    final int length = queue.tracks.length;
+    if (length == 0) return null;
+
+    final int position = queue.position.clamp(0, length - 1);
+
+    if (automatic && _repeatMode == 'track') return position;
+
+    if (_shuffleActive) return _randomQueueIndex(length, position);
+
+    final int target = position + direction;
+    if (target >= 0 && target < length) return target;
+
+    if (_repeatMode != 'off') return target < 0 ? length - 1 : 0;
+
+    if (direction < 0) return position;
+
+    return null;
   }
 
-  Future<void> goToPrevious() async {
-    if (await playQueueNeighbour(-1)) return;
-    await skipPrevious();
+  int _randomQueueIndex(int length, int current) {
+    if (length <= 1) return 0;
+
+    final rnd = Random();
+    int index = rnd.nextInt(length);
+    int attempts = 0;
+    while (index == current && attempts < 6) {
+      index = rnd.nextInt(length);
+      attempts++;
+    }
+    return index;
   }
 
-  Future<bool> playQueueNeighbour(int direction) async {
+  Future<bool> _stepQueue(int direction, {required bool automatic}) async {
     if (!canControlQueue) return false;
 
-    final track = direction > 0 ? nextQueueTrack : previousQueueTrack;
-    if (track == null) return false;
-
     if (_sessionMode) {
-      final target = _sessionQueueIndex + direction;
-      if (target < 0 || target >= _sessionQueue.length) return false;
-      await playSessionTrack(target);
+      if (direction > 0) {
+        await _advanceSessionQueue();
+      } else if (_sessionQueueIndex > 0) {
+        await playSessionTrack(_sessionQueueIndex - 1);
+      }
       return true;
     }
 
-    final tracks = _currentPlaylistTracks;
-    final playlistId = _currentPlaylistId;
+    if (_currentPlaylistId != null && _currentPlaylistTracks == null) {
+      await _ensurePlaylistTracksLoaded();
+    }
+
+    final queue = _activeQueue;
+    if (queue == null) {
+      return _currentPlaylistId != null || _currentPlaylistTracks != null;
+    }
+
+    final target = _resolveQueueIndex(queue, direction, automatic: automatic);
+    if (target == null) {
+      await _stopAtPlaylistEnd();
+      return true;
+    }
+
+    await _playQueueIndex(queue.tracks, target);
+    return true;
+  }
+
+  Future<void> _playQueueIndex(List<dynamic> tracks, int index) async {
+    if (index < 0 || index >= tracks.length) return;
+
+    final track = mapSessionTrack(tracks[index], index);
+    if ((track['uri'] as String?)?.isNotEmpty != true) return;
+
+    _playlistEnded = false;
+    _lastQueuePosition = index;
+    _autoAdvanceGuardUri = null;
+
+    final generation = ++_autoCorrectionGeneration;
+    _suppressAutoCorrection = true;
+    Future.delayed(const Duration(seconds: 2), () {
+      if (generation == _autoCorrectionGeneration) {
+        _suppressAutoCorrection = false;
+      }
+    });
 
     await playTrack(
       track,
-      playlistId: playlistId?.split(':').last,
+      playlistId: _currentPlaylistId == null
+          ? null
+          : _plainPlaylistId(_currentPlaylistId!),
       knownPlaylistTracks: tracks,
     );
-    return true;
+  }
+
+  Future<void> _stopAtPlaylistEnd() async {
+    _playlistEnded = true;
+    _isPlaying = false;
+    _positionAnchorAt = null;
+    _releaseSkipLock(notify: false);
+    notifyListeners();
+
+    try {
+      if (_isWindows || _isWeb) {
+        await _apiService?.pausePlayback();
+      } else {
+        await SpotifySdk.pause();
+      }
+    } catch (e) {
+      debugPrint('[Playback] Не удалось остановить плеер в конце плейлиста: $e');
+    }
+  }
+
+  bool _spotifyContinuesQueueAfter(
+      ({List<dynamic> tracks, int position}) queue) {
+    if (_repeatMode == 'track') return true;
+
+    if (_currentPlaylistId == null) return false;
+
+    if (_shuffleActive) return true;
+
+    return queue.position < queue.tracks.length - 1;
+  }
+
+  void _checkSoloTrackEnd() {
+    if (_sessionMode || !_isPlaying || _playlistEnded) return;
+    if (_isSkipping || _suppressAutoCorrection) return;
+    if (_pendingTrackUri != null) return;
+    if (_durationMs <= 0) return;
+
+    final uri = _currentTrack?['uri'] as String?;
+    if (uri == null || uri == _autoAdvanceGuardUri) return;
+
+    final queue = _activeQueue;
+    if (queue == null) return;
+    if (_spotifyContinuesQueueAfter(queue)) return;
+
+    if (positionMs < _durationMs - _trackEndLeadMs) return;
+
+    _autoAdvanceGuardUri = uri;
+    unawaited(handleTrackCompleted());
+  }
+
+  static const int _outsideQueueToleranceMs = 5000;
+
+  Future<void> _keepPlaybackInsideQueue(
+    String uri, {
+    required int previousPositionMs,
+    required int previousDurationMs,
+  }) async {
+    if (_sessionMode || _suppressAutoCorrection || !canControlQueue) return;
+
+    if (_lastRequestedUri != null &&
+        _trackKeyOf({'uri': uri}) == _trackKeyOf({'uri': _lastRequestedUri})) {
+      return;
+    }
+
+    final tracks = _currentPlaylistTracks;
+    if (tracks == null || tracks.isEmpty) return;
+    if (_indexInQueue(tracks, _trackKeyOf({'uri': uri})) >= 0) return;
+
+    final position = _lastQueuePosition;
+    if (position < 0 || position >= tracks.length) return;
+
+    if (previousDurationMs <= 0) return;
+    if (previousPositionMs < previousDurationMs - _outsideQueueToleranceMs) {
+      return;
+    }
+
+    final target = _resolveQueueIndex(
+      (tracks: tracks, position: position),
+      1,
+      automatic: true,
+    );
+
+    debugPrint('[Playback] Spotify ушёл из плейлиста — возвращаем очередь');
+
+    if (target == null) {
+      await _stopAtPlaylistEnd();
+      return;
+    }
+
+    await _playQueueIndex(tracks, target);
   }
 
   Color? dominantColorForUrl(String? url) {
@@ -1948,72 +2125,50 @@ class PlaybackProvider extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
-  Future<void> skipNext() async {
+  Future<void> skipNext() => _skip(1);
+
+  Future<void> skipPrevious() => _skip(-1);
+
+  /// Переключение трека пользователем.
+  ///
+  /// Раньше отсюда сразу уходила команда Spotify, и на последнем треке
+  /// плейлиста «следующим» становился его автоплей. Теперь решение всегда
+  /// принимает очередь; к плееру напрямую обращаемся, только если очереди
+  /// нет вовсе — трек играет сам по себе, вне какого-либо плейлиста.
+  Future<void> _skip(int direction) async {
     if (_isSkipping) return;
     _acquireSkipLock();
 
     try {
-      if (_sessionMode) {
-        await _advanceSessionQueue();
-        return;
-      }
-
       _positionMs = 0;
       _positionAnchorAt = DateTime.now();
+      _autoAdvanceGuardUri = null;
       notifyListeners();
 
-      if (_isWindows || _isWeb) {
-        if (_shuffleActive && _currentPlaylistId != null) {
-          await _playRandomFromCurrentPlaylist();
-        } else {
-          await _apiService?.skipToNext();
-          _pollForTrackChange();
-        }
-        return;
-      }
+      if (await _stepQueue(direction, automatic: false)) return;
 
-      if (_shuffleActive && _currentPlaylistId != null) {
-        await _playRandomFromCurrentPlaylist();
-      } else {
-        await SpotifySdk.skipNext();
-      }
+      await _skipExternally(direction);
     } catch (e) {
-      debugPrint('Skip next error: $e');
+      debugPrint('[Playback] Skip error: $e');
       _releaseSkipLock();
     }
   }
 
-  Future<void> skipPrevious() async {
-    if (_sessionMode && _sessionQueueIndex > 0) {
-      await playSessionTrack(_sessionQueueIndex - 1);
-      return;
-    }
-
-    _positionMs = 0;
-    _positionAnchorAt = DateTime.now();
-    notifyListeners();
-
+  Future<void> _skipExternally(int direction) async {
     if (_isWindows || _isWeb) {
-      try {
-        if (_shuffleActive && _currentPlaylistId != null) {
-          await _playRandomFromCurrentPlaylist();
-        } else {
-          await _apiService?.skipToPrevious();
-          _pollForTrackChange();
-        }
-      } catch (e) {
-        debugPrint('[Web/Windows] Skip previous error: $e');
+      if (direction > 0) {
+        await _apiService?.skipToNext();
+      } else {
+        await _apiService?.skipToPrevious();
       }
+      _pollForTrackChange();
       return;
     }
-    try {
-      if (_shuffleActive && _currentPlaylistId != null) {
-        await _playRandomFromCurrentPlaylist();
-      } else {
-        await SpotifySdk.skipPrevious();
-      }
-    } catch (e) {
-      debugPrint('[Spotify] Skip previous error: $e');
+
+    if (direction > 0) {
+      await SpotifySdk.skipNext();
+    } else {
+      await SpotifySdk.skipPrevious();
     }
   }
 
@@ -2036,53 +2191,6 @@ class PlaybackProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('[PlaybackProvider] Could not load playlist tracks: $e');
     }
-  }
-
-  Future<void> _playRandomFromCurrentPlaylist() async {
-    if (_currentPlaylistId == null) return;
-    await _ensurePlaylistTracksLoaded();
-    final tracks = _currentPlaylistTracks;
-    if (tracks == null || tracks.isEmpty) return;
-
-    final uris = <String>[];
-    for (var t in tracks) {
-      final u = t['uri'] as String?;
-      if (u != null && u.isNotEmpty) uris.add(u);
-    }
-    if (uris.isEmpty) return;
-
-    final currentUri = _currentTrack?['uri'] as String?;
-    final rnd = Random();
-    int index = rnd.nextInt(uris.length);
-    int attempts = 0;
-    while (uris[index] == currentUri && attempts < 6) {
-      index = rnd.nextInt(uris.length);
-      attempts++;
-    }
-
-    final sel = tracks[index];
-    final selectedUri = uris[index];
-    final trackMap = {
-      'uri': selectedUri,
-      'index': sel['index'] ?? index,
-      'contextIndex': sel['contextIndex'],
-      'title': sel['name'] ?? sel['title'] ?? '',
-      'artist': sel['artist'] ?? '',
-      'imageUrl': sel['imageUrl'] ?? sel['album']?['images']?[0]?['url'],
-    };
-
-    final generation = ++_autoCorrectionGeneration;
-    _suppressAutoCorrection = true;
-    Future.delayed(const Duration(seconds: 2), () {
-      if (generation == _autoCorrectionGeneration) _suppressAutoCorrection = false;
-    });
-
-    await playTrack(
-      trackMap,
-      playlistId: _plainPlaylistId(_currentPlaylistId!),
-      knownPlaylistTracks: tracks,
-      announceToSession: false,
-    );
   }
 
   Future<void> seekTo(int positionMs) async {
@@ -2184,6 +2292,9 @@ class PlaybackProvider extends ChangeNotifier {
     _currentPlaylistId = null;
     _setPlaylistTracks(null);
     _suppressAutoCorrection = false;
+    _playlistEnded = false;
+    _lastQueuePosition = -1;
+    _autoAdvanceGuardUri = null;
     _sessionMode = false;
     _setSessionQueue([]);
     _sessionQueueIndex = -1;

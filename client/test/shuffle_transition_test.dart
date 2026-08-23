@@ -187,12 +187,17 @@ void main() {
 /// это статические вызовы плагина. Поэтому инвариант закреплён по исходнику:
 /// команды воспроизведения отдаёт только playTrack, у которого есть и защита
 /// от лишнего перезапуска контекста, и подавление промежуточных событий SDK.
+///
+/// Выбор случайного трека перестал быть отдельной веткой: он часть общего
+/// разбора следующего трека, и запуск идёт через _playQueueIndex — теперь
+/// инвариант закреплён на нём.
 void _guardInvariant() {
-  test('случайный выбор не отдаёт команды плееру сам', () {
+  test('переход по очереди не отдаёт команды плееру сам', () {
     final source =
         File('lib/providers/playback_provider.dart').readAsStringSync();
 
-    const start = 'Future<void> _playRandomFromCurrentPlaylist() async {';
+    const start =
+        'Future<void> _playQueueIndex(List<dynamic> tracks, int index) async {';
     final from = source.indexOf(start);
     expect(from, isNot(-1), reason: 'метод переименован — обнови тест');
 
@@ -212,6 +217,8 @@ void _guardInvariant() {
       isNot(contains('SpotifySdk.play(')),
       reason: 'перезапуск контекста здесь и был вторым переключением',
     );
+    expect(body, isNot(contains('SpotifySdk.skipNext(')));
+    expect(body, isNot(contains('_apiService?.skipToNext(')));
     expect(body, isNot(contains('SpotifySdk.skipToIndex(')));
     expect(body, isNot(contains('_apiService?.playTrack(')));
     expect(
