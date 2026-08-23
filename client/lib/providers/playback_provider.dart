@@ -445,8 +445,11 @@ class PlaybackProvider extends ChangeNotifier {
         setSessionQueue(data['tracks'] as List);
       }
       final index = (data['trackIndex'] as num?)?.toInt() ?? 0;
+      // Второго вызова onSessionPlaybackStarted здесь нет: playSessionTrack
+      // уже сообщил о старте. Повторный вызов был лишним поводом открыть
+      // экран трека ещё раз и вдобавок падал на пустой очереди, если
+      // playSessionTrack вышел из-за неверного index.
       await playSessionTrack(index, syncToSession: false);
-      onSessionPlaybackStarted?.call(_sessionQueue[index]);
     } finally {
       _isRemoteSync = false;
     }

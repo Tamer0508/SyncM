@@ -26,12 +26,19 @@ class NowPlayingScreen extends StatefulWidget {
     this.insideSheet = false,
   });
 
+  static bool _isOpen = false;
+
+  static bool get isOpen => _isOpen;
+
   static Future<void> open(
     BuildContext context, {
     String? title,
     String? artist,
     String? artworkUrl,
   }) {
+    if (_isOpen) return Future<void>.value();
+    _isOpen = true;
+
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -52,7 +59,7 @@ class NowPlayingScreen extends StatefulWidget {
           insideSheet: true,
         ),
       ),
-    );
+    ).whenComplete(() => _isOpen = false);
   }
 
   @override
@@ -244,6 +251,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   @override
   void dispose() {
+    if (widget.insideSheet) NowPlayingScreen._isOpen = false;
+
     _routeAnimation?.removeStatusListener(_onRouteAnimation);
     _swipeProgress.dispose();
     _seekPreview.dispose();

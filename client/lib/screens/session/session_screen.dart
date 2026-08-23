@@ -48,7 +48,6 @@ class _SessionScreenState extends State<SessionScreen> {
   bool _refreshing = false;
   PlaybackProvider? _playback;
   Set<String> _onlineUserIds = {};
-  bool _isPlayerOpen = false;
 
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
 
@@ -62,51 +61,50 @@ class _SessionScreenState extends State<SessionScreen> {
     });
   }
 
-  void _openPlayerIfMobile(Map<String, dynamic> track) async {
-    if (!mounted || _isPlayerOpen) return;
+  void _openPlayerIfMobile(Map<String, dynamic> track) {
+    if (!mounted) return;
+    if (NowPlayingScreen.isOpen) return;
     if (context.layout.showNowPlayingPanel) return;
-    // Настройка «Открывать плеер при запуске». Раньше она писалась в
-    // хранилище и не читалась нигде — переключатель выглядел рабочим, но
-    // ничего не менял.
     if (!LocalStore.readBool(StoreKeys.autoOpenPlayer, defaultValue: true)) {
       return;
     }
-    _isPlayerOpen = true;
 
-
-    // Панелью, а не маршрутом: экран сессии с очередью остаётся под ней и
-    // продолжает получать события, а свайп вниз сворачивает плеер обратно.
-    await NowPlayingScreen.open(
+    unawaited(NowPlayingScreen.open(
       context,
       title: track['title'] as String?,
       artist: track['artist'] as String?,
       artworkUrl: track['imageUrl'] as String?,
-    );
-    _isPlayerOpen = false;
+    ));
+  }
+
+  Future<void> _onTracksAdded(Map<String, dynamic> data) async {
+    if (!mounted) return;
+    if (data['allTracks'] is List) {
+      setState(() {
+        _session = {
+          ..._session!,
+          'tracks': data['allTracks'],
+        };
+      });
+      _playback?.setSessionQueue(data['allTracks'] as List);
+    } else {
+      await _refreshSession();
+    }
+  }
+
+  void _onPrepareError(String msg) {
+    if (!mounted) return;
+    showAppNotification(context, message: msg, type: NotificationType.error);
   }
 
   void _setupPlaybackCallbacks() {
     _playback = Provider.of<PlaybackProvider>(context, listen: false);
     final pb = _playback!;
-    pb.onTracksAdded = (data) async {
-      if (!mounted) return;
-      if (data['allTracks'] is List) {
-        setState(() {
-          _session = {
-            ..._session!,
-            'tracks': data['allTracks'],
-          };
-        });
-        pb.setSessionQueue(data['allTracks'] as List);
-      } else {
-        await _refreshSession();
-      }
-    };
+    // Методы, а не литералы замыканий: dispose должен уметь отличить свои
+    // колбэки от чужих, а у tear-off метода это сравнение работает.
+    pb.onTracksAdded = _onTracksAdded;
     pb.onSessionPlaybackStarted = _openPlayerIfMobile;
-    pb.onPrepareError = (msg) {
-      if (!mounted) return;
-      showAppNotification(context, message: msg, type: NotificationType.error);
-    };
+    pb.onPrepareError = _onPrepareError;
   }
 
   Future<void> _onTrackTap(Map<String, dynamic> rawTrack, int index) async {
@@ -237,9 +235,14 @@ class _SessionScreenState extends State<SessionScreen> {
 
   @override
   void dispose() {
-    _playback?.onTracksAdded = null;
-    _playback?.onSessionPlaybackStarted = null;
-    _playback?.onPrepareError = null;
+    final pb = _playback;
+    if (pb != null) {
+      if (pb.onTracksAdded == _onTracksAdded) pb.onTracksAdded = null;
+      if (pb.onSessionPlaybackStarted == _openPlayerIfMobile) {
+        pb.onSessionPlaybackStarted = null;
+      }
+      if (pb.onPrepareError == _onPrepareError) pb.onPrepareError = null;
+    }
     _reconnectSub?.cancel();
     _subscriptions.cancelAll();
     super.dispose();
