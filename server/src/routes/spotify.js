@@ -15,7 +15,7 @@ const {
   SpotifyApiError,
   SpotifyNotConnectedError,
 } = require('../infrastructure/spotify/auth');
-const { collectAllPages, withPaging } = require('../infrastructure/spotify/paging');
+const { collectAllPages, withPaging, DEFAULT_PAGE_SIZE } = require('../infrastructure/spotify/paging');
 
 const getUserId = (req) => req.userId || req.session?.userId || null;
 
@@ -51,7 +51,6 @@ const playlistIdParamsSchema = z.object({
 
 const searchQuerySchema = z.object({
   q: z.string().trim().min(1, 'Пустой запрос').max(100),
-  limit: z.coerce.number().int().min(1).max(50).optional().default(30),
 });
 
 const playBodySchema = z
@@ -186,15 +185,19 @@ router.get('/search', rateLimitMiddleware(40, 60), asyncHandler(async (req, res)
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const { q, limit } = searchQuerySchema.parse(req.query);
+  const { q } = searchQuerySchema.parse(req.query);
 
   try {
     const spotifyUser = await requireSpotifyUser(userId);
-    const url =
-      'https://api.spotify.com/v1/search' +
-      `?q=${encodeURIComponent(q)}&type=track&limit=${limit}`;
 
-    const data = await spotifyGet(spotifyUser, url);
+    const target = new URL('https://api.spotify.com/v1/search');
+    target.searchParams.set('q', q);
+    target.searchParams.set('type', 'track');
+
+    const data = await spotifyGet(
+      spotifyUser,
+      withPaging(target.toString(), 0, DEFAULT_PAGE_SIZE)
+    );
 
     const tracks = (data?.tracks?.items ?? [])
       .filter((track) => track && track.id)

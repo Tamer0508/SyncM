@@ -855,10 +855,10 @@ class ApiService {
     _invalidate('GET /playlists');
   }
 
-  Future<List<dynamic>> searchSpotifyTracks(String query, {int limit = 30}) async {
+  Future<List<dynamic>> searchSpotifyTracks(String query) async {
     final res = await _client
         .get(
-          _uri('/spotify/search?q=${Uri.encodeQueryComponent(query)}&limit=$limit'),
+          _uri('/spotify/search?q=${Uri.encodeQueryComponent(query)}'),
           headers: _headers,
         )
         .timeout(timeout);

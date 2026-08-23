@@ -1,5 +1,6 @@
 const prisma = require('../../db/prisma');
 const logger = require('../logger');
+const { get: redisGet, set: redisSet } = require('../redis');
 const { getSpotifyUser, spotifyGet } = require('./auth');
 
 
@@ -44,9 +45,15 @@ async function fetchArtwork(userId, uris) {
   return result;
 }
 
+const COOLDOWN_SECONDS = 60 * 60;
+const cooldownKey = (userId) => `spotify:artwork-backfill-cooldown:${userId}`;
+
 async function backfillArtwork(userId, rows, model) {
   const missing = rows.filter((row) => !row.imageUrl).slice(0, MAX_PER_REQUEST);
   if (missing.length === 0) return rows;
+
+  const paused = await redisGet(cooldownKey(userId)).catch(() => null);
+  if (paused) return rows;
 
   try {
     const artwork = await fetchArtwork(userId, missing.map((row) => row.spotifyUri));
@@ -68,7 +75,8 @@ async function backfillArtwork(userId, rows, model) {
       }
     }
   } catch (err) {
-    logger.warn({ err, userId, model }, 'Could not backfill track artwork');
+    logger.warn({ err, userId, model }, 'Could not backfill track artwork, pausing');
+    await redisSet(cooldownKey(userId), true, COOLDOWN_SECONDS).catch(() => {});
   }
 
   return rows;
