@@ -147,7 +147,12 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     final api = auth.api;
     final pb = context.read<PlaybackProvider>();
 
-    unawaited(api.logPlay(uri, trackName, artistName));
+    unawaited(api.logPlay(
+      uri,
+      trackName,
+      artistName,
+      imageUrl: track['imageUrl'] as String?,
+    ));
 
     if (_isWindows) {
       if (auth.user?.spotifyConnected != true) {
@@ -288,6 +293,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         uri,
         track['name'] as String? ?? '',
         track['artist'] as String? ?? '',
+        imageUrl: track['imageUrl'] as String?,
       );
       if (!mounted) return;
       setState(() {
@@ -318,6 +324,18 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final playlist = _playlist;
+
+    // Играющий трек читаем здесь, один раз на весь список.
+    //
+    // Раньше каждая строка спрашивала провайдер сама — но строит их
+    // itemBuilder, который вызывается лениво, уже вне build этого виджета, а
+    // context.select там запрещён: приложение падало красным экраном сразу
+    // после добавления трека. Заодно так дешевле: одна подписка вместо одной
+    // на каждую строку.
+    final activeUri = context.select<PlaybackProvider, String?>(
+      (pb) => pb.currentTrack?['uri'] as String?,
+    );
+    final wide = context.isWideWindow;
 
     final content = CustomScrollView(
       slivers: [
@@ -355,7 +373,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
             child: _buildEmpty(playlist),
           )
         else
-          _buildTrackSliver(playlist),
+          _buildTrackSliver(activeUri: activeUri, wide: wide),
       ],
     );
 
@@ -577,8 +595,8 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   /// В своём плейлисте — перетаскиваемый: порядок задаёт человек, и хранится
   /// он на сервере. В чужом порядок задаёт Spotify, и делать вид, что его
   /// можно поменять, нельзя — там обычный список.
-  Widget _buildTrackSliver(Map<String, dynamic> playlist) {
-    final padding = const EdgeInsets.symmetric(
+  Widget _buildTrackSliver({required String? activeUri, required bool wide}) {
+    const padding = EdgeInsets.symmetric(
       horizontal: AppSpacing.sm,
       vertical: AppSpacing.sm,
     );
@@ -588,7 +606,8 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         padding: padding,
         sliver: SliverList.builder(
           itemCount: _tracks.length,
-          itemBuilder: (context, i) => _buildTrackCard(i, playlist),
+          itemBuilder: (context, i) =>
+              _buildTrackCard(context, i, activeUri: activeUri, wide: wide),
         ),
       );
     }
@@ -598,7 +617,8 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       sliver: SliverReorderableList(
         itemCount: _tracks.length,
         onReorder: _reorder,
-        itemBuilder: (context, i) => _buildTrackCard(i, playlist),
+        itemBuilder: (context, i) =>
+            _buildTrackCard(context, i, activeUri: activeUri, wide: wide),
         // Плавающая копия строки во время перетаскивания: без неё строка
         // теряет фон списка и на тёмной теме превращается в текст на пустоте.
         proxyDecorator: (child, index, animation) => Material(
@@ -611,12 +631,20 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     );
   }
 
-  Widget _buildTrackCard(int index, Map<String, dynamic> playlist) {
+  /// Строка трека.
+  ///
+  /// [context] — именно тот, что дал itemBuilder, а не context самого экрана:
+  /// строки строятся лениво при прокрутке, и обращаться отсюда к состоянию
+  /// экрана как к своему нельзя.
+  Widget _buildTrackCard(
+    BuildContext context,
+    int index, {
+    required String? activeUri,
+    required bool wide,
+  }) {
     final track = _tracks[index];
     final uri = track['uri'] as String? ?? '';
-    final isActive = context.select<PlaybackProvider, bool>(
-      (pb) => pb.currentTrack?['uri'] == uri,
-    );
+    final isActive = uri.isNotEmpty && uri == activeUri;
 
     final card = Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.xs),
@@ -659,7 +687,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                   ),
               ],
             ),
-            if (widget.isCustom) _buildDragHandle(index),
+            if (widget.isCustom && wide) _buildDragHandle(context, index),
           ],
         ),
       ),
@@ -674,14 +702,12 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     return ReorderableDelayedDragStartListener(
       key: ValueKey(uri.isEmpty ? '$index' : uri),
       index: index,
-      enabled: !context.isWideWindow,
+      enabled: !wide,
       child: card,
     );
   }
 
-  Widget _buildDragHandle(int index) {
-    if (!context.isWideWindow) return const SizedBox.shrink();
-
+  Widget _buildDragHandle(BuildContext context, int index) {
     return ReorderableDragStartListener(
       index: index,
       child: Padding(

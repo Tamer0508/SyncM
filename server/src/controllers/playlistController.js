@@ -8,6 +8,7 @@ const prisma = require('../db/prisma');
 const { getOrSet, incrementVersion } = require('../infrastructure/redis');
 const { withLock } = require('../infrastructure/lock');
 const { addPlaylistSyncJob } = require('../infrastructure/queue');
+const { backfillArtwork } = require('../infrastructure/spotify/artwork');
 const asyncHandler = require('../utils/asyncHandler');
 const logger = require('../infrastructure/logger');
 
@@ -45,6 +46,7 @@ const toggleLikeSchema = z.object({
   spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
   trackName: z.string().nullable().optional(),
   artistName: z.string().nullable().optional(),
+  imageUrl: httpUrlSchema.nullable().optional(),
 });
 
 const importPlaylistSchema = z.object({
@@ -88,6 +90,7 @@ const logPlaySchema = z.object({
   spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
   trackName: z.string().nullable().optional(),
   artistName: z.string().nullable().optional(),
+  imageUrl: httpUrlSchema.nullable().optional(),
 });
 
 const serializeTrack = (track) => ({
@@ -195,7 +198,7 @@ const toggleLike = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const { spotifyUri, trackName, artistName } = toggleLikeSchema.parse(req.body);
+  const { spotifyUri, trackName, artistName, imageUrl } = toggleLikeSchema.parse(req.body);
 
   const existing = await prisma.likedTrack.findUnique({
     where: { userId_spotifyUri: { userId, spotifyUri } },
@@ -207,7 +210,7 @@ const toggleLike = asyncHandler(async (req, res) => {
     return res.json({ liked: false });
   } else {
     await prisma.likedTrack.create({
-      data: { userId, spotifyUri, trackName, artistName },
+      data: { userId, spotifyUri, trackName, artistName, imageUrl },
     });
     await incrementVersion(`db:liked-tracks:${userId}`);
     return res.json({ liked: true });
@@ -218,11 +221,12 @@ const getLikedTracks = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const tracks = await getOrSet(`db:liked-tracks:${userId}`, 'list', 120, async () => {
-    return prisma.likedTrack.findMany({
+  const tracks = await getOrSet(`db:liked-tracks:${userId}`, 'list-v2', 120, async () => {
+    const rows = await prisma.likedTrack.findMany({
       where: { userId },
       orderBy: { likedAt: 'desc' },
     });
+    return backfillArtwork(userId, rows, 'likedTrack');
   });
 
   res.json(tracks);
@@ -530,10 +534,10 @@ const logPlay = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-  const { spotifyUri, trackName, artistName } = logPlaySchema.parse(req.body);
+  const { spotifyUri, trackName, artistName, imageUrl } = logPlaySchema.parse(req.body);
 
   await prisma.playHistory.create({
-    data: { userId, spotifyUri, trackName, artistName },
+    data: { userId, spotifyUri, trackName, artistName, imageUrl },
   });
 
   res.status(201).json({ success: true });

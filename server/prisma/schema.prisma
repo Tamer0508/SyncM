@@ -136,6 +136,9 @@ model LikedTrack {
   spotifyUri  String
   trackName   String
   artistName  String
+  // Обложка. Nullable, потому что у записей, сделанных до этой колонки, её
+  // нет — они дозаполняются из Spotify при первом чтении списка.
+  imageUrl    String?
   likedAt     DateTime @default(now())
 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
@@ -218,6 +221,8 @@ model PlayHistory {
   spotifyUri String
   trackName  String
   artistName String
+  // См. LikedTrack.imageUrl — та же история и то же дозаполнение.
+  imageUrl   String?
   playedAt   DateTime @default(now())
 
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade

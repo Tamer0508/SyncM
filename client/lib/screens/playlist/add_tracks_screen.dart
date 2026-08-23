@@ -540,18 +540,33 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
           showLike: false,
           selected: selected,
           onPlay: already ? null : () => _toggle(track),
-          trailing: already
-              ? Tooltip(
-                  message: 'Уже в плейлисте',
-                  child: Icon(
-                    Icons.check_circle_rounded,
-                    color: context.colors.primary,
-                  ),
-                )
-              : Checkbox(
-                  value: selected,
-                  onChanged: uri.isEmpty ? null : (_) => _toggle(track),
-                ),
+          // Общая коробка под флажок и галочку.
+          //
+          // Checkbox занимает 48 точек — размер зоны нажатия по Material, — а
+          // голая иконка 24, и строки с уже добавленными треками съезжали
+          // вправо относительно соседних: колонка справа переставала быть
+          // колонкой. Ширина здесь одна на оба состояния, меняется только
+          // содержимое.
+          trailing: SizedBox.square(
+            dimension: 48,
+            child: Center(
+              child: already
+                  // Галочка вместо погашенного флажка: добавленное выбрать
+                  // нельзя, и неактивный флажок читался бы как «сейчас
+                  // нельзя, попробуйте иначе», а не как «уже сделано».
+                  ? Tooltip(
+                      message: 'Уже в плейлисте',
+                      child: Icon(
+                        Icons.check_circle_rounded,
+                        color: context.colors.primary,
+                      ),
+                    )
+                  : Checkbox(
+                      value: selected,
+                      onChanged: uri.isEmpty ? null : (_) => _toggle(track),
+                    ),
+            ),
+          ),
         );
       },
     );

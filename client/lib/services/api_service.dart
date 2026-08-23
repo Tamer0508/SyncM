@@ -875,7 +875,12 @@ class ApiService {
     });
   }
 
-  Future<bool> toggleLike(String spotifyUri, String trackName, String artistName) async {
+  Future<bool> toggleLike(
+    String spotifyUri,
+    String trackName,
+    String artistName, {
+    String? imageUrl,
+  }) async {
     final operation = 'toggleLike:$spotifyUri';
     return _retryMutable(operation, () async {
       final res = await _client.post(
@@ -885,6 +890,7 @@ class ApiService {
           'spotifyUri': spotifyUri,
           'trackName': trackName,
           'artistName': artistName,
+          'imageUrl': imageUrl,
         }),
       ).timeout(timeout);
       if (res.statusCode == 200) {
@@ -903,7 +909,12 @@ class ApiService {
     });
   }
 
-  Future<void> logPlay(String spotifyUri, String trackName, String artistName) async {
+  Future<void> logPlay(
+    String spotifyUri,
+    String trackName,
+    String artistName, {
+    String? imageUrl,
+  }) async {
     try {
       await _retryMutable('logPlay:$spotifyUri', () async {
         final res = await _client.post(
@@ -913,6 +924,7 @@ class ApiService {
             'spotifyUri': spotifyUri,
             'trackName': trackName,
             'artistName': artistName,
+            'imageUrl': imageUrl,
           }),
         ).timeout(timeout);
         _invalidate('GET /auth/history');

@@ -10,6 +10,7 @@ const { z } = require('zod');
 
 const { getOrSet, incrementVersion, set: redisSet, get: redisGet, del: redisDel } = require('../infrastructure/redis');
 const { encryptAccessToken, encryptRefreshToken } = require('../infrastructure/spotify/auth');
+const { backfillArtwork } = require('../infrastructure/spotify/artwork');
 const { issueAuthToken, revokeAuthToken, revokeAllUserTokens } = require('../infrastructure/authTokens');
 const { getIo } = require('../socket');
 const logger = require('../infrastructure/logger');
@@ -899,7 +900,13 @@ const getPlayHistory = asyncHandler(async (req, res) => {
     where: { userId },
     orderBy: { playedAt: 'desc' },
     take: limit * 4,
-    select: { spotifyUri: true, trackName: true, artistName: true, playedAt: true },
+    select: {
+      spotifyUri: true,
+      trackName: true,
+      artistName: true,
+      imageUrl: true,
+      playedAt: true,
+    },
   });
 
   const seen = new Set();
@@ -910,6 +917,8 @@ const getPlayHistory = asyncHandler(async (req, res) => {
     unique.push(row);
     if (unique.length >= limit) break;
   }
+
+  await backfillArtwork(userId, unique, 'playHistory');
 
   res.json(unique);
 });

@@ -121,6 +121,7 @@ class _SessionScreenState extends State<SessionScreen> {
       uri,
       track['title'] as String? ?? '',
       track['artist'] as String? ?? '',
+      imageUrl: track['imageUrl'] as String?,
     ));
 
     if (_isWindows && auth.user?.spotifyConnected != true) {

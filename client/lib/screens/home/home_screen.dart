@@ -332,16 +332,12 @@ class _HomeScreenState extends State<HomeScreen> {
         if (isCustom)
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
               AppSpacing.sm,
-              AppSpacing.md,
-              AppSpacing.xs,
+              AppSpacing.sm,
+              AppSpacing.sm,
+              0,
             ),
-            child: FilledButton.tonalIcon(
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Создать плейлист'),
-              onPressed: _createCustomPlaylist,
-            ),
+            child: _CreatePlaylistTile(onTap: _createCustomPlaylist),
           ),
         Expanded(
           child: playlists.isEmpty
@@ -966,6 +962,50 @@ class _MobileHeader extends StatelessWidget {
   }
 }
 
+
+class _CreatePlaylistTile extends StatelessWidget {
+  const _CreatePlaylistTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: AppRadius.medium,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: AppRadius.small,
+                ),
+                alignment: Alignment.center,
+                child: Icon(Icons.add_rounded, color: colors.primary),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text('Создать плейлист', style: context.texts.titleSmall),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Приветственная карточка с двумя основными действиями.
 class _StartSessionCard extends StatelessWidget {
