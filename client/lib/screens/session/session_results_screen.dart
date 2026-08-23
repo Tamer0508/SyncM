@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/screen_chrome.dart';
@@ -51,7 +52,7 @@ class SessionResultsScreen extends StatelessWidget {
               }
               Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
             },
-            child: Text(embedded ? 'Готово' : 'На главную'),
+            child: Text(embedded ? L.of(context).cropDone : L.of(context).resultsBackHome),
           ),
         ),
       ],
@@ -61,7 +62,7 @@ class SessionResultsScreen extends StatelessWidget {
 
     return ScreenChrome(
       header: ScreenHeader(
-        title: 'Итоги сессии',
+        title: L.of(context).resultsTitle,
         onBack: () => Navigator.of(context).pop(),
       ),
       child: body,
@@ -98,10 +99,10 @@ class _ResultsList extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Совпадения', style: texts.headlineMedium),
+                Text(L.of(context).resultsMatches, style: texts.headlineMedium),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                  'Эти треки понравились обоим.',
+                  L.of(context).resultsMatchesHint,
                   style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
                 ),
               ],
@@ -112,7 +113,7 @@ class _ResultsList extends StatelessWidget {
         final track = tracks[i - 1];
         return _MatchTile(
           index: i,
-          trackName: track['trackName'] as String? ?? 'Без названия',
+          trackName: track['trackName'] as String? ?? L.of(context).historyUntitled,
           artistName: track['artistName'] as String? ?? '',
           imageUrl: track['imageUrl'] as String?,
         );
@@ -191,11 +192,10 @@ class _NoMatchesView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const EmptyState(
+    return EmptyState(
       icon: Icons.music_off_rounded,
-      title: 'Совпадений нет',
-      message: 'В этот раз вкусы разошлись. Попробуйте ещё одну сессию — '
-          'с другой подборкой результат может быть иным.',
+      title: L.of(context).resultsNoMatches,
+      message: L.of(context).resultsNoMatchesHint,
     );
   }
 }

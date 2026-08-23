@@ -5,6 +5,7 @@ import 'package:crop_image/crop_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/notifications.dart';
 
@@ -12,14 +13,14 @@ class AvatarCropScreen extends StatefulWidget {
   const AvatarCropScreen({
     super.key,
     required this.imageBytes,
-    this.title = 'Кадрирование',
-    this.hint = 'Область всегда квадратная — так аватар выглядит одинаково везде.',
+    this.title,
+    this.hint,
   });
 
   final Uint8List imageBytes;
 
-  final String title;
-  final String hint;
+  final String? title;
+  final String? hint;
 
   static const int outputSize = 512;
 
@@ -51,7 +52,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
     try {
       final cropped = await _controller.croppedBitmap();
       final byteData = await cropped.toByteData(format: ImageByteFormat.png);
-      if (byteData == null) throw StateError('Не удалось получить данные изображения');
+      if (byteData == null) throw StateError(L.of(context).cropNoImageData);
 
       final raw = byteData.buffer.asUint8List();
       final resized = _resize(raw, AvatarCropScreen.outputSize);
@@ -63,7 +64,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
       setState(() => _processing = false);
       showAppNotification(
         context,
-        message: 'Не удалось обработать изображение',
+        message: L.of(context).cropFailed,
         type: NotificationType.error,
       );
     }
@@ -90,7 +91,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
-        title: Text(widget.title),
+        title: Text(widget.title ?? L.of(context).cropTitle),
         actions: [
           TextButton(
             onPressed: _processing ? null : _apply,
@@ -100,7 +101,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
-                : const Text('Готово', style: TextStyle(color: Colors.white)),
+                : Text(L.of(context).cropDone, style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -134,7 +135,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
               child: Column(
                 children: [
                   Text(
-                    widget.hint,
+                    widget.hint ?? L.of(context).cropHint,
                     textAlign: TextAlign.center,
                     style: context.texts.bodySmall?.copyWith(color: Colors.white70),
                   ),
@@ -147,7 +148,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
                             ? null
                             : () => _controller.rotateLeft(),
                         icon: const Icon(Icons.rotate_left_rounded, color: Colors.white),
-                        label: const Text('Влево', style: TextStyle(color: Colors.white)),
+                        label: Text(L.of(context).cropRotateLeft, style: TextStyle(color: Colors.white)),
                       ),
                       const SizedBox(width: AppSpacing.md),
                       TextButton.icon(
@@ -155,7 +156,7 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
                             ? null
                             : () => _controller.rotateRight(),
                         icon: const Icon(Icons.rotate_right_rounded, color: Colors.white),
-                        label: const Text('Вправо', style: TextStyle(color: Colors.white)),
+                        label: Text(L.of(context).cropRotateRight, style: TextStyle(color: Colors.white)),
                       ),
                     ],
                   ),

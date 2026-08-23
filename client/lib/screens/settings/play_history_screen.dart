@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
@@ -50,9 +51,9 @@ class _PlayHistoryScreenState extends State<PlayHistoryScreen> {
     final confirmed = await showConfirmDialog(
       context,
       icon: Icons.delete_outline_rounded,
-      title: 'Очистить историю?',
-      message: 'Записи о прослушанных треках будут удалены.',
-      confirmLabel: 'Очистить',
+      title: L.of(context).historyClearTitle,
+      message: L.of(context).historyClearMessage,
+      confirmLabel: L.of(context).historyClear,
     );
 
     if (!confirmed || !mounted) return;
@@ -62,9 +63,9 @@ class _PlayHistoryScreenState extends State<PlayHistoryScreen> {
       if (!mounted) return;
       if (ok) {
         setState(() => _items = []);
-        showSuccess(context, 'История очищена');
+        showSuccess(context, L.of(context).historyCleared);
       } else {
-        showError(context, 'Не удалось очистить историю', force: true);
+        showError(context, L.of(context).historyClearFailed, force: true);
       }
     } catch (err) {
       if (!mounted) return;
@@ -81,12 +82,13 @@ class _PlayHistoryScreenState extends State<PlayHistoryScreen> {
     final at = DateTime.tryParse(raw)?.toLocal();
     if (at == null) return '';
 
+    final l = L.of(context);
     final diff = DateTime.now().difference(at);
-    if (diff.inMinutes < 1) return 'только что';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} мин. назад';
-    if (diff.inHours < 24) return '${diff.inHours} ч. назад';
-    if (diff.inDays == 1) return 'вчера';
-    if (diff.inDays < 7) return '${diff.inDays} д. назад';
+    if (diff.inMinutes < 1) return l.historyJustNow;
+    if (diff.inMinutes < 60) return l.minutesAgoShort(diff.inMinutes);
+    if (diff.inHours < 24) return l.hoursAgoShort(diff.inHours);
+    if (diff.inDays == 1) return l.historyYesterday;
+    if (diff.inDays < 7) return l.daysAgoShort(diff.inDays);
     return '${at.day.toString().padLeft(2, '0')}.${at.month.toString().padLeft(2, '0')}';
   }
 
@@ -95,14 +97,14 @@ class _PlayHistoryScreenState extends State<PlayHistoryScreen> {
     return ScreenChrome(
       embedded: widget.embedded,
       header: ScreenHeader(
-        title: 'История',
+        title: L.of(context).historyTitle,
         onBack: widget.onBack ??
             (widget.embedded ? null : () => Navigator.of(context).pop()),
         actions: [
           if (_items.isNotEmpty)
             AppIconButton(
               icon: Icons.delete_outline_rounded,
-              tooltip: 'Очистить',
+              tooltip: L.of(context).historyClear,
               onPressed: _clear,
             ),
         ],
@@ -143,7 +145,7 @@ class _PlayHistoryScreenState extends State<PlayHistoryScreen> {
                   size: 20, color: context.colors.onSurfaceVariant),
             ),
             title: Text(
-              item['trackName'] as String? ?? 'Без названия',
+              item['trackName'] as String? ?? L.of(context).historyUntitled,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -169,10 +171,10 @@ class _EmptyHistory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const EmptyState(
+    return EmptyState(
       icon: Icons.history_rounded,
-      title: 'История пуста',
-      message: 'Здесь появятся треки, которые вы включали в SyncM.',
+      title: L.of(context).historyEmptyTitle,
+      message: L.of(context).historyEmptyMessage,
     );
   }
 }

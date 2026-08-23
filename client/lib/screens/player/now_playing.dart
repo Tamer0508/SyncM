@@ -6,6 +6,7 @@ import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
 import '../../providers/appearance_provider.dart';
 import '../../providers/playback_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../widgets/add_to_playlist_sheet.dart';
 import 'artwork_pager.dart';
@@ -706,11 +707,11 @@ class _Header extends StatelessWidget {
             onPressed: onClose,
             icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30),
             color: fg.primary,
-            tooltip: 'Свернуть',
+            tooltip: L.of(context).commonCollapse,
           ),
           Expanded(
             child: Text(
-              'СЕЙЧАС ИГРАЕТ',
+              L.of(context).playerNowPlayingLabel,
               textAlign: TextAlign.center,
               style: context.texts.labelSmall?.copyWith(
                 letterSpacing: 1.2,
@@ -749,7 +750,7 @@ class _AddCurrentTrackButton extends StatelessWidget {
       }),
       icon: const Icon(Icons.playlist_add_rounded, size: 26),
       color: fg.primary,
-      tooltip: 'Добавить в плейлист',
+      tooltip: L.of(context).addToPlaylistTitle,
     );
   }
 }
@@ -827,14 +828,14 @@ class _Controls extends StatelessWidget {
           isActive: isShuffle,
           accentColor: accentColor,
           fg: fg,
-          tooltip: isShuffle ? 'Перемешивание включено' : 'Перемешать',
+          tooltip: isShuffle ? L.of(context).playerShuffleOn : L.of(context).playerShuffle,
           onPressed: onShuffle,
         ),
         IconButton(
           onPressed: onPrevious,
           icon: const Icon(Icons.skip_previous_rounded, size: 40),
           color: fg.primary,
-          tooltip: 'Предыдущий трек',
+          tooltip: L.of(context).playerPrevious,
         ),
         Container(
           decoration: BoxDecoration(
@@ -852,7 +853,7 @@ class _Controls extends StatelessWidget {
             onPressed: onToggle,
             iconSize: 44,
             padding: const EdgeInsets.all(AppSpacing.md),
-            tooltip: isPlaying ? 'Пауза' : 'Воспроизвести',
+            tooltip: isPlaying ? L.of(context).playerPause : L.of(context).playerPlay,
             icon: AnimatedSwitcher(
               duration: AppMotion.short,
               transitionBuilder: (child, animation) => ScaleTransition(
@@ -871,7 +872,7 @@ class _Controls extends StatelessWidget {
           onPressed: onNext,
           icon: const Icon(Icons.skip_next_rounded, size: 40),
           color: fg.primary,
-          tooltip: 'Следующий трек',
+          tooltip: L.of(context).playerNext,
         ),
         _ModeButton(
           icon: repeatMode == 'track' ? Icons.repeat_one_rounded : Icons.repeat_rounded,
@@ -879,9 +880,9 @@ class _Controls extends StatelessWidget {
           accentColor: accentColor,
           fg: fg,
           tooltip: switch (repeatMode) {
-            'track' => 'Повтор одного трека',
-            'context' => 'Повтор списка',
-            _ => 'Повтор выключен',
+            'track' => L.of(context).playerRepeatOne,
+            'context' => L.of(context).playerRepeatAll,
+            _ => L.of(context).playerRepeatOff,
           },
           onPressed: onRepeat,
         ),

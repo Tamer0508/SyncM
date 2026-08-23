@@ -1,3 +1,4 @@
+const { t } = require('../infrastructure/i18n');
 const axios = require('axios');
 const prisma = require('../db/prisma');
 const { OAuth2Client } = require('google-auth-library');
@@ -11,7 +12,19 @@ const { z } = require('zod');
 const { getOrSet, incrementVersion, set: redisSet, get: redisGet, del: redisDel } = require('../infrastructure/redis');
 const { encryptAccessToken, encryptRefreshToken } = require('../infrastructure/spotify/auth');
 const { backfillArtwork } = require('../infrastructure/spotify/artwork');
-const { issueAuthToken, revokeAuthToken, revokeAllUserTokens } = require('../infrastructure/authTokens');
+const {
+  issueAuthToken,
+  revokeAuthToken,
+  revokeAllUserTokens,
+  listUserTokens,
+  revokeUserTokenById,
+} = require('../infrastructure/authTokens');
+const { describeDevice, deviceIdFor } = require('../utils/device');
+const {
+  preferencesSchema,
+  withDefaults,
+  mergePreferences,
+} = require('../utils/preferences');
 const { getIo } = require('../socket');
 const logger = require('../infrastructure/logger');
 const asyncHandler = require('../utils/asyncHandler');
@@ -125,8 +138,32 @@ const updateSettingsSchema = z.object({
 
   isSearchHidden: z.boolean().optional(),
   isActivityHidden: z.boolean().optional(),
+
+  allowSessionInvites: z.enum(['friends', 'nobody']).optional(),
+
+  preferences: preferencesSchema.optional(),
 }).refine(data => Object.keys(data).length > 0, {
   message: 'Нет данных для обновления',
+});
+
+// Что отдаём как «настройки». Один набор для чтения и для ответа на запись —
+// клиенту не приходится гадать, что изменилось.
+const SETTINGS_SELECT = {
+  isOnlineHidden: true,
+  isFriendsHidden: true,
+  isActivityHidden: true,
+  isSearchHidden: true,
+  allowSessionInvites: true,
+  preferences: true,
+};
+
+const toSettingsResponse = (row) => ({
+  isOnlineHidden: row.isOnlineHidden,
+  isFriendsHidden: row.isFriendsHidden,
+  isActivityHidden: row.isActivityHidden,
+  isSearchHidden: row.isSearchHidden,
+  allowSessionInvites: row.allowSessionInvites,
+  preferences: withDefaults(row.preferences),
 });
 
 const updateProfileSchema = z.object({
@@ -151,6 +188,11 @@ const destroySession = (req) =>
 async function loginAsUser(req, userId) {
   await regenerateSession(req);
   req.session.userId = userId;
+  // Браузерная сессия — такой же сеанс, как токен приложения, и попадает в
+  // тот же список устройств. Описание снимается один раз, при входе.
+  req.session.device = describeDevice(req);
+  req.session.createdAt = Date.now();
+  req.session.lastSeenAt = Date.now();
   await saveSession(req);
 }
 
@@ -158,6 +200,15 @@ const invalidateUserCaches = (userId) =>
   Promise.all([
     incrementVersion(`db:user-profile:${userId}`),
     incrementVersion(`db:user-settings:${userId}`),
+  ]);
+
+// Состояние подключения Spotify кэшируется отдельно и проверяется живым
+// запросом (см. routes/spotify.js). После привязки аккаунта старый ответ
+// «не подключён» провисел бы ещё пять минут, поэтому гасим его сразу.
+const invalidateSpotifyCaches = (userId) =>
+  Promise.all([
+    incrementVersion(`spotify:status:${userId}`),
+    incrementVersion(`spotify:token-info:${userId}`),
   ]);
 
 
@@ -229,7 +280,7 @@ const callback = asyncHandler(async (req, res) => {
 
   if (!storedState && !sessionStateOk) {
     logger.warn({ hasExpected: !!expectedState }, 'Spotify OAuth state mismatch');
-    return res.status(400).json({ error: 'Некорректный или устаревший запрос авторизации' });
+    return res.status(400).json({ error: t(req, 'badOauthState') });
   }
 
   const returnTo = sanitizeReturnTo(storedState?.returnTo ?? req.session.spotifyOAuthReturnTo);
@@ -261,7 +312,7 @@ const callback = asyncHandler(async (req, res) => {
   const { access_token, refresh_token } = tokenResponse.data;
   if (!access_token) {
     logger.error('Spotify token exchange returned no access_token');
-    return res.status(502).json({ error: 'Не удалось получить токен Spotify' });
+    return res.status(502).json({ error: t(req, 'spotifyTokenFailed') });
   }
 
   let profile;
@@ -341,9 +392,9 @@ const callback = asyncHandler(async (req, res) => {
   }
 
   await loginAsUser(req, finalUserId);
-  await invalidateUserCaches(finalUserId);
+  await Promise.all([invalidateUserCaches(finalUserId), invalidateSpotifyCaches(finalUserId)]);
 
-  const authToken = await issueAuthToken(finalUserId);
+  const authToken = await issueAuthToken(finalUserId, { device: describeDevice(req) });
   const cookie = `connect.sid=${req.sessionID}`;
 
   const finished = finishSpotifyLink(res, returnTo, { token: authToken, cookie });
@@ -362,7 +413,7 @@ const createSpotifyLinkIntent = asyncHandler(async (req, res) => {
   const returnTo = sanitizeReturnTo(req.body?.returnTo);
 
   if (req.body?.returnTo && !returnTo) {
-    return res.status(400).json({ error: 'Недопустимый адрес возврата' });
+    return res.status(400).json({ error: t(req, 'badReturnUrl') });
   }
 
   const intentId = crypto.randomBytes(16).toString('hex');
@@ -373,7 +424,7 @@ const createSpotifyLinkIntent = asyncHandler(async (req, res) => {
 
 const getMe = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const userData = await getOrSet(`db:user-profile:${userId}`, 'me', 300, async () => {
     const user = await prisma.user.findUnique({
@@ -453,13 +504,13 @@ const getMe = asyncHandler(async (req, res) => {
   });
 
   if (!userData) {
-    return res.status(404).json({ error: 'Пользователь не найден' });
+    return res.status(404).json({ error: t(req, 'userNotFound') });
   }
 
   const needsToken = req.authVia === 'session' && req.query.needToken === '1';
   if (needsToken) {
     try {
-      const authToken = await issueAuthToken(userId);
+      const authToken = await issueAuthToken(userId, { device: describeDevice(req) });
       return res.json({ ...userData, authToken });
     } catch (err) {
       logger.error({ err, userId }, 'Failed to issue auth token in getMe');
@@ -507,14 +558,14 @@ const googleAuth = asyncHandler(async (req, res) => {
   try {
     user = await upsertGoogleUser(payload);
   } catch (err) {
-    if (err.statusCode === 403) return res.status(403).json({ error: 'Email в Google-аккаунте не подтверждён' });
+    if (err.statusCode === 403) return res.status(403).json({ error: t(req, 'googleEmailUnverified') });
     throw err;
   }
 
   await loginAsUser(req, user.id);
   await invalidateUserCaches(user.id);
 
-  const authToken = await issueAuthToken(user.id);
+  const authToken = await issueAuthToken(user.id, { device: describeDevice(req) });
 
   res.json({
     message: 'Logged in with Google',
@@ -536,41 +587,332 @@ const logout = asyncHandler(async (req, res) => {
   res.json({ message: 'Вышли из системы' });
 });
 
-const getSettings = asyncHandler(async (req, res) => {
-  const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+// Активные сеансы живут в двух местах: токены приложения — в Redis,
+// браузерные сессии — в таблице express-session. Список показывает и те, и
+// другие, иначе «выйти со всех устройств» выглядело бы враньём.
+async function listWebSessions(userId) {
+  const rows = await prisma.$queryRaw`
+    SELECT sid, sess, expire
+      FROM "session"
+     WHERE sess->>'userId' = ${userId}
+       AND expire > NOW()
+  `;
 
-  const settings = await getOrSet(`db:user-settings:${userId}`, 'settings', 300, async () => {
-    return prisma.user.findUnique({
-      where: { id: userId },
-      select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true, isSearchHidden: true },
-    });
+  return rows.map((row) => {
+    const sess = typeof row.sess === 'string' ? JSON.parse(row.sess) : row.sess;
+    return {
+      id: deviceIdFor(row.sid),
+      kind: 'web',
+      device: sess?.device || null,
+      issuedAt: sess?.createdAt || null,
+      lastSeenAt: sess?.lastSeenAt || sess?.createdAt || null,
+    };
+  });
+}
+
+// Какой из сеансов — этот самый. Считается из того, чем пришёл запрос, а не
+// из данных клиента: подменить чужой «текущий» так нельзя.
+function currentDeviceId(req) {
+  if (req.authVia === 'token' && req.authToken) return deviceIdFor(req.authToken);
+  if (req.sessionID) return deviceIdFor(req.sessionID);
+  return null;
+}
+
+const deviceIdParamsSchema = z.object({
+  deviceId: z.string().regex(/^[a-f0-9]{16}$/, 'Некорректный идентификатор устройства'),
+});
+
+const getDevices = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
+
+  const [appSessions, webSessions] = await Promise.all([
+    listUserTokens(userId),
+    listWebSessions(userId),
+  ]);
+
+  const current = currentDeviceId(req);
+
+  const devices = [...appSessions, ...webSessions]
+    .map((device) => ({ ...device, current: device.id === current }))
+    .sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0));
+
+  res.json({ devices });
+});
+
+const revokeDevice = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
+
+  const { deviceId } = deviceIdParamsSchema.parse(req.params);
+
+  let revoked = await revokeUserTokenById(userId, deviceId);
+
+  if (!revoked) {
+    // Идентификатор — односторонний хеш, поэтому ищем перебором своих же
+    // сессий. Условие по userId в запросе обязательно: без него чужой sid
+    // с совпавшим хешем стал бы способом выкинуть другого человека.
+    const rows = await prisma.$queryRaw`
+      SELECT sid FROM "session" WHERE sess->>'userId' = ${userId}
+    `;
+    const match = rows.find((row) => deviceIdFor(row.sid) === deviceId);
+
+    if (match) {
+      await prisma.$executeRaw`DELETE FROM "session" WHERE sid = ${match.sid}`;
+      revoked = true;
+    }
+  }
+
+  if (!revoked) return res.status(404).json({ error: t(req, 'deviceNotFound') });
+
+  // Сокет живёт своей жизнью: личность проверяется один раз, при подключении,
+  // и отозванный сеанс продолжал бы получать события сессии. Разрываем все
+  // сокеты пользователя — уцелевшие устройства переподключатся сами.
+  try {
+    getIo()?.in(`user:${userId}`).disconnectSockets(true);
+  } catch (err) {
+    logger.warn({ err, userId }, 'Не удалось разорвать сокеты после отзыва сеанса');
+  }
+
+  const wasCurrent = deviceId === currentDeviceId(req);
+  if (wasCurrent && req.session) {
+    await destroySession(req);
+    res.clearCookie('connect.sid');
+  }
+
+  logger.info({ userId, wasCurrent }, 'Сеанс отозван');
+  res.json({ message: 'Сеанс завершён', wasCurrent });
+});
+
+const logoutEverywhere = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
+
+  await revokeAllUserTokens(userId);
+  await prisma.$executeRaw`DELETE FROM "session" WHERE sess->>'userId' = ${userId}`;
+
+  try {
+    getIo()?.in(`user:${userId}`).disconnectSockets(true);
+  } catch (err) {
+    logger.warn({ err, userId }, 'Не удалось разорвать сокеты при выходе со всех устройств');
+  }
+
+  // Текущая сессия уже удалена запросом выше, но объект в памяти о том не
+  // знает — гасим и его, чтобы ответ не оставил живую куку.
+  if (req.session) {
+    try {
+      await destroySession(req);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Сессия уже удалена');
+    }
+    res.clearCookie('connect.sid');
+  }
+
+  await invalidateUserCaches(userId);
+
+  logger.info({ userId }, 'Выход со всех устройств');
+  res.json({ message: 'Вы вышли на всех устройствах' });
+});
+
+// Выгрузка собственных данных одним файлом.
+//
+// Собирается ровно то, что хранится о самом человеке. О других людях в
+// выгрузку попадает минимум, без которого она бессмысленна: имя друга и
+// название общей сессии — иначе это был бы список чужих профилей, скачанный
+// по чужой воле.
+const exportUserData = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      publicId: true,
+      username: true,
+      email: true,
+      createdAt: true,
+      customAvatarUrl: true,
+      isOnlineHidden: true,
+      isFriendsHidden: true,
+      isActivityHidden: true,
+      isSearchHidden: true,
+      allowSessionInvites: true,
+      preferences: true,
+      spotifyUser: { select: { spotifyId: true, displayName: true } },
+    },
   });
 
-  if (!settings) return res.status(404).json({ error: 'Пользователь не найден' });
+  if (!user) return res.status(404).json({ error: t(req, 'userNotFound') });
+
+  const [friendships, playlists, likedTracks, playHistory, sessions] = await Promise.all([
+    prisma.friendship.findMany({
+      where: {
+        status: 'accepted',
+        OR: [{ senderId: userId }, { receiverId: userId }],
+      },
+      select: {
+        createdAt: true,
+        sender: { select: { id: true, username: true } },
+        receiver: { select: { id: true, username: true } },
+      },
+    }),
+    prisma.playlist.findMany({
+      where: { userId },
+      select: {
+        name: true,
+        description: true,
+        isCustom: true,
+        spotifyId: true,
+        createdAt: true,
+        playlistTracks: {
+          orderBy: { position: 'asc' },
+          select: {
+            trackName: true,
+            artistName: true,
+            spotifyUri: true,
+            addedAt: true,
+          },
+        },
+      },
+    }),
+    prisma.likedTrack.findMany({
+      where: { userId },
+      select: { trackName: true, artistName: true, spotifyUri: true, likedAt: true },
+      orderBy: { likedAt: 'desc' },
+    }),
+    prisma.playHistory.findMany({
+      where: { userId },
+      select: { trackName: true, artistName: true, spotifyUri: true, playedAt: true },
+      orderBy: { playedAt: 'desc' },
+      // История длинная и ценна как недавняя: тысяча записей — это месяцы
+      // прослушивания и уже мегабайты файла.
+      take: 1000,
+    }),
+    prisma.sessionMember.findMany({
+      where: { userId },
+      select: {
+        status: true,
+        joinedAt: true,
+        session: {
+          select: { name: true, createdAt: true, isActive: true, hostId: true },
+        },
+      },
+      orderBy: { joinedAt: 'desc' },
+      take: 500,
+    }),
+  ]);
+
+  const data = {
+    exportedAt: new Date().toISOString(),
+    profile: {
+      publicId: user.publicId,
+      displayName: user.username,
+      email: user.email,
+      avatarUrl: user.customAvatarUrl,
+      registeredAt: user.createdAt,
+      spotify: user.spotifyUser
+        ? { spotifyId: user.spotifyUser.spotifyId, displayName: user.spotifyUser.displayName }
+        : null,
+    },
+    settings: {
+      privacy: {
+        isOnlineHidden: user.isOnlineHidden,
+        isFriendsHidden: user.isFriendsHidden,
+        isActivityHidden: user.isActivityHidden,
+        isSearchHidden: user.isSearchHidden,
+      },
+      allowSessionInvites: user.allowSessionInvites,
+      preferences: withDefaults(user.preferences),
+    },
+    friends: friendships.map((f) => {
+      const other = f.sender.id === userId ? f.receiver : f.sender;
+      return { displayName: other.username, since: f.createdAt };
+    }),
+    playlists: playlists.map((p) => ({
+      name: p.name,
+      description: p.description,
+      source: p.isCustom ? 'syncm' : 'spotify',
+      spotifyId: p.spotifyId,
+      createdAt: p.createdAt,
+      tracks: p.playlistTracks,
+    })),
+    likedTracks,
+    playHistory,
+    sessions: sessions.map((m) => ({
+      name: m.session.name,
+      role: m.session.hostId === userId ? 'host' : 'member',
+      status: m.status,
+      createdAt: m.session.createdAt,
+      isActive: m.session.isActive,
+      joinedAt: m.joinedAt,
+    })),
+  };
+
+  const fileName = `syncm-data-${new Date().toISOString().slice(0, 10)}.json`;
+
+  logger.info({ userId }, 'Выгрузка данных пользователя');
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.send(JSON.stringify(data, null, 2));
+});
+
+const getSettings = asyncHandler(async (req, res) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
+
+  const settings = await getOrSet(`db:user-settings:${userId}`, 'settings:v2', 300, async () => {
+    const row = await prisma.user.findUnique({
+      where: { id: userId },
+      select: SETTINGS_SELECT,
+    });
+    return row ? toSettingsResponse(row) : null;
+  });
+
+  if (!settings) return res.status(404).json({ error: t(req, 'userNotFound') });
 
   res.json(settings);
 });
 
 const updateSettings = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
-  const dataToUpdate = updateSettingsSchema.parse(req.body);
+  const { preferences, ...dataToUpdate } = updateSettingsSchema.parse(req.body);
 
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: dataToUpdate,
-    select: { isOnlineHidden: true, isFriendsHidden: true, isActivityHidden: true, isSearchHidden: true },
+  // Настройки сливаются с сохранёнными, а не заменяют их целиком: клиент
+  // присылает только изменённую группу, и остальные должны уцелеть. Чтение и
+  // запись в одной транзакции — два устройства могут менять разные группы
+  // одновременно, и без неё одно затёрло бы другое.
+  const updated = await prisma.$transaction(async (tx) => {
+    let data = dataToUpdate;
+
+    if (preferences) {
+      const current = await tx.user.findUnique({
+        where: { id: userId },
+        select: { preferences: true },
+      });
+      if (!current) return null;
+
+      data = { ...data, preferences: mergePreferences(current.preferences, preferences) };
+    }
+
+    return tx.user.update({
+      where: { id: userId },
+      data,
+      select: SETTINGS_SELECT,
+    });
   });
 
+  if (!updated) return res.status(404).json({ error: t(req, 'userNotFound') });
+
   await invalidateUserCaches(userId);
-  res.json(updated);
+  res.json(toSettingsResponse(updated));
 });
 
 const updateProfile = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { username, customAvatarUrl } = updateProfileSchema.parse(req.body);
 
@@ -634,7 +976,7 @@ const googleWebCallback = asyncHandler(async (req, res) => {
 
   if (!stateOk) {
     logger.warn({ hasExpected: !!expectedState }, 'Google OAuth state mismatch');
-    return res.status(400).json({ error: 'Некорректный или устаревший запрос авторизации' });
+    return res.status(400).json({ error: t(req, 'badOauthState') });
   }
 
   const returnTo = sanitizeReturnTo(req.session.googleOAuthReturnTo);
@@ -654,7 +996,7 @@ const googleWebCallback = asyncHandler(async (req, res) => {
   );
 
   const { id_token } = tokenRes.data;
-  if (!id_token) return res.status(502).json({ error: 'Google не вернул id_token' });
+  if (!id_token) return res.status(502).json({ error: t(req, 'googleNoIdToken') });
 
   const ticket = await googleClient.verifyIdToken({
     idToken: id_token,
@@ -666,14 +1008,14 @@ const googleWebCallback = asyncHandler(async (req, res) => {
   try {
     user = await upsertGoogleUser(payload);
   } catch (err) {
-    if (err.statusCode === 403) return res.status(403).json({ error: 'Email в Google-аккаунте не подтверждён' });
+    if (err.statusCode === 403) return res.status(403).json({ error: t(req, 'googleEmailUnverified') });
     throw err;
   }
 
   await loginAsUser(req, user.id);
   await invalidateUserCaches(user.id);
 
-  const authToken = await issueAuthToken(user.id);
+  const authToken = await issueAuthToken(user.id, { device: describeDevice(req) });
   const cookie = `connect.sid=${req.sessionID}`;
 
   const tempToken = crypto.randomBytes(16).toString('hex');
@@ -764,7 +1106,7 @@ const upload = multer({
 
 const uploadAvatar = (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   upload(req, res, async (err) => {
     if (err) {
@@ -775,7 +1117,7 @@ const uploadAvatar = (req, res) => {
     }
     if (!req.file) {
       return res.status(400).json({
-        error: 'Файл не выбран или имеет неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
+        error: t(req, 'fileNotChosen'),
       });
     }
 
@@ -813,7 +1155,7 @@ const uploadAvatar = (req, res) => {
       logger.error({ err: error, userId }, 'Upload avatar error');
       // Не оставляем осиротевший файл, если запись в БД не удалась.
       await fsp.unlink(req.file.path).catch(() => {});
-      res.status(500).json({ error: 'Ошибка сохранения аватарки' });
+      res.status(500).json({ error: t(req, 'avatarSaveFailed') });
     }
   });
 };
@@ -844,7 +1186,7 @@ const deleteAccount = asyncHandler(async (req, res) => {
     where: { id: userId },
     select: { id: true, customAvatarUrl: true },
   });
-  if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+  if (!user) return res.status(404).json({ error: t(req, 'userNotFound') });
 
   const hostedSessions = await prisma.session.findMany({
     where: { hostId: userId, isActive: true },
@@ -932,6 +1274,10 @@ const clearPlayHistory = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  exportUserData,
+  getDevices,
+  revokeDevice,
+  logoutEverywhere,
   login,
   callback,
   createSpotifyLinkIntent,

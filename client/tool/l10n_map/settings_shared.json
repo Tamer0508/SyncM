@@ -1,0 +1,27 @@
+{
+  "file": [
+    "lib/screens/settings/devices_screen.dart",
+    "lib/screens/settings/blocked_users_screen.dart",
+    "lib/screens/settings/play_history_screen.dart",
+    "lib/screens/settings/legal_document_screen.dart",
+    "lib/screens/settings/privacy_policy_screen.dart",
+    "lib/screens/settings/avatar_crop_screen.dart"
+  ],
+  "strings": [
+    ["commonFinish", "Завершить", "End"],
+    ["commonUser", "Пользователь", "User"],
+    ["commonSignOut", "Выйти", "Sign out"],
+    ["securitySignOutMessage", "Придётся войти заново, чтобы вернуться.", "You'll need to sign in again to come back."],
+    ["securitySignOutEverywhereTitle", "Выйти со всех устройств?", "Sign out everywhere?"],
+    ["securitySignOutEverywhereMessage", "Все сеансы завершатся, включая этот. Так стоит поступить, если в списке есть чужое устройство.", "Every session will end, including this one. Do this if you see a device that isn’t yours."],
+    ["securitySignOutEverywhereConfirm", "Выйти везде", "Sign out everywhere"],
+    ["securitySignOutEverywhere", "Выйти со всех устройств", "Sign out everywhere"],
+    ["tabNow", "Сейчас", "Now"],
+    ["privacyBlocked", "Заблокированные", "Blocked"],
+    ["accountProfile", "Профиль", "Profile"],
+    ["sectionSessions", "Сессии", "Sessions"],
+    ["privacyHistory", "История прослушанного", "Listening history"],
+    ["aboutPrivacyPolicy", "Политика конфиденциальности", "Privacy policy"],
+    ["aboutDataPrivacy", "Данные и приватность", "Data and privacy"]
+  ]
+}

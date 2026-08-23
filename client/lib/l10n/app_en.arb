@@ -1,0 +1,1013 @@
+{
+  "@@locale": "en",
+  "aboutDataPrivacy": "Data and privacy",
+  "aboutDataPrivacyHint": "What the app stores and how to delete it",
+  "aboutLegalGroup": "Data and rules",
+  "aboutPrivacyPolicy": "Privacy policy",
+  "aboutTerms": "Terms of use",
+  "aboutTermsHint": "The rules for using the app",
+  "@aboutVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutVersion": "Version {version}",
+  "accentAmber": "Amber",
+  "accentClay": "Clay",
+  "accentIndigo": "Indigo",
+  "accentOlive": "Olive",
+  "accentPlum": "Plum",
+  "accountConnectedServices": "Connected services",
+  "accountEmail": "Email",
+  "accountNameUnset": "Not set",
+  "accountProfile": "Profile",
+  "accountPublicId": "Your code",
+  "accountPublicIdCopied": "Code copied",
+  "addedToPlaylist": "Added to “{name}”",
+  "@addedToPlaylist": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "addToPlaylistCreate": "Create a new one",
+  "addToPlaylistEmpty": "You don't have playlists yet. Create one and the track goes straight in.",
+  "addToPlaylistTitle": "Add to a playlist",
+  "@addTracksAddCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addTracksAddCount": "Add ({count})",
+  "@addTracksAdded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addTracksAdded": "Added {count, plural, one{{count} track} other{{count} tracks}}",
+  "@addTracksAddedWithSkipped": {
+    "placeholders": {
+      "base": {
+        "type": "String"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "addTracksAddedWithSkipped": "{base}, {skipped} already there",
+  "addTracksAllPresent": "All the selected tracks are already in the playlist",
+  "addTracksAlreadyIn": "Already in the playlist",
+  "addTracksBackToPlaylists": "Back to the playlists",
+  "addTracksDeselect": "Deselect",
+  "addTracksEmptyPlaylist": "This playlist has no tracks.",
+  "addTracksForeignPlaylist": "Spotify doesn't share this playlist's contents — only your own and collaborative ones are available.",
+  "addTracksFromPlaylist": "From a playlist",
+  "addTracksNoOtherPlaylists": "There are no other playlists yet — nowhere to take tracks from.",
+  "addTracksNothingFound": "Nothing found. Try a different search.",
+  "addTracksSearch": "Search",
+  "addTracksSearchEmpty": "Find a track on Spotify and add it to the playlist.",
+  "addTracksSearchHint": "Track name or artist",
+  "addTracksSelectAll": "Select all",
+  "@addTracksToPlaylist": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "addTracksToPlaylist": "Add to “{name}”",
+  "addTracksYourPlaylist": "Your playlist",
+  "alreadyInPlaylist": "Already in “{name}”",
+  "@alreadyInPlaylist": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "appearanceAccent": "Accent colour",
+  "appearanceArtworkBackground": "Artwork background",
+  "appearanceArtworkBackgroundHint": "A glow in the artwork's colour on the player screen",
+  "appearanceCompact": "Compact mode",
+  "appearanceCompactHint": "Tighter lists — more fits on screen",
+  "appearanceDensityGroup": "Density and motion",
+  "appearanceLanguage": "Language",
+  "appearanceLanguageHint": "Interface language across all your devices",
+  "appearanceReduceMotion": "Reduce motion",
+  "appearanceReduceMotionHint": "Transitions without movement — if motion distracts or makes you queasy",
+  "appearanceReset": "Reset appearance",
+  "appearanceResetDone": "Appearance reset",
+  "appearanceResetHint": "Restore theme, colour, text, density and the starting tab",
+  "appearanceStartTab": "Where to start",
+  "appearanceStartTabHint": "The tab that opens on launch",
+  "appearanceTextSize": "Text size",
+  "appearanceTheme": "Theme",
+  "appTitle": "SyncM",
+  "avatarBadFormat": "Unsupported format. Allowed: PNG, JPG, JPEG, GIF, WEBP",
+  "avatarReadFailed": "Could not read the file",
+  "avatarUpdated": "Avatar updated",
+  "blockedEmptyMessage": "You can block someone from their profile or from your friends list.",
+  "blockedEmptyTitle": "Nobody is blocked",
+  "blockedHint": "These people won't find you in search and can't send you a request or an invitation. They won't be told about it.",
+  "@blockedPeopleCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "blockedPeopleCount": "{count, plural, one{{count} person} other{{count} people}}",
+  "blockedUnblock": "Unblock",
+  "@blockedUnblocked": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "blockedUnblocked": "{name} unblocked",
+  "blockedUnblockFailed": "Could not unblock",
+  "@cacheFriendsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cacheFriendsCount": "friends: {count}",
+  "@cacheInMemory": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "cacheInMemory": "In memory: {size}",
+  "@cacheOnDisk": {
+    "placeholders": {
+      "disk": {
+        "type": "String"
+      },
+      "memory": {
+        "type": "String"
+      }
+    }
+  },
+  "cacheOnDisk": "On disk: {disk} · in memory: {memory}",
+  "@cacheSessionsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cacheSessionsCount": "sessions: {count}",
+  "@clockSummary": {
+    "placeholders": {
+      "offset": {
+        "type": "String"
+      },
+      "ping": {
+        "type": "int"
+      }
+    }
+  },
+  "clockSummary": "Clock: {offset} ms · ping: {ping} ms",
+  "commonBack": "Back",
+  "commonCancel": "Cancel",
+  "commonClear": "Clear",
+  "commonClose": "Close",
+  "commonCollapse": "Collapse",
+  "commonCreate": "Create",
+  "commonDelete": "Delete",
+  "commonEmpty": "Empty",
+  "commonFinish": "End",
+  "commonFriends": "Friends",
+  "commonJustNow": "just now",
+  "commonLoadMore": "Load more",
+  "commonLongAgo": "a while ago",
+  "commonMore": "More",
+  "@commonMoreCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commonMoreCount": "{count} more",
+  "commonName": "Name",
+  "commonNobody": "Nobody",
+  "commonNoName": "No name",
+  "commonOpen": "Open",
+  "commonOr": " or ",
+  "commonRefresh": "Refresh",
+  "commonReset": "Reset",
+  "commonSave": "Save",
+  "commonSignOut": "Sign out",
+  "commonSystem": "System",
+  "commonUser": "User",
+  "createSessionFailed": "Could not create the session",
+  "createSessionFriendsOnly": "A session can only be created with a friend",
+  "createSessionFriendsOnlyHint": "Add someone as a friend and they'll show up in this list.",
+  "createSessionHint": "Invite a friend and listen at the same time.",
+  "createSessionName": "Session name",
+  "createSessionNobodyFound": "Nobody by that name",
+  "createSessionPickFriend": "Pick a friend to continue",
+  "createSessionSearchFriends": "Search your friends",
+  "createSessionWithWhom": "Who you're listening with",
+  "cropDone": "Done",
+  "cropFailed": "Could not process the image",
+  "cropHint": "The area is always square, so the avatar looks the same everywhere.",
+  "cropNoImageData": "Could not read the image data",
+  "cropRotateLeft": "Left",
+  "cropRotateRight": "Right",
+  "cropTitle": "Crop",
+  "dataExport": "Export my data",
+  "dataExportHint": "Profile, friends, playlists and history in a single file",
+  "dataHistoryHint": "View and clear",
+  "dataImageCache": "Image cache",
+  "dataImageCacheCleared": "Image cache cleared",
+  "dataNothingSaved": "Nothing saved yet",
+  "dataOnServer": "On the server",
+  "dataOnThisDevice": "On this device",
+  "dataPrefetch": "Preload data on launch",
+  "dataPrefetchHint": "Friends and sessions are ready by the time you open the tab",
+  "dataSavedLists": "Saved lists",
+  "dataSavedListsCleared": "Lists cleared",
+  "dataUpdatedJustNow": "updated just now",
+  "dataWhatIsStored": "What we store about you",
+  "dataWhatIsStoredHint": "A list of the data and how to delete it",
+  "@daysAgoShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "daysAgoShort": "{count} d ago",
+  "deleteAccountMessage": "Your profile, friends and session history will be deleted for good. This cannot be undone.",
+  "devicesApp": "SyncM app",
+  "devicesBrowser": "Browser",
+  "devicesCurrent": "This device",
+  "devicesEmptyMessage": "The list is empty — the server connection seems to be lost. Try opening this screen again.",
+  "devicesEmptyTitle": "No active sessions",
+  "@devicesEndAgainMessage": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "devicesEndAgainMessage": "You'll have to sign in again on “{device}”.",
+  "devicesEndSessionTitle": "End this session?",
+  "devicesHint": "These are the apps and browsers where you're signed in. If you see a device you don't recognise, end its session.",
+  "devicesSessionEnded": "Session ended",
+  "devicesSignOutThisDeviceTitle": "Sign out on this device?",
+  "devicesTimeUnknown": "Time unknown",
+  "devicesTitle": "Devices",
+  "devicesYesterday": "Yesterday",
+  "@durationHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationHours": "{count} h",
+  "@durationMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationMinutes": "{count} min",
+  "errorBadResponse": "The server returned an unexpected response. Try refreshing.",
+  "errorConflict": "That action is already running or isn't possible right now.",
+  "errorConnectionDropped": "The connection dropped. Try again.",
+  "errorForbidden": "You don't have permission for this.",
+  "errorGeneric": "Something went wrong.",
+  "errorGenericRetry": "Something went wrong. Try again.",
+  "errorGoogleFailed": "Could not sign in with Google. Try again.",
+  "errorGoogleMisconfigured": "Google sign-in is misconfigured. Let the developer know.",
+  "errorGoogleUnreachable": "Could not reach Google. Check your connection.",
+  "errorHandshake": "Could not establish a secure connection.",
+  "errorNetwork": "Network error. Check your connection.",
+  "errorNoInternet": "No internet connection. Check your network.",
+  "errorNotFound": "Not found.",
+  "errorServerFailure": "Server error. We already know about it.",
+  "errorServerSlow": "The server is taking too long. Try again later.",
+  "errorServerUnavailable": "The server is temporarily unavailable. Try again in a minute.",
+  "errorServerUnreachable": "Could not reach the server. Check your connection.",
+  "errorSessionExpired": "Your session expired. Sign in again.",
+  "errorSignInCancelled": "Sign-in cancelled",
+  "errorTooManyRequests": "Too many requests. Wait a moment.",
+  "@exportSaved": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "exportSaved": "File saved: {path}",
+  "foregroundChannelDescription": "Shown while a shared listening session runs, so syncing is not interrupted.",
+  "foregroundChannelName": "Active SyncM session",
+  "foregroundText": "Listening together with friends",
+  "foregroundTitle": "SyncM session is active",
+  "friendActions": "Actions",
+  "friendBlock": "Block",
+  "@friendLastSeen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "friendLastSeen": "Last seen {when}",
+  "friendOffline": "Offline",
+  "friendOnline": "Online",
+  "friendOpenProfile": "Open profile",
+  "friendRemove": "Remove from friends",
+  "@friendsBlocked": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "friendsBlocked": "{name} blocked",
+  "friendsBlockFailed": "Could not block",
+  "friendsBlockMessage": "They won't find you in search, send you a request or invite you to a session. The friendship will be removed, and they won't be notified.",
+  "@friendsBlockTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "friendsBlockTitle": "Block {name}?",
+  "friendsEmptyMessage": "With a friend you can listen at the same time, wherever you both are.",
+  "friendsEmptyTitle": "Add friends",
+  "@friendsRemoved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "friendsRemoved": "{name} removed from friends",
+  "friendsRemoveFailed": "Could not remove the friend",
+  "@friendsRemoveMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "friendsRemoveMessage": "{name} will disappear from your friends list.",
+  "friendsRemoveTitle": "Remove from friends?",
+  "@hiddenList": {
+    "placeholders": {
+      "items": {
+        "type": "String"
+      }
+    }
+  },
+  "hiddenList": "Hidden: {items}",
+  "historyClear": "Clear",
+  "historyCleared": "History cleared",
+  "historyClearFailed": "Could not clear the history",
+  "historyClearMessage": "The records of tracks you played will be deleted.",
+  "historyClearTitle": "Clear the history?",
+  "historyEmptyMessage": "Tracks you play in SyncM will show up here.",
+  "historyEmptyTitle": "The history is empty",
+  "historyJustNow": "just now",
+  "historyTitle": "History",
+  "historyUntitled": "Untitled",
+  "historyYesterday": "yesterday",
+  "homeAnotherSession": "Another session",
+  "homeConnectSpotify": "Connect Spotify",
+  "homeCreatePlaylist": "Create a playlist",
+  "homeDarkTheme": "Dark theme",
+  "homeFilterAll": "All",
+  "homeFilterFriend": "Friend",
+  "homeFilterMine": "Mine",
+  "homeFriendRequests": "Friend requests",
+  "homeInvitedYou": "You're invited",
+  "@homeInviteFrom": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeInviteFrom": "From {name}",
+  "homeLightTheme": "Light theme",
+  "homeListenTogether": "Listen together",
+  "homeListenTogetherHint": "Invite a friend — the music plays for both of you at once, wherever you are.",
+  "homeNoOwnPlaylists": "No playlists of your own yet",
+  "homeNoOwnPlaylistsHint": "Put one together and you'll be able to play it in a session.",
+  "homeNothingPlaying": "Nothing is playing",
+  "homeNothingPlayingHint": "Pick a track from a playlist and the controls will show up here.",
+  "homeNowListening": "Listening now",
+  "homePlaylist": "Playlist",
+  "homeSearchFriends": "Friend search",
+  "homeSession": "Session",
+  "homeSpotifyUnavailable": "Spotify playlists are unavailable",
+  "homeSpotifyUnavailableHint": "Connect your Spotify account to see your library here.",
+  "homeStartSession": "Start a session",
+  "homeTapToOpen": "Tap to open",
+  "@hoursAgoShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hoursAgoShort": "{count} h ago",
+  "invitesAccepted": "Invitation accepted",
+  "inviteScopeFriendsHint": "Only people on your friends list can invite you",
+  "inviteScopeNobodyHint": "Nobody will be able to invite you to a session",
+  "@invitesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "invitesCount": "Invitations · {count}",
+  "invitesDeclined": "Invitation declined",
+  "invitesEmptyMessage": "When a friend invites you it shows up here. You don't have to wait — start a session yourself.",
+  "invitesEmptyTitle": "No invitations yet",
+  "@invitesNotification": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "invitesNotification": "Invitation to the session “{name}”",
+  "invitesReplyFailed": "Could not reply to the invitation",
+  "invitesTitle": "Invitations",
+  "@invitesWaiting": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "invitesWaiting": "{count, plural, one{One invitation is waiting} other{{count} invitations are waiting}}",
+  "@latencyMilliseconds": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "latencyMilliseconds": "{value} ms",
+  "latencySpeaker": "Speaker",
+  "latencyTitle": "Audio delay",
+  "latencyWired": "Wired",
+  "legalCopyText": "Copy the text",
+  "legalOpenFailed": "Could not open the document.",
+  "@legalOpenFailedDetails": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "legalOpenFailedDetails": "Could not open the document in the browser: {error}",
+  "legalTextCopied": "Text copied",
+  "loginBrowser": "Sign in through the browser",
+  "loginDoneCloseTab": "Signed in! You can close this tab.",
+  "loginGoogle": "Sign in with Google",
+  "loginGoogleNoToken": "Error: could not get the ID token from Google",
+  "loginHint": "Sign in with Google to create sessions and listen together.",
+  "loginSubtitle": "Music for friends",
+  "loginTagline": "Listen to the same music at the same time, wherever you are.",
+  "loginTitle": "Sign in",
+  "@minutesAgoShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "minutesAgoShort": "{count} min ago",
+  "nameDialogCharset": "Only letters, digits, spaces and . _ -",
+  "nameDialogEmpty": "Enter a name",
+  "nameDialogHint": "Friends see this name — in lists, in sessions and in invitations.",
+  "nameDialogTitle": "What's your name?",
+  "@nameDialogTooLong": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "nameDialogTooLong": "No more than {count, plural, one{{count} character} other{{count} characters}}",
+  "@nameDialogTooShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "nameDialogTooShort": "At least {count, plural, one{{count} character} other{{count} characters}}",
+  "nameUpdated": "Name updated",
+  "navFindFriends": "Find friends",
+  "navLibrary": "Library",
+  "navLikedTracks": "Liked tracks",
+  "navNewSession": "New session",
+  "navQuick": "Quick",
+  "notificationsAllOff": "Cards disabled",
+  "notificationsAllOn": "All cards enabled",
+  "notificationsFriendRequests": "Friend requests",
+  "notificationsFriendRequestsHint": "A card when someone adds you",
+  "notificationsGroup": "Pop-up cards",
+  "notificationsHint": "These settings apply to all your devices. Requests and invitations still arrive — only the card on top of the screen goes away.",
+  "notificationsOffInvites": "invitations",
+  "@notificationsOffOne": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationsOffOne": "Disabled: {what}",
+  "notificationsOffRequests": "requests",
+  "notificationsSessionInvites": "Session invitations",
+  "notificationsSessionInvitesHint": "A card when a friend invites you to listen together",
+  "@pickPlaylistAddAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickPlaylistAddAll": "Add all ({count})",
+  "@pickPlaylistAddSelected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickPlaylistAddSelected": "Add selected ({count})",
+  "@pickPlaylistDeselectCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickPlaylistDeselectCount": "Deselect ({count})",
+  "pickPlaylistEmptyPlaylist": "The playlist has no tracks",
+  "@pickPlaylistInPlaylist": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickPlaylistInPlaylist": "{count} in the playlist",
+  "pickPlaylistNoPlaylists": "No playlists",
+  "pickPlaylistNoPlaylistsHint": "Connect Spotify or create your own playlist to add tracks to sessions.",
+  "pickPlaylistNoSession": "Could not identify the session",
+  "pickPlaylistNoTracks": "No tracks",
+  "pickPlaylistNoTracksHint": "This playlist is empty or its contents aren't available: Spotify only shares tracks for your own playlists.",
+  "pickPlaylistTitle": "Pick a playlist",
+  "playbackAllowBackground": "Allow background work",
+  "playbackAllowBackgroundHint": "So syncing survives a locked screen",
+  "playbackAutostart": "Set up autostart",
+  "playbackAutostartHint": "On Xiaomi and Redmi the system closes the app without it",
+  "playbackAutostartHint2": "Open the app settings and enable autostart manually",
+  "playbackBackgroundGroup": "Background mode",
+  "playbackClockSync": "Sync the clock with the server",
+  "playbackClockSyncStarted": "Re-syncing the clock",
+  "playbackClockUnknown": "Not measured yet — tap to refresh",
+  "playbackConnections": "Connections",
+  "playbackOpenSpotifyHint": "Open Spotify, start any track, then try again.",
+  "playbackPermissionsHint": "Check the permissions in the system dialog",
+  "playbackQualityGroup": "Audio quality",
+  "playbackServerLink": "Server connection",
+  "playbackServerOffline": "No connection. Check your internet",
+  "playbackServerOnline": "Online — session events arrive instantly",
+  "playbackSpotifyConnected": "Connected — you can start playing",
+  "playbackSpotifyConnectFailed": "Could not connect to Spotify",
+  "playbackSpotifyDevice": "Spotify on this device",
+  "playbackSpotifyDisconnected": "Not connected. Tap to link the Spotify app",
+  "playbackSpotifySettings": "Spotify settings",
+  "playbackSpotifySettingsHint": "Quality, crossfade and volume live in the Spotify app",
+  "playbackSpotifySettingsPath": "Open Spotify → Settings → Audio quality",
+  "playbackSyncGroup": "Synchronisation",
+  "playerNext": "Next track",
+  "playerNowPlayingLabel": "NOW PLAYING",
+  "playerPause": "Pause",
+  "playerPlay": "Play",
+  "playerPrevious": "Previous track",
+  "playerRepeatAll": "Repeat the list",
+  "playerRepeatOff": "Repeat is off",
+  "playerRepeatOne": "Repeat one track",
+  "playerShuffle": "Shuffle",
+  "playerShuffleOn": "Shuffle is on",
+  "playerUnknownTrack": "Unknown track",
+  "playlistActionsTitle": "Playlist actions",
+  "playlistAddMusic": "Add music",
+  "playlistChangeCover": "Change the cover",
+  "playlistClear": "Clear the playlist",
+  "playlistCleared": "Playlist cleared",
+  "playlistClearMessage": "All tracks will be removed from “{name}”. The playlist itself stays.",
+  "@playlistClearMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistClearTitle": "Clear the playlist?",
+  "playlistConnectSpotifyHint": "Connect your Spotify account in the profile",
+  "playlistCopyCreated": "Copy “{name}” created",
+  "@playlistCopyCreated": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistCoverHint": "The cover is square, so playlists line up neatly in the list.",
+  "playlistCoverRemoved": "Cover removed",
+  "playlistCoverTitle": "Playlist cover",
+  "playlistCoverUpdated": "Cover updated",
+  "playlistDelete": "Delete the playlist",
+  "playlistDeleted": "Playlist deleted",
+  "playlistDeleteMessage": "“{name}” and its track list will be deleted. The tracks themselves stay in Spotify.",
+  "@playlistDeleteMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistDeleteTitle": "Delete the playlist?",
+  "playlistDuplicate": "Duplicate",
+  "playlistEdit": "Edit the playlist",
+  "playlistEditNameDescription": "Edit name and description",
+  "playlistEmptyMessage": "Find music on Spotify or take it from another playlist.",
+  "playlistEmptyShort": "This playlist is empty for now.",
+  "playlistEmptyTitle": "No tracks",
+  "playlistFieldDescription": "Description",
+  "playlistFieldName": "Name",
+  "playlistFieldOptional": "Optional",
+  "playlistForeign": "Spotify doesn't share other people's playlists — only your own and collaborative ones are available.",
+  "playlistLinkCopied": "Playlist link copied to the clipboard",
+  "playlistNameCharset": "Only letters, digits, spaces and ._-()",
+  "playlistNameEmpty": "The name can't be empty",
+  "playlistNameEmptyGeneric": "Enter a name",
+  "playlistNameTooShort": "At least 2 characters",
+  "playlistNew": "New playlist",
+  "playlistOpen": "Open",
+  "playlistPlay": "Play",
+  "playlistRemoveCover": "Remove the cover",
+  "playlistRemoveTrack": "Remove from the playlist",
+  "playlistShare": "Share",
+  "playlistTrackActions": "Track actions",
+  "playlistTrackRemoved": "Track removed from the playlist",
+  "previewArtistName": "Artist",
+  "previewTrackName": "Track name",
+  "privacyAlwaysVisible": "Always visible",
+  "privacyBitActivity": "activity",
+  "privacyBitFriends": "friends",
+  "privacyBitSearch": "search",
+  "privacyBitStatus": "status",
+  "privacyBlocked": "Blocked",
+  "privacyBlockedHint": "They can't find you, message you or invite you",
+  "privacyBlockedNobody": "Nobody yet",
+  "privacyBlockList": "Block list",
+  "privacyDetailed": "In detail",
+  "privacyDocFriends": "Friends and requests",
+  "privacyDocFriendsText": "Who you're friends with and who you've sent requests to. Blocked people are stored separately and shown to nobody.",
+  "privacyDocFullHint": "Everything above is a summary. The full privacy policy, with the exact wording and retention periods, opens below.",
+  "privacyDocFullTitle": "Full text",
+  "privacyDocHistoryText": "The tracks you played in the app and when. You can clear it in the Data section.",
+  "privacyDocHowToDeleteText": "Listening history is cleared in the Data section. The same place deletes the whole account — profile, friends, sessions and the Spotify connection. This cannot be undone.",
+  "privacyDocHowToDeleteTitle": "How to delete it",
+  "privacyDocNoOutsideListening": "What you listen to outside the app: anything played without a session goes nowhere.",
+  "privacyDocNoPassword": "Your Spotify password — authorisation happens on Spotify's side.",
+  "privacyDocNoPayments": "Payment details — the app is free and takes no payments.",
+  "privacyDocNotStoredTitle": "What is not stored",
+  "privacyDocProfile": "Your name, email address and avatar. The email is for signing in; friends see your name and avatar.",
+  "privacyDocSessionsText": "The names of shared listening sessions, who took part, which tracks were added and how they were rated — so the matches can be shown at the end.",
+  "privacyDocSpotify": "Spotify connection",
+  "privacyDocSpotifyText": "Your account id and access tokens, encrypted. The app never sees or receives your Spotify password.",
+  "privacyDocStoredHint": "The list follows what the app actually writes to the database.",
+  "privacyDocStoredTitle": "What is stored",
+  "privacyHiddenWarning": "With a fully hidden profile it’s harder for friends to tell when to invite you to listen together.",
+  "privacyHideActivity": "Hide activity",
+  "privacyHideActivityHint": "What you listen to in a session won't show on your profile",
+  "privacyHideFriends": "Hide friends",
+  "privacyHideFriendsHint": "Nobody will see how many friends you have or which ones you share",
+  "privacyHideOnline": "Hide online status",
+  "privacyHideOnlineHint": "Friends won't see when you're online or last seen",
+  "privacyHideSearch": "Hide from search",
+  "privacyHideSearchHint": "New people won't find you by name. Friends still will",
+  "privacyHistory": "Listening history",
+  "privacyHistoryHint": "Visible only to you — not even to friends",
+  "privacyNameAndAvatar": "Name and avatar",
+  "privacyNameAndAvatarHint": "That's how friends recognise you in lists and sessions",
+  "privacyNothingHidden": "Nothing is hidden",
+  "privacyPresetFriends": "Friends only",
+  "privacyPresetFriendsSummary": "Friends only — you won't show up in search",
+  "privacyPresetHidden": "Hidden",
+  "privacyPresetHiddenSummary": "Hidden profile",
+  "privacyPresetOpen": "Open",
+  "privacyPresetOpenSummary": "Open profile",
+  "privacyQuickMode": "Quick mode",
+  "privacySessionParticipation": "Taking part in a shared session",
+  "privacySessionParticipationHint": "Whoever listens with you sees you and the queue",
+  "privacySummaryFriendCount": "how many friends you have",
+  "privacySummaryFriendsSee": "Friends see",
+  "privacySummaryListening": "what you're listening to",
+  "privacySummaryNameAvatar": "name and avatar",
+  "privacySummaryNotSearchable": "You won't be found in search",
+  "privacySummaryOnline": "when you're online",
+  "privacySummaryOthers": "Everyone else",
+  "privacySummarySearchable": "People can find you by name and send a request",
+  "privacyWhatIsVisible": "What others see",
+  "profileConnectSpotify": "Connect Spotify",
+  "profileDisconnectSpotify": "Disconnect Spotify",
+  "profileEmpty": "Empty for now",
+  "@profileFriendsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileFriendsCount": "{count, plural, one{{count} friend} other{{count} friends}}",
+  "@profileInSelection": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileInSelection": "{count} in the selection",
+  "profileLast": "Latest",
+  "@profileLikedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileLikedCount": "{count} liked",
+  "profileLikedEmpty": "Tap the heart on tracks and they'll gather here",
+  "profileLikedTracks": "Liked tracks",
+  "@profileMutualCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileMutualCount": "{count} mutual",
+  "profileNothingShown": "Nothing is shown",
+  "profileRecentlyPlayed": "Recently played",
+  "profileRecentlyPlayedEmpty": "Tracks you play will show up here",
+  "@profileSessionsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileSessionsCount": "{count, plural, one{{count} session} other{{count} sessions}}",
+  "profileVisibleToYouOnly": "Visible only to you",
+  "requestsAccept": "Accept",
+  "requestsAccepted": "Request accepted",
+  "requestsDecline": "Decline",
+  "@requestsDeclineMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "requestsDeclineMessage": "{name} won't see that you declined.",
+  "requestsDeclineTitle": "Decline the request?",
+  "requestsEmptyMessage": "Friend requests will show up here. Sending one is faster than waiting.",
+  "requestsEmptyTitle": "No requests yet",
+  "@requestsNotification": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "requestsNotification": "Friend request from {name}",
+  "requestsWantsToAdd": "Wants to add you as a friend",
+  "resultsBackHome": "Back home",
+  "resultsMatches": "Matches",
+  "resultsMatchesHint": "You both liked these tracks.",
+  "resultsNoMatches": "No matches",
+  "resultsNoMatchesHint": "Your tastes differed this time. Try another session — a different selection may go better.",
+  "resultsTitle": "Session results",
+  "searchEmptyMessage": "Enter a name or an eight-character code. Your own code is in Settings, under Account.",
+  "searchEmptyTitle": "Find friends",
+  "searchFieldHint": "Name or code",
+  "searchNothingFound": "Nobody found",
+  "searchNothingFoundHint": "Check the spelling. A code finds people even when they've hidden themselves from search.",
+  "searchRequestSent": "Request sent",
+  "searchSendRequest": "Send a request",
+  "searchStatusFriends": "Friends",
+  "searchStatusSent": "Sent",
+  "searchStatusWaiting": "Awaiting reply",
+  "sectionAbout": "About",
+  "sectionAccount": "Account",
+  "sectionAppearance": "Appearance",
+  "sectionData": "Data",
+  "sectionNotifications": "Notifications",
+  "sectionPlayback": "Playback",
+  "sectionPrivacy": "Privacy",
+  "sectionSecurity": "Security",
+  "sectionSessions": "Sessions",
+  "securityDangerZone": "Danger zone",
+  "securityDeleteAccount": "Delete account",
+  "securityDeleteAccountHint": "Permanently deletes your profile, friends and session history",
+  "securityDeleteAccountTitle": "Delete account?",
+  "securityDevices": "Devices",
+  "securityDevicesHint": "Where you're signed in, and how to end what you don't need",
+  "securitySessionsGroup": "Sessions",
+  "securitySignInGoogle": "Via Google",
+  "securitySignInMethod": "Sign-in method",
+  "securitySignInSpotifyGoogle": "Via Spotify or Google",
+  "securitySignOutEverywhere": "Sign out everywhere",
+  "securitySignOutEverywhereConfirm": "Sign out everywhere",
+  "securitySignOutEverywhereHint": "Ends every session, including this one",
+  "securitySignOutEverywhereMessage": "Every session will end, including this one. Do this if you see a device that isn’t yours.",
+  "securitySignOutEverywhereTitle": "Sign out everywhere?",
+  "securitySignOutMessage": "You'll need to sign in again to come back.",
+  "securitySignOutThisDevice": "This device only",
+  "securitySignOutTitle": "Sign out?",
+  "sessionAddTracks": "Add tracks",
+  "sessionAdjusting": "Adjusting",
+  "sessionAlreadyRated": "The other person has already rated it",
+  "sessionDislike": "Dislike",
+  "sessionEndAction": "End the session",
+  "@sessionEndMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionEndMessage": "“{name}” will close for everyone.",
+  "sessionEndMessagePlain": "The session will close for everyone.",
+  "sessionHostChanged": "The session host has changed",
+  "@sessionInQueue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionInQueue": "{count} in the queue",
+  "sessionInSync": "Playing in sync",
+  "sessionLike": "Like",
+  "sessionNoTracksYet": "No tracks yet",
+  "sessionNotStarted": "The session hasn't started",
+  "sessionParticipant": "Participant",
+  "sessionQueueEmpty": "The queue is empty",
+  "sessionQueueEmptyHint": "Add tracks from your playlists — everyone in the session will hear them.",
+  "sessionsActive": "Active sessions",
+  "@sessionsActiveCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionsActiveCount": "Active sessions · {count}",
+  "sessionsAutoOpenPlayer": "Open the player on start",
+  "sessionsAutoOpenPlayerHint": "Full-screen player once a track starts",
+  "sessionsBlockedHint": "They won't be able to invite you to a session",
+  "sessionsConfirmEnd": "Ask before ending",
+  "sessionsConfirmEndHint": "A confirmation so you don't end a session by accident",
+  "sessionsDuringGroup": "During a session",
+  "sessionsEnded": "Session ended",
+  "sessionsEndTitle": "End the session?",
+  "sessionsKeepScreenOn": "Keep the screen on",
+  "sessionsKeepScreenOnHint": "The screen stays on while a session runs",
+  "sessionsNothingPlaying": "Nothing is playing",
+  "sessionsNothingPlayingHint": "Sessions you start will show up here",
+  "sessionsOneInvite": "One invitation is waiting",
+  "sessionsOpenList": "Open the list",
+  "sessionsRunningNow": "Playing now",
+  "sessionsWhoCanInvite": "Who can invite you",
+  "sessionWaitingForSecond": "Waiting for the other person",
+  "sessionYouAreHost": "You're the session host now",
+  "settingsTitle": "Settings",
+  "@sizeBytes": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "sizeBytes": "{value} B",
+  "@sizeKilobytes": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "sizeKilobytes": "{value} KB",
+  "@sizeMegabytes": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeMegabytes": "{value} MB",
+  "spotifyCheck": "Check",
+  "spotifyCheckFailed": "Could not check the connection",
+  "spotifyChecking": "Checking the connection…",
+  "spotifyConnect": "Connect",
+  "spotifyConnected": "Connected",
+  "@spotifyConnectedAs": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "spotifyConnectedAs": "Connected · {name}",
+  "spotifyConnectedShort": "Spotify connected",
+  "spotifyDisconnect": "Disconnect",
+  "spotifyDisconnectMessage": "Playlists and shared listening will stop working until you connect it again.",
+  "spotifyDisconnectTitle": "Disconnect Spotify?",
+  "spotifyLinkBusy": "Could not start connecting: the previous attempt hasn't finished. Wait a few seconds and try again.",
+  "spotifyLinked": "Spotify connected",
+  "spotifyNeedsReauth": "Access was revoked or expired — connect again",
+  "spotifyNotConnected": "Not connected",
+  "spotifyNotConnectedShort": "Spotify not connected",
+  "spotifyReconnect": "Reconnect",
+  "spotifyUnlinked": "Spotify disconnected",
+  "spotifyWebviewTitle": "Connecting Spotify",
+  "summaryAbout": "Version • Privacy • Terms",
+  "summaryData": "Cache • History • Export",
+  "summaryPlayback": "Connections • Audio delay • Background",
+  "summarySecurity": "Devices • Sign out • Delete account",
+  "summarySessions": "Active • Invitations • Who can invite",
+  "tabMusic": "Music",
+  "tabNow": "Now",
+  "themeDark": "Dark",
+  "themeLight": "Light",
+  "themeSystem": "Match system",
+  "@trackCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trackCount": "{count, plural, one{{count} track} other{{count} tracks}}",
+  "trackLike": "Add to liked",
+  "trackUnlike": "Remove from liked",
+  "@updatedDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "updatedDaysAgo": "updated {count, plural, one{{count} day} other{{count} days}} ago",
+  "@updatedHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "updatedHoursAgo": "updated {count, plural, one{{count} hour} other{{count} hours}} ago",
+  "@updatedMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "updatedMinutesAgo": "updated {count, plural, one{{count} minute} other{{count} minutes}} ago"
+}

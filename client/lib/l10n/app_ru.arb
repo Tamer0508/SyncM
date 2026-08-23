@@ -1,0 +1,1013 @@
+{
+  "@@locale": "ru",
+  "aboutDataPrivacy": "Данные и приватность",
+  "aboutDataPrivacyHint": "Что приложение хранит и как это удалить",
+  "aboutLegalGroup": "Данные и правила",
+  "aboutPrivacyPolicy": "Политика конфиденциальности",
+  "aboutTerms": "Условия использования",
+  "aboutTermsHint": "Правила пользования приложением",
+  "@aboutVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutVersion": "Версия {version}",
+  "accentAmber": "Янтарь",
+  "accentClay": "Глина",
+  "accentIndigo": "Индиго",
+  "accentOlive": "Оливковый",
+  "accentPlum": "Слива",
+  "accountConnectedServices": "Подключённые сервисы",
+  "accountEmail": "Почта",
+  "accountNameUnset": "Не задано",
+  "accountProfile": "Профиль",
+  "accountPublicId": "Ваш код",
+  "accountPublicIdCopied": "Код скопирован",
+  "addedToPlaylist": "Добавлено в «{name}»",
+  "@addedToPlaylist": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "addToPlaylistCreate": "Создать новый",
+  "addToPlaylistEmpty": "Своих плейлистов пока нет. Создайте первый — трек попадёт в него сразу.",
+  "addToPlaylistTitle": "Добавить в плейлист",
+  "@addTracksAddCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addTracksAddCount": "Добавить ({count})",
+  "@addTracksAdded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addTracksAdded": "Добавлено {count, plural, one{{count} трек} few{{count} трека} many{{count} треков} other{{count} трека}}",
+  "@addTracksAddedWithSkipped": {
+    "placeholders": {
+      "base": {
+        "type": "String"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "addTracksAddedWithSkipped": "{base}, {skipped} уже было",
+  "addTracksAllPresent": "Все выбранные треки уже в плейлисте",
+  "addTracksAlreadyIn": "Уже в плейлисте",
+  "addTracksBackToPlaylists": "К списку плейлистов",
+  "addTracksDeselect": "Снять",
+  "addTracksEmptyPlaylist": "В этом плейлисте нет треков.",
+  "addTracksForeignPlaylist": "Spotify не отдаёт содержимое этого плейлиста — доступны только ваши собственные и совместные.",
+  "addTracksFromPlaylist": "Из плейлиста",
+  "addTracksNoOtherPlaylists": "Других плейлистов пока нет — брать треки не из чего.",
+  "addTracksNothingFound": "Ничего не нашлось. Попробуйте другой запрос.",
+  "addTracksSearch": "Поиск",
+  "addTracksSearchEmpty": "Найдите трек в Spotify и добавьте его в плейлист.",
+  "addTracksSearchHint": "Название трека или исполнитель",
+  "addTracksSelectAll": "Выбрать всё",
+  "@addTracksToPlaylist": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "addTracksToPlaylist": "Добавить в «{name}»",
+  "addTracksYourPlaylist": "Ваш плейлист",
+  "alreadyInPlaylist": "Уже в «{name}»",
+  "@alreadyInPlaylist": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "appearanceAccent": "Цвет акцента",
+  "appearanceArtworkBackground": "Фон по обложке",
+  "appearanceArtworkBackgroundHint": "Свечение в цвет обложки на экране плеера",
+  "appearanceCompact": "Компактный режим",
+  "appearanceCompactHint": "Плотнее списки — на экран помещается больше",
+  "appearanceDensityGroup": "Плотность и движение",
+  "appearanceLanguage": "Язык",
+  "appearanceLanguageHint": "Язык интерфейса на всех ваших устройствах",
+  "appearanceReduceMotion": "Меньше анимации",
+  "appearanceReduceMotionHint": "Переходы без движения — если оно мешает или укачивает",
+  "appearanceReset": "Сбросить оформление",
+  "appearanceResetDone": "Оформление сброшено",
+  "appearanceResetHint": "Вернуть тему, цвет, текст, плотность и стартовую вкладку",
+  "appearanceStartTab": "С чего начинать",
+  "appearanceStartTabHint": "Вкладка, которая открывается при запуске",
+  "appearanceTextSize": "Размер текста",
+  "appearanceTheme": "Тема",
+  "appTitle": "SyncM",
+  "avatarBadFormat": "Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP",
+  "avatarReadFailed": "Не удалось прочитать файл",
+  "avatarUpdated": "Аватарка обновлена",
+  "blockedEmptyMessage": "Заблокировать можно из профиля человека или из списка друзей.",
+  "blockedEmptyTitle": "Никто не заблокирован",
+  "blockedHint": "Эти люди не найдут вас в поиске и не смогут отправить заявку или позвать в сессию. Они об этом не узнают.",
+  "@blockedPeopleCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "blockedPeopleCount": "{count, plural, one{{count} человек} few{{count} человека} many{{count} человек} other{{count} человека}}",
+  "blockedUnblock": "Разблокировать",
+  "@blockedUnblocked": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "blockedUnblocked": "{name} разблокирован",
+  "blockedUnblockFailed": "Не удалось разблокировать",
+  "@cacheFriendsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cacheFriendsCount": "друзей: {count}",
+  "@cacheInMemory": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "cacheInMemory": "В памяти: {size}",
+  "@cacheOnDisk": {
+    "placeholders": {
+      "disk": {
+        "type": "String"
+      },
+      "memory": {
+        "type": "String"
+      }
+    }
+  },
+  "cacheOnDisk": "На диске: {disk} · в памяти: {memory}",
+  "@cacheSessionsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cacheSessionsCount": "сессий: {count}",
+  "@clockSummary": {
+    "placeholders": {
+      "offset": {
+        "type": "String"
+      },
+      "ping": {
+        "type": "int"
+      }
+    }
+  },
+  "clockSummary": "Часы: {offset} мс · пинг: {ping} мс",
+  "commonBack": "Назад",
+  "commonCancel": "Отмена",
+  "commonClear": "Очистить",
+  "commonClose": "Закрыть",
+  "commonCollapse": "Свернуть",
+  "commonCreate": "Создать",
+  "commonDelete": "Удалить",
+  "commonEmpty": "Пусто",
+  "commonFinish": "Завершить",
+  "commonFriends": "Друзья",
+  "commonJustNow": "только что",
+  "commonLoadMore": "Загрузить ещё",
+  "commonLongAgo": "давно",
+  "commonMore": "Ещё",
+  "@commonMoreCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commonMoreCount": "Ещё {count}",
+  "commonName": "Имя",
+  "commonNobody": "Никто",
+  "commonNoName": "Без имени",
+  "commonOpen": "Открыть",
+  "commonOr": " или ",
+  "commonRefresh": "Обновить",
+  "commonReset": "Сбросить",
+  "commonSave": "Сохранить",
+  "commonSignOut": "Выйти",
+  "commonSystem": "Система",
+  "commonUser": "Пользователь",
+  "createSessionFailed": "Не удалось создать сессию",
+  "createSessionFriendsOnly": "Сессию можно создать только с другом",
+  "createSessionFriendsOnlyHint": "Добавьте кого-нибудь в друзья, и он появится в этом списке.",
+  "createSessionHint": "Пригласите друга и слушайте музыку одновременно.",
+  "createSessionName": "Название сессии",
+  "createSessionNobodyFound": "Никого с таким именем",
+  "createSessionPickFriend": "Выберите друга, чтобы продолжить",
+  "createSessionSearchFriends": "Поиск среди друзей",
+  "createSessionWithWhom": "С кем слушаем",
+  "cropDone": "Готово",
+  "cropFailed": "Не удалось обработать изображение",
+  "cropHint": "Область всегда квадратная — так аватар выглядит одинаково везде.",
+  "cropNoImageData": "Не удалось получить данные изображения",
+  "cropRotateLeft": "Влево",
+  "cropRotateRight": "Вправо",
+  "cropTitle": "Кадрирование",
+  "dataExport": "Выгрузить мои данные",
+  "dataExportHint": "Профиль, друзья, плейлисты и история одним файлом",
+  "dataHistoryHint": "Посмотреть и очистить",
+  "dataImageCache": "Кэш изображений",
+  "dataImageCacheCleared": "Кэш изображений очищен",
+  "dataNothingSaved": "Пока ничего не сохранено",
+  "dataOnServer": "На сервере",
+  "dataOnThisDevice": "На этом устройстве",
+  "dataPrefetch": "Загружать данные при запуске",
+  "dataPrefetchHint": "Списки друзей и сессий готовы к моменту открытия вкладки",
+  "dataSavedLists": "Сохранённые списки",
+  "dataSavedListsCleared": "Списки очищены",
+  "dataUpdatedJustNow": "обновлено только что",
+  "dataWhatIsStored": "Что хранится о вас",
+  "dataWhatIsStoredHint": "Список данных и как их удалить",
+  "@daysAgoShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "daysAgoShort": "{count} дн. назад",
+  "deleteAccountMessage": "Профиль, друзья и история сессий будут удалены безвозвратно. Это действие нельзя отменить.",
+  "devicesApp": "Приложение SyncM",
+  "devicesBrowser": "Браузер",
+  "devicesCurrent": "Это устройство",
+  "devicesEmptyMessage": "Список пуст — похоже, связь с сервером потерялась. Попробуйте открыть экран заново.",
+  "devicesEmptyTitle": "Активных сеансов нет",
+  "@devicesEndAgainMessage": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "devicesEndAgainMessage": "На «{device}» придётся входить заново.",
+  "devicesEndSessionTitle": "Завершить сеанс?",
+  "devicesHint": "Здесь показаны приложения и браузеры, где выполнен вход. Если видите незнакомое устройство — завершите его сеанс.",
+  "devicesSessionEnded": "Сеанс завершён",
+  "devicesSignOutThisDeviceTitle": "Выйти на этом устройстве?",
+  "devicesTimeUnknown": "Время неизвестно",
+  "devicesTitle": "Устройства",
+  "devicesYesterday": "Вчера",
+  "@durationHours": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationHours": "{count} ч",
+  "@durationMinutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationMinutes": "{count} мин",
+  "errorBadResponse": "Сервер вернул неожиданный ответ. Попробуйте обновить.",
+  "errorConflict": "Действие уже выполняется или невозможно сейчас.",
+  "errorConnectionDropped": "Соединение прервалось. Попробуйте ещё раз.",
+  "errorForbidden": "Недостаточно прав для этого действия.",
+  "errorGeneric": "Что-то пошло не так.",
+  "errorGenericRetry": "Что-то пошло не так. Попробуйте снова.",
+  "errorGoogleFailed": "Не удалось войти через Google. Попробуйте ещё раз.",
+  "errorGoogleMisconfigured": "Вход через Google настроен неверно. Сообщите разработчику.",
+  "errorGoogleUnreachable": "Не удалось связаться с Google. Проверьте соединение.",
+  "errorHandshake": "Не удалось установить защищённое соединение.",
+  "errorNetwork": "Ошибка сети. Проверьте соединение.",
+  "errorNoInternet": "Нет подключения к интернету. Проверьте сеть.",
+  "errorNotFound": "Не найдено.",
+  "errorServerFailure": "Ошибка на сервере. Мы уже знаем о проблеме.",
+  "errorServerSlow": "Сервер долго не отвечает. Попробуйте позже.",
+  "errorServerUnavailable": "Сервер временно недоступен. Попробуйте через минуту.",
+  "errorServerUnreachable": "Не удалось связаться с сервером. Проверьте соединение.",
+  "errorSessionExpired": "Сессия истекла. Войдите заново.",
+  "errorSignInCancelled": "Вход отменён",
+  "errorTooManyRequests": "Слишком много запросов. Немного подождите.",
+  "@exportSaved": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "exportSaved": "Файл сохранён: {path}",
+  "foregroundChannelDescription": "Показывается, пока идёт совместное прослушивание, чтобы синхронизация не прерывалась.",
+  "foregroundChannelName": "Активная сессия SyncM",
+  "foregroundText": "Слушаете вместе с друзьями",
+  "foregroundTitle": "Сессия SyncM активна",
+  "friendActions": "Действия",
+  "friendBlock": "Заблокировать",
+  "@friendLastSeen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "friendLastSeen": "Был(а) в сети {when}",
+  "friendOffline": "Не в сети",
+  "friendOnline": "В сети",
+  "friendOpenProfile": "Открыть профиль",
+  "friendRemove": "Удалить из друзей",
+  "@friendsBlocked": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "friendsBlocked": "{name} заблокирован",
+  "friendsBlockFailed": "Не удалось заблокировать",
+  "friendsBlockMessage": "Он не найдёт вас в поиске, не сможет отправить заявку или позвать в сессию. Дружба будет удалена. Уведомления он не получит.",
+  "@friendsBlockTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "friendsBlockTitle": "Заблокировать {name}?",
+  "friendsEmptyMessage": "С другом можно слушать музыку одновременно — где бы вы ни были.",
+  "friendsEmptyTitle": "Добавьте друзей",
+  "@friendsRemoved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "friendsRemoved": "{name} удалён из друзей",
+  "friendsRemoveFailed": "Не удалось удалить друга",
+  "@friendsRemoveMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "friendsRemoveMessage": "{name} пропадёт из вашего списка друзей.",
+  "friendsRemoveTitle": "Удалить из друзей?",
+  "@hiddenList": {
+    "placeholders": {
+      "items": {
+        "type": "String"
+      }
+    }
+  },
+  "hiddenList": "Скрыто: {items}",
+  "historyClear": "Очистить",
+  "historyCleared": "История очищена",
+  "historyClearFailed": "Не удалось очистить историю",
+  "historyClearMessage": "Записи о прослушанных треках будут удалены.",
+  "historyClearTitle": "Очистить историю?",
+  "historyEmptyMessage": "Здесь появятся треки, которые вы включали в SyncM.",
+  "historyEmptyTitle": "История пуста",
+  "historyJustNow": "только что",
+  "historyTitle": "История",
+  "historyUntitled": "Без названия",
+  "historyYesterday": "вчера",
+  "homeAnotherSession": "Ещё одна сессия",
+  "homeConnectSpotify": "Подключить Spotify",
+  "homeCreatePlaylist": "Создать плейлист",
+  "homeDarkTheme": "Тёмная тема",
+  "homeFilterAll": "Все",
+  "homeFilterFriend": "Друг",
+  "homeFilterMine": "Мои",
+  "homeFriendRequests": "Заявки в друзья",
+  "homeInvitedYou": "Вас зовут",
+  "@homeInviteFrom": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeInviteFrom": "От {name}",
+  "homeLightTheme": "Светлая тема",
+  "homeListenTogether": "Слушайте вместе",
+  "homeListenTogetherHint": "Позовите друга — музыка пойдёт у вас одновременно, где бы вы ни были.",
+  "homeNoOwnPlaylists": "Своих плейлистов пока нет",
+  "homeNoOwnPlaylistsHint": "Соберите первый — и его можно будет включить в сессии.",
+  "homeNothingPlaying": "Ничего не играет",
+  "homeNothingPlayingHint": "Выберите трек из плейлиста — управление появится здесь.",
+  "homeNowListening": "Сейчас слушаете",
+  "homePlaylist": "Плейлист",
+  "homeSearchFriends": "Поиск друзей",
+  "homeSession": "Сессия",
+  "homeSpotifyUnavailable": "Плейлисты Spotify недоступны",
+  "homeSpotifyUnavailableHint": "Подключите аккаунт Spotify, чтобы видеть здесь свою библиотеку.",
+  "homeStartSession": "Начать сессию",
+  "homeTapToOpen": "Нажмите, чтобы открыть",
+  "@hoursAgoShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hoursAgoShort": "{count} ч. назад",
+  "invitesAccepted": "Приглашение принято",
+  "inviteScopeFriendsHint": "Позвать может только тот, кто у вас в друзьях",
+  "inviteScopeNobodyHint": "Никто не сможет позвать вас в сессию",
+  "@invitesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "invitesCount": "Приглашения · {count}",
+  "invitesDeclined": "Приглашение отклонено",
+  "invitesEmptyMessage": "Друг позовёт, приглашение появится здесь. Можно и не ждать: начните сессию сами.",
+  "invitesEmptyTitle": "Приглашений пока нет",
+  "@invitesNotification": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "invitesNotification": "Приглашение в сессию «{name}»",
+  "invitesReplyFailed": "Не удалось ответить на приглашение",
+  "invitesTitle": "Приглашения",
+  "@invitesWaiting": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "invitesWaiting": "{count, plural, one{Одно приглашение ждёт ответа} few{{count} приглашения ждут ответа} many{{count} приглашений ждут ответа} other{{count} приглашения ждут ответа}}",
+  "@latencyMilliseconds": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "latencyMilliseconds": "{value} мс",
+  "latencySpeaker": "Колонка",
+  "latencyTitle": "Задержка звука",
+  "latencyWired": "Провод",
+  "legalCopyText": "Скопировать текст",
+  "legalOpenFailed": "Не удалось открыть документ.",
+  "@legalOpenFailedDetails": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "legalOpenFailedDetails": "Не удалось открыть документ в браузере: {error}",
+  "legalTextCopied": "Текст скопирован",
+  "loginBrowser": "Войти через браузер",
+  "loginDoneCloseTab": "Вход выполнен! Вкладку можно закрыть.",
+  "loginGoogle": "Войти через Google",
+  "loginGoogleNoToken": "Ошибка: не удалось получить ID токен от Google",
+  "loginHint": "Войдите через Google, чтобы создавать сессии и слушать музыку вместе.",
+  "loginSubtitle": "Музыка для друзей",
+  "loginTagline": "Слушайте одну музыку одновременно — где бы вы ни были.",
+  "loginTitle": "Вход",
+  "@minutesAgoShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "minutesAgoShort": "{count} мин. назад",
+  "nameDialogCharset": "Только буквы, цифры, пробел и знаки . _ -",
+  "nameDialogEmpty": "Введите имя",
+  "nameDialogHint": "Это имя видят друзья — в списке, в сессиях и в приглашениях.",
+  "nameDialogTitle": "Как вас зовут?",
+  "@nameDialogTooLong": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "nameDialogTooLong": "Не более {count, plural, one{{count} символа} few{{count} символов} many{{count} символов} other{{count} символов}}",
+  "@nameDialogTooShort": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "nameDialogTooShort": "Минимум {count, plural, one{{count} символ} few{{count} символа} many{{count} символов} other{{count} символа}}",
+  "nameUpdated": "Имя обновлено",
+  "navFindFriends": "Найти друзей",
+  "navLibrary": "Библиотека",
+  "navLikedTracks": "Любимые треки",
+  "navNewSession": "Новая сессия",
+  "navQuick": "Быстро",
+  "notificationsAllOff": "Карточки выключены",
+  "notificationsAllOn": "Все карточки включены",
+  "notificationsFriendRequests": "Заявки в друзья",
+  "notificationsFriendRequestsHint": "Карточка, когда вас добавляют",
+  "notificationsGroup": "Всплывающие карточки",
+  "notificationsHint": "Настройки общие для всех ваших устройств. Сами заявки и приглашения продолжают приходить — выключается только карточка поверх экрана.",
+  "notificationsOffInvites": "приглашения",
+  "@notificationsOffOne": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationsOffOne": "Выключено: {what}",
+  "notificationsOffRequests": "заявки",
+  "notificationsSessionInvites": "Приглашения в сессию",
+  "notificationsSessionInvitesHint": "Карточка, когда друг зовёт слушать вместе",
+  "@pickPlaylistAddAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickPlaylistAddAll": "Добавить все ({count})",
+  "@pickPlaylistAddSelected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickPlaylistAddSelected": "Добавить выбранные ({count})",
+  "@pickPlaylistDeselectCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickPlaylistDeselectCount": "Снять ({count})",
+  "pickPlaylistEmptyPlaylist": "В плейлисте нет треков",
+  "@pickPlaylistInPlaylist": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickPlaylistInPlaylist": "{count} в плейлисте",
+  "pickPlaylistNoPlaylists": "Плейлистов нет",
+  "pickPlaylistNoPlaylistsHint": "Подключите Spotify или создайте свой плейлист, чтобы добавлять треки в сессии.",
+  "pickPlaylistNoSession": "Не удалось определить сессию",
+  "pickPlaylistNoTracks": "Треков нет",
+  "pickPlaylistNoTracksHint": "Этот плейлист пуст либо его содержимое недоступно: Spotify отдаёт треки только для ваших собственных плейлистов.",
+  "pickPlaylistTitle": "Выберите плейлист",
+  "playbackAllowBackground": "Разрешить работу в фоне",
+  "playbackAllowBackgroundHint": "Чтобы синхронизация не прерывалась при погашенном экране",
+  "playbackAutostart": "Настроить автозапуск",
+  "playbackAutostartHint": "На Xiaomi и Redmi без этого система закрывает приложение",
+  "playbackAutostartHint2": "Откройте настройки приложения и включите автозапуск вручную",
+  "playbackBackgroundGroup": "Фоновый режим",
+  "playbackClockSync": "Сверить часы с сервером",
+  "playbackClockSyncStarted": "Часы синхронизируются заново",
+  "playbackClockUnknown": "Ещё не измерено — нажмите, чтобы обновить",
+  "playbackConnections": "Подключения",
+  "playbackOpenSpotifyHint": "Откройте Spotify и запустите любой трек, затем повторите.",
+  "playbackPermissionsHint": "Проверьте разрешения в системном окне",
+  "playbackQualityGroup": "Качество звука",
+  "playbackServerLink": "Связь с сервером",
+  "playbackServerOffline": "Нет связи. Проверьте интернет",
+  "playbackServerOnline": "На связи — события сессии приходят сразу",
+  "playbackSpotifyConnected": "Подключён — можно запускать треки",
+  "playbackSpotifyConnectFailed": "Не удалось подключиться к Spotify",
+  "playbackSpotifyDevice": "Spotify на устройстве",
+  "playbackSpotifyDisconnected": "Не подключён. Нажмите, чтобы связаться с приложением Spotify",
+  "playbackSpotifySettings": "Настройки Spotify",
+  "playbackSpotifySettingsHint": "Качество, кроссфейд и громкость задаются в приложении Spotify",
+  "playbackSpotifySettingsPath": "Откройте Spotify → Настройки → Качество звука",
+  "playbackSyncGroup": "Синхронизация",
+  "playerNext": "Следующий трек",
+  "playerNowPlayingLabel": "СЕЙЧАС ИГРАЕТ",
+  "playerPause": "Пауза",
+  "playerPlay": "Воспроизвести",
+  "playerPrevious": "Предыдущий трек",
+  "playerRepeatAll": "Повтор списка",
+  "playerRepeatOff": "Повтор выключен",
+  "playerRepeatOne": "Повтор одного трека",
+  "playerShuffle": "Перемешать",
+  "playerShuffleOn": "Перемешивание включено",
+  "playerUnknownTrack": "Неизвестный трек",
+  "playlistActionsTitle": "Действия с плейлистом",
+  "playlistAddMusic": "Добавить музыку",
+  "playlistChangeCover": "Изменить обложку",
+  "playlistClear": "Очистить плейлист",
+  "playlistCleared": "Плейлист очищен",
+  "playlistClearMessage": "Из «{name}» будут удалены все треки. Сам плейлист останется.",
+  "@playlistClearMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistClearTitle": "Очистить плейлист?",
+  "playlistConnectSpotifyHint": "Подключите Spotify аккаунт в профиле",
+  "playlistCopyCreated": "Создана копия «{name}»",
+  "@playlistCopyCreated": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistCoverHint": "Обложка квадратная — так плейлисты выглядят ровно в списке.",
+  "playlistCoverRemoved": "Обложка убрана",
+  "playlistCoverTitle": "Обложка плейлиста",
+  "playlistCoverUpdated": "Обложка обновлена",
+  "playlistDelete": "Удалить плейлист",
+  "playlistDeleted": "Плейлист удалён",
+  "playlistDeleteMessage": "«{name}» и его список треков будут удалены. Сами треки останутся в Spotify.",
+  "@playlistDeleteMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistDeleteTitle": "Удалить плейлист?",
+  "playlistDuplicate": "Дублировать",
+  "playlistEdit": "Изменить плейлист",
+  "playlistEditNameDescription": "Изменить название и описание",
+  "playlistEmptyMessage": "Найдите музыку в Spotify или возьмите её из другого плейлиста.",
+  "playlistEmptyShort": "В этом плейлисте пока пусто.",
+  "playlistEmptyTitle": "Нет треков",
+  "playlistFieldDescription": "Описание",
+  "playlistFieldName": "Название",
+  "playlistFieldOptional": "Необязательно",
+  "playlistForeign": "Spotify не отдаёт содержимое чужих плейлистов — доступны только ваши собственные и совместные.",
+  "playlistLinkCopied": "Плейлист скопирован в буфер обмена",
+  "playlistNameCharset": "Только буквы, цифры, пробелы и ._-()",
+  "playlistNameEmpty": "Название не может быть пустым",
+  "playlistNameEmptyGeneric": "Введите название",
+  "playlistNameTooShort": "Минимум 2 символа",
+  "playlistNew": "Новый плейлист",
+  "playlistOpen": "Открыть",
+  "playlistPlay": "Слушать",
+  "playlistRemoveCover": "Убрать обложку",
+  "playlistRemoveTrack": "Удалить из плейлиста",
+  "playlistShare": "Поделиться",
+  "playlistTrackActions": "Действия с треком",
+  "playlistTrackRemoved": "Трек удалён из плейлиста",
+  "previewArtistName": "Исполнитель",
+  "previewTrackName": "Название трека",
+  "privacyAlwaysVisible": "Видно всегда",
+  "privacyBitActivity": "активность",
+  "privacyBitFriends": "друзья",
+  "privacyBitSearch": "поиск",
+  "privacyBitStatus": "статус",
+  "privacyBlocked": "Заблокированные",
+  "privacyBlockedHint": "Не смогут найти вас, писать и звать в сессии",
+  "privacyBlockedNobody": "Никого нет",
+  "privacyBlockList": "Чёрный список",
+  "privacyDetailed": "Подробно",
+  "privacyDocFriends": "Друзья и заявки",
+  "privacyDocFriendsText": "С кем вы дружите и кому отправляли заявки. Заблокированные хранятся отдельно и никому не показываются.",
+  "privacyDocFullHint": "Всё написанное выше — краткий пересказ. Полная политика конфиденциальности с формулировками и сроками хранения открывается ниже.",
+  "privacyDocFullTitle": "Полный текст",
+  "privacyDocHistoryText": "Треки, которые вы включали в приложении, и время. Её можно очистить в разделе «Данные».",
+  "privacyDocHowToDeleteText": "История прослушанного очищается в разделе «Данные». Там же удаляется аккаунт целиком — вместе с профилем, друзьями, сессиями и подключением Spotify. Это необратимо.",
+  "privacyDocHowToDeleteTitle": "Как удалить",
+  "privacyDocNoOutsideListening": "Содержимое прослушивания вне приложения: что вы слушаете сами, без сессии, никуда не отправляется.",
+  "privacyDocNoPassword": "Пароль от Spotify — авторизация проходит на стороне Spotify.",
+  "privacyDocNoPayments": "Платёжные данные — приложение бесплатное и ничего не принимает.",
+  "privacyDocNotStoredTitle": "Чего нет",
+  "privacyDocProfile": "Имя, адрес почты и аватар. Почта нужна для входа, имя и аватар видят друзья.",
+  "privacyDocSessionsText": "Названия совместных прослушиваний, их участники, добавленные треки и оценки — чтобы показать совпадения в конце.",
+  "privacyDocSpotify": "Подключение Spotify",
+  "privacyDocSpotifyText": "Идентификатор аккаунта и токены доступа — в зашифрованном виде. Пароль от Spotify приложение не видит и не получает.",
+  "privacyDocStoredHint": "Список собран по тому, что приложение действительно записывает в базу.",
+  "privacyDocStoredTitle": "Что хранится",
+  "privacyHiddenWarning": "При полностью скрытом профиле друзьям сложнее понять, когда вас звать слушать вместе.",
+  "privacyHideActivity": "Скрыть активность",
+  "privacyHideActivityHint": "Что вы слушаете в сессии, не будет видно в профиле",
+  "privacyHideFriends": "Скрыть друзей",
+  "privacyHideFriendsHint": "Никто не увидит, сколько у вас друзей и кто из них общий",
+  "privacyHideOnline": "Скрыть статус в сети",
+  "privacyHideOnlineHint": "Друзья не увидят, когда вы онлайн и когда были в последний раз",
+  "privacyHideSearch": "Скрыть из поиска",
+  "privacyHideSearchHint": "Новые люди не найдут вас по имени. Друзья — увидят",
+  "privacyHistory": "История прослушанного",
+  "privacyHistoryHint": "Видна только вам, даже друзьям — нет",
+  "privacyNameAndAvatar": "Имя и аватар",
+  "privacyNameAndAvatarHint": "По ним друзья узнают вас в списке и в сессии",
+  "privacyNothingHidden": "Ничего не скрыто",
+  "privacyPresetFriends": "Только свои",
+  "privacyPresetFriendsSummary": "Только свои — вас не найдут в поиске",
+  "privacyPresetHidden": "Скрытый",
+  "privacyPresetHiddenSummary": "Скрытый профиль",
+  "privacyPresetOpen": "Открытый",
+  "privacyPresetOpenSummary": "Открытый профиль",
+  "privacyQuickMode": "Быстрый режим",
+  "privacySessionParticipation": "Участие в общей сессии",
+  "privacySessionParticipationHint": "Тот, с кем вы слушаете, видит вас и очередь треков",
+  "privacySummaryFriendCount": "сколько у вас друзей",
+  "privacySummaryFriendsSee": "Друзья видят",
+  "privacySummaryListening": "что вы слушаете",
+  "privacySummaryNameAvatar": "имя и аватар",
+  "privacySummaryNotSearchable": "Не найдут вас в поиске",
+  "privacySummaryOnline": "когда вы в сети",
+  "privacySummaryOthers": "Остальные",
+  "privacySummarySearchable": "Могут найти вас по имени и отправить заявку",
+  "privacyWhatIsVisible": "Что о вас видно",
+  "profileConnectSpotify": "Подключить Spotify",
+  "profileDisconnectSpotify": "Отключить Spotify",
+  "profileEmpty": "Пока пусто",
+  "@profileFriendsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileFriendsCount": "{count, plural, one{{count} друг} few{{count} друга} many{{count} друзей} other{{count} друга}}",
+  "@profileInSelection": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileInSelection": "{count} в подборке",
+  "profileLast": "Последнее",
+  "@profileLikedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileLikedCount": "{count} любимых",
+  "profileLikedEmpty": "Отмечайте треки сердечком — они соберутся здесь",
+  "profileLikedTracks": "Любимые треки",
+  "@profileMutualCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileMutualCount": "{count} общих",
+  "profileNothingShown": "Ничего не показывается",
+  "profileRecentlyPlayed": "Недавно слушали",
+  "profileRecentlyPlayedEmpty": "Здесь появятся треки, которые вы включали",
+  "@profileSessionsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileSessionsCount": "{count, plural, one{{count} сессия} few{{count} сессии} many{{count} сессий} other{{count} сессии}}",
+  "profileVisibleToYouOnly": "Видно только вам",
+  "requestsAccept": "Принять",
+  "requestsAccepted": "Заявка принята",
+  "requestsDecline": "Отклонить",
+  "@requestsDeclineMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "requestsDeclineMessage": "{name} не увидит, что вы отклонили заявку.",
+  "requestsDeclineTitle": "Отклонить заявку?",
+  "requestsEmptyMessage": "Здесь появятся приглашения в друзья. Отправить свою — быстрее, чем ждать.",
+  "requestsEmptyTitle": "Заявок пока нет",
+  "@requestsNotification": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "requestsNotification": "Заявка в друзья от {name}",
+  "requestsWantsToAdd": "Хочет добавить вас в друзья",
+  "resultsBackHome": "На главную",
+  "resultsMatches": "Совпадения",
+  "resultsMatchesHint": "Эти треки понравились обоим.",
+  "resultsNoMatches": "Совпадений нет",
+  "resultsNoMatchesHint": "В этот раз вкусы разошлись. Попробуйте ещё одну сессию — с другой подборкой результат может быть иным.",
+  "resultsTitle": "Итоги сессии",
+  "searchEmptyMessage": "Введите имя или код из восьми символов. Свой код можно посмотреть в настройках, в разделе «Аккаунт».",
+  "searchEmptyTitle": "Найдите друзей",
+  "searchFieldHint": "Имя или код",
+  "searchNothingFound": "Никого не нашлось",
+  "searchNothingFoundHint": "Проверьте написание. По коду человек находится, даже если скрыл себя из поиска.",
+  "searchRequestSent": "Заявка отправлена",
+  "searchSendRequest": "Отправить заявку",
+  "searchStatusFriends": "В друзьях",
+  "searchStatusSent": "Отправлено",
+  "searchStatusWaiting": "Ждёт ответа",
+  "sectionAbout": "О приложении",
+  "sectionAccount": "Аккаунт",
+  "sectionAppearance": "Оформление",
+  "sectionData": "Данные",
+  "sectionNotifications": "Уведомления",
+  "sectionPlayback": "Воспроизведение",
+  "sectionPrivacy": "Приватность",
+  "sectionSecurity": "Безопасность",
+  "sectionSessions": "Сессии",
+  "securityDangerZone": "Опасная зона",
+  "securityDeleteAccount": "Удалить аккаунт",
+  "securityDeleteAccountHint": "Безвозвратно удалит профиль, друзей и историю сессий",
+  "securityDeleteAccountTitle": "Удалить аккаунт?",
+  "securityDevices": "Устройства",
+  "securityDevicesHint": "Где выполнен вход, и как завершить лишнее",
+  "securitySessionsGroup": "Сеансы",
+  "securitySignInGoogle": "Через Google",
+  "securitySignInMethod": "Способ входа",
+  "securitySignInSpotifyGoogle": "Через Spotify или Google",
+  "securitySignOutEverywhere": "Выйти со всех устройств",
+  "securitySignOutEverywhereConfirm": "Выйти везде",
+  "securitySignOutEverywhereHint": "Завершит все сеансы, включая этот",
+  "securitySignOutEverywhereMessage": "Все сеансы завершатся, включая этот. Так стоит поступить, если в списке есть чужое устройство.",
+  "securitySignOutEverywhereTitle": "Выйти со всех устройств?",
+  "securitySignOutMessage": "Придётся войти заново, чтобы вернуться.",
+  "securitySignOutThisDevice": "Только на этом устройстве",
+  "securitySignOutTitle": "Выйти из аккаунта?",
+  "sessionAddTracks": "Добавить треки",
+  "sessionAdjusting": "Подстраиваемся",
+  "sessionAlreadyRated": "Второй участник уже оценил",
+  "sessionDislike": "Не нравится",
+  "sessionEndAction": "Завершить сессию",
+  "@sessionEndMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionEndMessage": "«{name}» закроется у всех участников.",
+  "sessionEndMessagePlain": "Сессия будет закрыта для всех участников.",
+  "sessionHostChanged": "Ведущий сессии сменился",
+  "@sessionInQueue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionInQueue": "{count} в очереди",
+  "sessionInSync": "Звучит одновременно",
+  "sessionLike": "Нравится",
+  "sessionNoTracksYet": "Пока без треков",
+  "sessionNotStarted": "Сессия не запущена",
+  "sessionParticipant": "Участник",
+  "sessionQueueEmpty": "Очередь пуста",
+  "sessionQueueEmptyHint": "Добавьте треки из своих плейлистов — их услышат все участники.",
+  "sessionsActive": "Активные сессии",
+  "@sessionsActiveCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionsActiveCount": "Активные сессии · {count}",
+  "sessionsAutoOpenPlayer": "Открывать плеер при запуске",
+  "sessionsAutoOpenPlayerHint": "Полноэкранный плеер, когда трек пошёл",
+  "sessionsBlockedHint": "Они не смогут позвать вас в сессию",
+  "sessionsConfirmEnd": "Спрашивать перед завершением",
+  "sessionsConfirmEndHint": "Подтверждение, чтобы не закрыть сессию случайно",
+  "sessionsDuringGroup": "Во время сессии",
+  "sessionsEnded": "Сессия завершена",
+  "sessionsEndTitle": "Завершить сессию?",
+  "sessionsKeepScreenOn": "Не гасить экран",
+  "sessionsKeepScreenOnHint": "Экран остаётся включённым, пока идёт сессия",
+  "sessionsNothingPlaying": "Сейчас ничего не идёт",
+  "sessionsNothingPlayingHint": "Начатые сессии появятся здесь",
+  "sessionsOneInvite": "Одно приглашение ждёт ответа",
+  "sessionsOpenList": "Открыть список",
+  "sessionsRunningNow": "Идёт сейчас",
+  "sessionsWhoCanInvite": "Кто может звать",
+  "sessionWaitingForSecond": "Ждём второго",
+  "sessionYouAreHost": "Вы теперь ведущий сессии",
+  "settingsTitle": "Настройки",
+  "@sizeBytes": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "sizeBytes": "{value} Б",
+  "@sizeKilobytes": {
+    "placeholders": {
+      "value": {
+        "type": "int"
+      }
+    }
+  },
+  "sizeKilobytes": "{value} КБ",
+  "@sizeMegabytes": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeMegabytes": "{value} МБ",
+  "spotifyCheck": "Проверить",
+  "spotifyCheckFailed": "Не удалось проверить подключение",
+  "spotifyChecking": "Проверяем подключение…",
+  "spotifyConnect": "Подключить",
+  "spotifyConnected": "Подключён",
+  "@spotifyConnectedAs": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "spotifyConnectedAs": "Подключён · {name}",
+  "spotifyConnectedShort": "Spotify подключён",
+  "spotifyDisconnect": "Отключить",
+  "spotifyDisconnectMessage": "Плейлисты и совместное прослушивание перестанут работать, пока вы не подключите его снова.",
+  "spotifyDisconnectTitle": "Отключить Spotify?",
+  "spotifyLinkBusy": "Не удалось начать подключение: предыдущая попытка ещё не завершилась. Подождите несколько секунд и попробуйте снова.",
+  "spotifyLinked": "Spotify подключён",
+  "spotifyNeedsReauth": "Доступ отозван или истёк — подключите заново",
+  "spotifyNotConnected": "Не подключён",
+  "spotifyNotConnectedShort": "Spotify не подключён",
+  "spotifyReconnect": "Переподключить",
+  "spotifyUnlinked": "Spotify отключён",
+  "spotifyWebviewTitle": "Подключение Spotify",
+  "summaryAbout": "Версия • Приватность • Условия",
+  "summaryData": "Кэш • История • Выгрузка",
+  "summaryPlayback": "Подключения • Задержка звука • Фон",
+  "summarySecurity": "Устройства • Выход • Удаление аккаунта",
+  "summarySessions": "Активные • Приглашения • Кто может звать",
+  "tabMusic": "Музыка",
+  "tabNow": "Сейчас",
+  "themeDark": "Тёмная",
+  "themeLight": "Светлая",
+  "themeSystem": "Как в системе",
+  "@trackCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trackCount": "{count, plural, one{{count} трек} few{{count} трека} many{{count} треков} other{{count} трека}}",
+  "trackLike": "В любимые",
+  "trackUnlike": "Убрать из любимых",
+  "@updatedDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "updatedDaysAgo": "обновлено {count, plural, one{{count} день} few{{count} дня} many{{count} дней} other{{count} дня}} назад",
+  "@updatedHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "updatedHoursAgo": "обновлено {count, plural, one{{count} час} few{{count} часа} many{{count} часов} other{{count} часа}} назад",
+  "@updatedMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "updatedMinutesAgo": "обновлено {count, plural, one{{count} минуту} few{{count} минуты} many{{count} минут} other{{count} минуты}} назад"
+}

@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/playback_provider.dart';
 import '../../providers/playlists_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/image_cache.dart';
@@ -59,10 +60,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   Map<String, bool> _likedMap = {};
 
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
-
-  static const _unavailableMessage =
-      'Spotify не отдаёт содержимое чужих плейлистов — доступны только ваши '
-      'собственные и совместные.';
 
   @override
   void initState() {
@@ -158,7 +155,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       if (auth.user?.spotifyConnected != true) {
         if (mounted) {
           showAppNotification(context,
-              message: 'Подключите Spotify аккаунт в профиле',
+              message: L.of(context).playlistConnectSpotifyHint,
               type: NotificationType.error);
         }
         return;
@@ -168,7 +165,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       if (!connected) {
         if (mounted) {
           showAppNotification(context,
-              message: 'Не удалось подключиться к Spotify',
+              message: L.of(context).playbackSpotifyConnectFailed,
               type: NotificationType.error);
         }
         return;
@@ -252,7 +249,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
 
     try {
       await context.read<PlaylistsProvider>().removeTrack(widget.playlistId, uri);
-      if (mounted) showSuccess(context, 'Трек удалён из плейлиста');
+      if (mounted) showSuccess(context, L.of(context).playlistTrackRemoved);
     } catch (err) {
       if (!mounted) return;
       setState(() => _tracks = previous);
@@ -349,7 +346,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
             hasScrollBody: false,
             child: _Notice(
               icon: Icons.lock_outline_rounded,
-              message: _unavailableMessage,
+              message: L.of(context).playlistForeign,
             ),
           )
         else if (_error != null)
@@ -493,13 +490,13 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
               FilledButton.icon(
                 onPressed: hasTracks ? _playAll : null,
                 icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('Слушать'),
+                label: Text(L.of(context).playlistPlay),
               ),
               const SizedBox(width: AppSpacing.sm),
               OutlinedButton.icon(
                 onPressed: hasTracks ? _shuffle : null,
                 icon: const Icon(Icons.shuffle_rounded),
-                label: const Text('Перемешать'),
+                label: Text(L.of(context).playerShuffle),
               ),
               const Spacer(),
               if (widget.embedded)
@@ -521,29 +518,26 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   /// Отдельного окна «Информация» для двух чисел не нужно: их читают перед
   /// тем, как включить, а не по особому запросу.
   String _summary() {
-    final count = _tracks.length;
-    final mod100 = count % 100;
-    final word = (mod100 >= 11 && mod100 <= 14)
-        ? 'треков'
-        : switch (count % 10) {
-            1 => 'трек',
-            2 || 3 || 4 => 'трека',
-            _ => 'треков',
-          };
+    final l = L.of(context);
+    final tracks = l.trackCount(_tracks.length);
 
     final totalMs = _tracks.fold<int>(
       0,
       (sum, track) => sum + ((track['durationMs'] as num?)?.toInt() ?? 0),
     );
 
-    if (totalMs <= 0) return '$count $word';
+    if (totalMs <= 0) return tracks;
 
     final minutes = totalMs ~/ 60000;
-    if (minutes < 60) return '$count $word · $minutes мин';
+    if (minutes < 60) return '$tracks · ${l.durationMinutes(minutes)}';
 
     final hours = minutes ~/ 60;
     final rest = minutes % 60;
-    return '$count $word · $hours ч${rest > 0 ? ' $rest мин' : ''}';
+    final duration = rest > 0
+        ? '${l.durationHours(hours)} ${l.durationMinutes(rest)}'
+        : l.durationHours(hours);
+
+    return '$tracks · $duration';
   }
 
   Widget _buildEmpty(Map<String, dynamic> playlist) {
@@ -558,14 +552,14 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
             Icon(Icons.music_off_rounded, size: 40, color: colors.onSurfaceVariant),
             const SizedBox(height: AppSpacing.sm + 4),
             Text(
-              'Нет треков',
+              L.of(context).playlistEmptyTitle,
               style: context.texts.titleSmall,
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               widget.isCustom
-                  ? 'Найдите музыку в Spotify или возьмите её из другого плейлиста.'
-                  : 'В этом плейлисте пока пусто.',
+                  ? L.of(context).playlistEmptyMessage
+                  : L.of(context).playlistEmptyShort,
               textAlign: TextAlign.center,
               style: context.texts.bodyMedium?.copyWith(
                 color: colors.onSurfaceVariant,
@@ -575,7 +569,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
               const SizedBox(height: AppSpacing.lg),
               FilledButton.tonalIcon(
                 icon: const Icon(Icons.library_add_rounded),
-                label: const Text('Добавить музыку'),
+                label: Text(L.of(context).playlistAddMusic),
                 onPressed: () => runPlaylistAction(
                   context,
                   PlaylistAction.addMusic,
@@ -663,25 +657,25 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
           children: [
             AppMenuButton<_TrackAction>(
               iconColor: context.colors.onSurfaceVariant,
-              tooltip: 'Действия с треком',
+              tooltip: L.of(context).playlistTrackActions,
               onSelected: (action) => switch (action) {
                 _TrackAction.addToPlaylist => showAddToPlaylistSheet(context, track),
                 _TrackAction.removeFromPlaylist => _removeTrack(track),
               },
               entries: [
-                const AppMenuEntry(
+                AppMenuEntry(
                   value: _TrackAction.addToPlaylist,
                   icon: Icons.playlist_add_rounded,
-                  label: 'Добавить в плейлист',
+                  label: L.of(context).addToPlaylistTitle,
                 ),
                 if (widget.isCustom)
                   // Именно «из плейлиста»: трек остаётся и в Spotify, и в
                   // остальных плейлистах — здесь удаляется только строка
                   // этого списка.
-                  const AppMenuEntry(
+                  AppMenuEntry(
                     value: _TrackAction.removeFromPlaylist,
                     icon: Icons.playlist_remove_rounded,
-                    label: 'Удалить из плейлиста',
+                    label: L.of(context).playlistRemoveTrack,
                     danger: true,
                     separated: true,
                   ),

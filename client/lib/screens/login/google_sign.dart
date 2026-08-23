@@ -1,3 +1,4 @@
+import '../../utils/app_globals.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -6,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/oauth_loopback.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../utils/notifications.dart';
@@ -37,12 +39,12 @@ class GoogleSignInButton extends StatelessWidget {
         ),
         onPressed: () =>
             _isWindows ? _handleWindowsSignIn(context) : _handleSignIn(context),
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.login), // цвет унаследуется от кнопки
             SizedBox(width: 8),
-            Text('Войти через Google'), // цвет унаследуется от кнопки
+            Text(L.of(context).loginGoogle), // цвет унаследуется от кнопки
           ],
         ),
       );
@@ -56,7 +58,7 @@ class GoogleSignInButton extends StatelessWidget {
       final result = await runOAuthLoopback(
         port: _googleLoopbackPort,
         responseHtml:
-            '<html><body><h2>Вход выполнен! Вкладку можно закрыть.</h2></body></html>',
+            '<html><body><h2>${appL10n?.loginDoneCloseTab ?? 'Вход выполнен! Вкладку можно закрыть.'}</h2></body></html>',
         onServerReady: (redirectUri) async {
           final authUrl = Uri.parse(
             '${api.baseUrl}/auth/google-web?returnTo=$redirectUri',
@@ -103,7 +105,7 @@ class GoogleSignInButton extends StatelessWidget {
 
       if (idToken == null) {
         if (context.mounted) {
-          showAppNotification(context, message: 'Ошибка: не удалось получить ID токен от Google', type: NotificationType.error);
+          showAppNotification(context, message: L.of(context).loginGoogleNoToken, type: NotificationType.error);
         }
         return;
       }

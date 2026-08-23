@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import '../utils/image_cache.dart';
 
@@ -281,7 +282,7 @@ class _AvatarViewerState extends State<_AvatarViewer> {
                   onPressed: () => Navigator.of(context).pop(),
                   icon: const Icon(Icons.close_rounded),
                   color: Colors.white,
-                  tooltip: 'Закрыть',
+                  tooltip: L.of(context).commonClose,
                 ),
               ),
             ),

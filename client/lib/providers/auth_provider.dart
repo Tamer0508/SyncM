@@ -258,6 +258,15 @@ class AuthProvider with ChangeNotifier {
       debugPrint('Logout request failed, clearing local session anyway: $err');
     }
 
+    await _clearLocalSession();
+  }
+
+  Future<void> logoutEverywhere() async {
+    await api.logoutEverywhere();
+    await _clearLocalSession();
+  }
+
+  Future<void> _clearLocalSession() async {
     _resetPrivacyQueue();
     _user = null;
     _token = null;

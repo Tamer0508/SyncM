@@ -1,10 +1,11 @@
+const { t } = require('../infrastructure/i18n');
 const express = require('express');
 const router = express.Router();
 const { z } = require('zod');
 const requireAuth = require('../middleware/requireAuth');
 router.use(requireAuth);
 const prisma = require('../db/prisma');
-const { getOrSet, incrementVersion } = require('../infrastructure/redis');
+const { getOrSet, getVersioned, setVersioned, incrementVersion } = require('../infrastructure/redis');
 const logger = require('../infrastructure/logger');
 const { rateLimitMiddleware } = require('../infrastructure/rateLimiter');
 const asyncHandler = require('../utils/asyncHandler');
@@ -65,25 +66,26 @@ const playBodySchema = z
     message: 'Требуется uri или contextUri',
   });
 
-function handleSpotifyError(res, error, context) {
+// req нужен ради языка ответа: текст ошибки уходит человеку, а не в журнал.
+function handleSpotifyError(req, res, error, context) {
   if (error instanceof SpotifyNotConnectedError) {
-    return res.status(409).json({ error: 'Spotify не подключён' });
+    return res.status(409).json({ error: t(req, 'spotifyNotConnected') });
   }
   if (error instanceof SpotifyApiError) {
     logger.warn({ err: error, status: error.status, ...context }, 'Spotify API error');
     if (error.status === 404) {
-      return res.status(409).json({ error: 'Нет активного устройства Spotify' });
+      return res.status(409).json({ error: t(req, 'spotifyNoDevice') });
     }
     if (error.status === 403) {
-      return res.status(403).json({ error: 'Действие недоступно (нужен Spotify Premium или другое устройство)' });
+      return res.status(403).json({ error: t(req, 'spotifyPremiumRequired') });
     }
     if (error.status === 429) {
-      return res.status(429).json({ error: 'Spotify временно ограничил запросы, попробуйте позже' });
+      return res.status(429).json({ error: t(req, 'spotifyRateLimited') });
     }
-    return res.status(502).json({ error: 'Ошибка Spotify API' });
+    return res.status(502).json({ error: t(req, 'spotifyApiError') });
   }
   logger.error({ err: error, ...context }, 'Unexpected Spotify route error');
-  return res.status(500).json({ error: 'Внутренняя ошибка' });
+  return res.status(500).json({ error: t(req, 'internalError') });
 }
 
 async function requireSpotifyUser(userId) {
@@ -96,7 +98,7 @@ const invalidatePlaybackCaches = (userId) => incrementVersion(`spotify:devices:$
 
 router.get('/playlists', rateLimitMiddleware(30, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
     const playlists = await getOrSet(`spotify:user-playlists:${userId}`, 'list', CACHE_TTL.userPlaylists, async () => {
@@ -126,13 +128,13 @@ router.get('/playlists', rateLimitMiddleware(30, 60), asyncHandler(async (req, r
 
     res.json(playlists);
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/playlists' });
+    return handleSpotifyError(req, res, error, { userId, route: '/playlists' });
   }
 }));
 
 router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
 
@@ -177,13 +179,13 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
 
     res.json(tracks);
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, playlistId, route: '/playlists/:id/tracks' });
+    return handleSpotifyError(req, res, error, { userId, playlistId, route: '/playlists/:id/tracks' });
   }
 }));
 
 router.get('/search', rateLimitMiddleware(40, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { q } = searchQuerySchema.parse(req.query);
 
@@ -213,33 +215,91 @@ router.get('/search', rateLimitMiddleware(40, 60), asyncHandler(async (req, res)
 
     res.json(tracks);
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/search' });
+    return handleSpotifyError(req, res, error, { userId, route: '/search' });
   }
 }));
 
+// Наличие записи SpotifyUser ещё не значит, что подключение живо: доступ
+// могли отозвать в настройках Spotify, и тогда refresh token мёртв, а строка
+// в базе выглядит как ни в чём не бывало. Поэтому статус проверяется живым
+// запросом к Spotify, а не по наличию записи.
+const SPOTIFY_STATE = {
+  disconnected: 'disconnected',
+  connected: 'connected',
+  needsReauth: 'needs_reauth',
+};
+
+// Отказ живёт в кэше меньше удачи: увидев «нужно переподключить», человек
+// идёт переподключаться сейчас, и ждать пять минут ему незачем.
+const STATUS_TTL = { ok: CACHE_TTL.status, failed: 30 };
+
+function isAuthFailure(error) {
+  if (error instanceof SpotifyNotConnectedError) return true;
+  if (error instanceof SpotifyApiError) return error.status === 401 || error.status === 403;
+
+  // Spotify отвечает invalid_grant, когда доступ отозван. Сеть и 5xx — не
+  // повод объявлять связь мёртвой.
+  return error?.response?.data?.error === 'invalid_grant';
+}
+
 router.get('/status', rateLimitMiddleware(30, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
+
+  const namespace = `spotify:status:${userId}`;
+  const cached = await getVersioned(namespace, 'status:v2');
+  if (cached !== null) return res.json(cached);
+
+  const spotifyUser = await getSpotifyUser(userId);
+
+  if (!spotifyUser) {
+    const status = {
+      connected: false,
+      state: SPOTIFY_STATE.disconnected,
+      spotifyId: null,
+      displayName: null,
+      avatarUrl: null,
+    };
+    await setVersioned(namespace, 'status:v2', status, STATUS_TTL.ok);
+    return res.json(status);
+  }
+
+  const identity = {
+    spotifyId: spotifyUser.spotifyId,
+    displayName: spotifyUser.displayName,
+    avatarUrl: spotifyUser.avatarUrl,
+  };
+
+  if (!spotifyUser.accessToken || !spotifyUser.refreshToken) {
+    const status = { connected: false, state: SPOTIFY_STATE.needsReauth, ...identity };
+    await setVersioned(namespace, 'status:v2', status, STATUS_TTL.failed);
+    return res.json(status);
+  }
 
   try {
-    const status = await getOrSet(`spotify:status:${userId}`, 'status', CACHE_TTL.status, async () => {
-      const spotifyUser = await getSpotifyUser(userId);
-      return {
-        connected: !!spotifyUser,
-        spotifyId: spotifyUser?.spotifyId || null,
-        displayName: spotifyUser?.displayName || null,
-        avatarUrl: spotifyUser?.avatarUrl || null,
-      };
-    });
-    res.json(status);
+    await spotifyGet(spotifyUser, 'https://api.spotify.com/v1/me');
+    const status = { connected: true, state: SPOTIFY_STATE.connected, ...identity };
+    await setVersioned(namespace, 'status:v2', status, STATUS_TTL.ok);
+    return res.json(status);
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/status' });
+    if (isAuthFailure(error)) {
+      logger.info({ userId }, 'Spotify access revoked or expired beyond refresh');
+      const status = { connected: false, state: SPOTIFY_STATE.needsReauth, ...identity };
+      await setVersioned(namespace, 'status:v2', status, STATUS_TTL.failed);
+      return res.json(status);
+    }
+
+    // Spotify недоступен или моргнула сеть: подключение от этого не рвётся.
+    // Отвечаем «подключён» с пометкой stale и НЕ кэшируем — следующий запрос
+    // проверит заново.
+    logger.warn({ err: error, userId }, 'Spotify status probe failed, reporting last known state');
+    return res.json({ connected: true, state: SPOTIFY_STATE.connected, stale: true, ...identity });
   }
 }));
 
 router.get('/devices', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
     const devices = await getOrSet(`spotify:devices:${userId}`, 'list', CACHE_TTL.devices, async () => {
@@ -250,13 +310,13 @@ router.get('/devices', rateLimitMiddleware(20, 60), asyncHandler(async (req, res
 
     res.json(devices);
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/devices' });
+    return handleSpotifyError(req, res, error, { userId, route: '/devices' });
   }
 }));
 
 router.get('/player', rateLimitMiddleware(30, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
     const spotifyUser = await requireSpotifyUser(userId);
@@ -267,14 +327,14 @@ router.get('/player', rateLimitMiddleware(30, 60), asyncHandler(async (req, res)
     if (response.status === 204 || !response.data) return res.json(null);
     res.json(response.data);
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/player' });
+    return handleSpotifyError(req, res, error, { userId, route: '/player' });
   }
 }));
 
 
 router.post('/play', rateLimitMiddleware(15, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { uri, deviceId, contextUri, offset, offsetUri } = playBodySchema.parse(req.body);
 
@@ -298,13 +358,13 @@ router.post('/play', rateLimitMiddleware(15, 60), asyncHandler(async (req, res) 
     await invalidatePlaybackCaches(userId);
     return res.json({ success: true });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/play' });
+    return handleSpotifyError(req, res, error, { userId, route: '/play' });
   }
 }));
 
 router.put('/volume', rateLimitMiddleware(30, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { volume_percent } = volumeSchema.parse(req.query);
 
@@ -317,13 +377,13 @@ router.put('/volume', rateLimitMiddleware(30, 60), asyncHandler(async (req, res)
     });
     return res.json({ success: true });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/volume' });
+    return handleSpotifyError(req, res, error, { userId, route: '/volume' });
   }
 }));
 
 router.put('/seek', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { position_ms } = seekSchema.parse(req.query);
 
@@ -337,13 +397,13 @@ router.put('/seek', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) =
     await invalidatePlaybackCaches(userId);
     return res.json({ success: true });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/seek' });
+    return handleSpotifyError(req, res, error, { userId, route: '/seek' });
   }
 }));
 
 router.put('/pause', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
     const spotifyUser = await requireSpotifyUser(userId);
@@ -355,13 +415,13 @@ router.put('/pause', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) 
     await invalidatePlaybackCaches(userId);
     return res.json({ success: true });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/pause' });
+    return handleSpotifyError(req, res, error, { userId, route: '/pause' });
   }
 }));
 
 router.put('/resume', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
     const spotifyUser = await requireSpotifyUser(userId);
@@ -373,13 +433,13 @@ router.put('/resume', rateLimitMiddleware(20, 60), asyncHandler(async (req, res)
     await invalidatePlaybackCaches(userId);
     return res.json({ success: true });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/resume' });
+    return handleSpotifyError(req, res, error, { userId, route: '/resume' });
   }
 }));
 
 router.post('/next', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
     const spotifyUser = await requireSpotifyUser(userId);
@@ -391,13 +451,13 @@ router.post('/next', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) 
     await invalidatePlaybackCaches(userId);
     return res.json({ success: true });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/next' });
+    return handleSpotifyError(req, res, error, { userId, route: '/next' });
   }
 }));
 
 router.post('/previous', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
     const spotifyUser = await requireSpotifyUser(userId);
@@ -409,13 +469,13 @@ router.post('/previous', rateLimitMiddleware(20, 60), asyncHandler(async (req, r
     await invalidatePlaybackCaches(userId);
     return res.json({ success: true });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/previous' });
+    return handleSpotifyError(req, res, error, { userId, route: '/previous' });
   }
 }));
 
 router.put('/shuffle', rateLimitMiddleware(10, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { state } = shuffleSchema.parse(req.query);
 
@@ -429,13 +489,13 @@ router.put('/shuffle', rateLimitMiddleware(10, 60), asyncHandler(async (req, res
     await invalidatePlaybackCaches(userId);
     return res.json({ success: true });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/shuffle' });
+    return handleSpotifyError(req, res, error, { userId, route: '/shuffle' });
   }
 }));
 
 router.put('/repeat', rateLimitMiddleware(10, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { state } = repeatSchema.parse(req.query);
 
@@ -449,17 +509,19 @@ router.put('/repeat', rateLimitMiddleware(10, 60), asyncHandler(async (req, res)
     await invalidatePlaybackCaches(userId);
     return res.json({ success: true });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/repeat' });
+    return handleSpotifyError(req, res, error, { userId, route: '/repeat' });
   }
 }));
 
 router.post('/disconnect', rateLimitMiddleware(10, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
     const spotifyUser = await getSpotifyUser(userId);
-    if (!spotifyUser) return res.status(404).json({ error: 'Spotify не подключен' });
+    if (!spotifyUser) {
+      return res.status(404).json({ error: t(req, 'spotifyNotConnected') });
+    }
 
     await prisma.spotifyUser.update({
       where: { id: spotifyUser.id },
@@ -481,13 +543,13 @@ router.post('/disconnect', rateLimitMiddleware(10, 60), asyncHandler(async (req,
 
     res.json({ message: 'Spotify успешно отключен' });
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/disconnect' });
+    return handleSpotifyError(req, res, error, { userId, route: '/disconnect' });
   }
 }));
 
 router.get('/token-info', rateLimitMiddleware(20, 60), asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
     const info = await getOrSet(`spotify:token-info:${userId}`, 'me', CACHE_TTL.tokenInfo, async () => {
@@ -497,7 +559,7 @@ router.get('/token-info', rateLimitMiddleware(20, 60), asyncHandler(async (req, 
     });
     res.json(info);
   } catch (error) {
-    return handleSpotifyError(res, error, { userId, route: '/token-info' });
+    return handleSpotifyError(req, res, error, { userId, route: '/token-info' });
   }
 }));
 

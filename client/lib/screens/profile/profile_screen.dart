@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../../services/spotify_link_service.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/artwork_color_store.dart';
 import '../../utils/image_cache.dart';
@@ -122,10 +123,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final confirmed = await showConfirmDialog(
       context,
       icon: Icons.block_rounded,
-      title: 'Заблокировать $name?',
-      message: 'Он не найдёт вас в поиске, не сможет отправить заявку или '
-          'позвать в сессию. Дружба будет удалена. Уведомления он не получит.',
-      confirmLabel: 'Заблокировать',
+      title: L.of(context).friendsBlockTitle(name),
+      message: L.of(context).friendsBlockMessage,
+      confirmLabel: L.of(context).friendBlock,
     );
 
     if (!confirmed || !mounted) return;
@@ -139,14 +139,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (ok) {
         context.read<FriendsProvider>().fetchFriends(refresh: true).ignore();
-        showSuccess(context, '$name заблокирован');
+        showSuccess(context, L.of(context).friendsBlocked(name));
         if (widget.onBack != null) {
           widget.onBack!();
         } else {
           Navigator.of(context).pop();
         }
       } else {
-        showError(context, 'Не удалось заблокировать', force: true);
+        showError(context, L.of(context).friendsBlockFailed, force: true);
       }
     } catch (err) {
       if (!mounted) return;
@@ -159,8 +159,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final auth = context.watch<AuthProvider>();
 
     final displayName = isOwnProfile
-        ? (auth.user?.displayName ?? 'Профиль')
-        : (_profileData?['displayName'] as String? ?? 'Друг');
+        ? (auth.user?.displayName ?? L.of(context).accountProfile)
+        : (_profileData?['displayName'] as String? ?? L.of(context).homeFilterFriend);
 
     final avatarUrl = isOwnProfile
         ? auth.user?.effectiveAvatarUrl
@@ -249,7 +249,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     if (widget.onBack != null || !widget.embedded)
                       _OverlayButton(
                         icon: Icons.arrow_back_rounded,
-                        tooltip: 'Назад',
+                        tooltip: L.of(context).commonBack,
                         onPressed: widget.onBack ??
                             () => Navigator.of(context).maybePop(),
                       ),
@@ -257,7 +257,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     if (!isOwnProfile)
                       _OverlayButton(
                         icon: Icons.block_rounded,
-                        tooltip: 'Заблокировать',
+                        tooltip: L.of(context).friendBlock,
                         onPressed: () => _confirmBlock(context, displayName),
                       ),
                   ],
@@ -398,27 +398,17 @@ class _ProfileContentState extends State<_ProfileContent> {
   int get _likedTotal => widget.isOwnProfile ? _liked.length : _likedCount;
 
   String _buildSubtitle() {
+    final l = L.of(context);
     final sessions = widget.profileData?['sessionsCount'] as int? ?? 0;
 
     final parts = <String>[
-      '${widget.friendsCount} ${_plural(widget.friendsCount, 'друг', 'друга', 'друзей')}',
-      if (sessions > 0)
-        '$sessions ${_plural(sessions, 'сессия', 'сессии', 'сессий')}',
-      if (_likedTotal > 0) '$_likedTotal любимых',
+      l.profileFriendsCount(widget.friendsCount),
+      if (sessions > 0) l.profileSessionsCount(sessions),
+      if (_likedTotal > 0) l.profileLikedCount(_likedTotal),
       if (!widget.isOwnProfile && widget.mutualCount > 0)
-        '${widget.mutualCount} общих',
+        l.profileMutualCount(widget.mutualCount),
     ];
     return parts.join(' • ');
-  }
-
-  String _plural(int n, String one, String few, String many) {
-    final mod100 = n % 100;
-    if (mod100 >= 11 && mod100 <= 14) return many;
-    return switch (n % 10) {
-      1 => one,
-      2 || 3 || 4 => few,
-      _ => many,
-    };
   }
 
   @override
@@ -458,12 +448,12 @@ class _ProfileContentState extends State<_ProfileContent> {
         else ...[
           SliverToBoxAdapter(
             child: _TrackSection(
-              title: 'Недавно слушали',
+              title: L.of(context).profileRecentlyPlayed,
               hint: _history.isEmpty
                   ? (widget.isOwnProfile
-                      ? 'Здесь появятся треки, которые вы включали'
-                      : 'Ничего не показывается')
-                  : (widget.isOwnProfile ? 'Видно только вам' : 'Последнее'),
+                      ? L.of(context).profileRecentlyPlayedEmpty
+                      : L.of(context).profileNothingShown)
+                  : (widget.isOwnProfile ? L.of(context).profileVisibleToYouOnly : L.of(context).profileLast),
               tracks: _history,
               onShowAll: (_history.isEmpty || !widget.isOwnProfile)
                   ? null
@@ -474,10 +464,10 @@ class _ProfileContentState extends State<_ProfileContent> {
           if (widget.isOwnProfile)
             SliverToBoxAdapter(
               child: _TrackSection(
-                title: 'Любимые треки',
+                title: L.of(context).profileLikedTracks,
                 hint: _liked.isEmpty
-                    ? 'Отмечайте треки сердечком — они соберутся здесь'
-                    : '${_liked.length} в подборке',
+                    ? L.of(context).profileLikedEmpty
+                    : L.of(context).profileInSelection(_liked.length),
                 tracks: _liked,
               ),
             ),
@@ -532,7 +522,7 @@ class _Hero extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Профиль',
+          L.of(context).accountProfile,
           style: texts.labelLarge?.copyWith(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -685,12 +675,12 @@ class _ActionsRow extends StatelessWidget {
             // панель — в отличие от всех остальных переходов.
             onPressed: onOpenSettings,
             icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Настройки',
+            tooltip: L.of(context).settingsTitle,
           ),
           const SizedBox(width: AppSpacing.sm),
           AppMenuButton<String>(
             icon: Icons.more_horiz_rounded,
-            tooltip: 'Ещё',
+            tooltip: L.of(context).commonMore,
             onSelected: (value) {
               if (value == 'spotify') {
                 spotifyConnected ? onDisconnect() : onConnect();
@@ -703,8 +693,8 @@ class _ActionsRow extends StatelessWidget {
                     ? Icons.link_off_rounded
                     : Icons.link_rounded,
                 label: spotifyConnected
-                    ? 'Отключить Spotify'
-                    : 'Подключить Spotify',
+                    ? L.of(context).profileDisconnectSpotify
+                    : L.of(context).profileConnectSpotify,
                 iconColor: spotify,
               ),
             ],
@@ -830,7 +820,7 @@ class _TrackSectionState extends State<_TrackSection> {
                   if (widget.onShowAll != null)
                     TextButton(
                       onPressed: widget.onShowAll,
-                      child: const Text('Все'),
+                      child: Text(L.of(context).homeFilterAll),
                     ),
                   if (canExpand)
                     // Стрелка показывает, что секцию можно раскрыть, и
@@ -864,7 +854,7 @@ class _TrackSectionState extends State<_TrackSection> {
                         AppSpacing.sm,
                       ),
                       child: Text(
-                        'Пока пусто',
+                        L.of(context).profileEmpty,
                         style: texts.bodyMedium
                             ?.copyWith(color: colors.onSurfaceVariant),
                       ),
@@ -893,7 +883,9 @@ class _TrackSectionState extends State<_TrackSection> {
                   bottom: AppSpacing.xs,
                 ),
                 child: Text(
-                  _expanded ? 'Свернуть' : 'Ещё ${total - visible}',
+                  _expanded
+                      ? L.of(context).commonCollapse
+                      : L.of(context).commonMoreCount(total - visible),
                   style:
                       texts.labelMedium?.copyWith(color: colors.onSurfaceVariant),
                 ),

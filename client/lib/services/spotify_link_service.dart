@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/auth_provider.dart';
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import '../utils/error_utils.dart';
 import '../utils/notifications.dart';
@@ -51,15 +52,20 @@ Future<void> connectSpotify(BuildContext context) async {
         await auth.fetchMe();
         if (context.mounted) {
           showAppNotification(context,
-              message: 'Spotify подключён',
+              message: L.of(context).spotifyLinked,
               type: NotificationType.success);
         }
       }
     } catch (e) {
-      final msg = e.toString().contains('bind') || e.toString().contains('port')
-          ? 'Не удалось начать подключение: предыдущая попытка ещё не завершилась. Подождите несколько секунд и попробуйте снова.'
-          : 'Ошибка подключения: $e';
-      if (context.mounted) showAppNotification(context, message: msg, type: NotificationType.error);
+      final busy = e.toString().contains('bind') || e.toString().contains('port');
+      if (context.mounted) {
+        if (busy) {
+          showAppNotification(context,
+              message: L.of(context).spotifyLinkBusy, type: NotificationType.error);
+        } else {
+          showError(context, e);
+        }
+      }
     }
     return;
   }
@@ -87,7 +93,7 @@ Future<void> connectSpotify(BuildContext context) async {
     } else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
     await auth.fetchMe();
     if (context.mounted) {
-      showAppNotification(context, message: 'Spotify подключён', type: NotificationType.success);
+      showAppNotification(context, message: L.of(context).spotifyLinked, type: NotificationType.success);
     }
   }
 }
@@ -97,15 +103,14 @@ Future<void> disconnectSpotify(BuildContext context) async {
     context: context,
     builder: (ctx) => AlertDialog(
       icon: Icon(Icons.link_off_rounded, color: ctx.colors.error),
-      title: const Text('Отключить Spotify?'),
-      content: const Text(
-        'Плейлисты и совместное прослушивание перестанут работать, '
-        'пока вы не подключите его снова.',
+      title: Text(L.of(context).spotifyDisconnectTitle),
+      content: Text(
+        L.of(context).spotifyDisconnectMessage,
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Отмена'),
+          child: Text(L.of(context).commonCancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(ctx).pop(true),
@@ -113,7 +118,7 @@ Future<void> disconnectSpotify(BuildContext context) async {
             backgroundColor: ctx.colors.error,
             foregroundColor: ctx.colors.onError,
           ),
-          child: const Text('Отключить'),
+          child: Text(L.of(context).spotifyDisconnect),
         ),
       ],
     ),
@@ -128,7 +133,7 @@ Future<void> disconnectSpotify(BuildContext context) async {
     if (context.mounted) {
       showAppNotification(
         context,
-        message: 'Spotify отключён',
+        message: L.of(context).spotifyUnlinked,
         type: NotificationType.success,
       );
     }

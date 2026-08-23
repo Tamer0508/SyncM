@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../providers/playlists_provider.dart';
 import '../screens/playlist/add_tracks_screen.dart';
 import '../screens/settings/avatar_crop_screen.dart';
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import '../utils/error_utils.dart';
 import '../utils/notifications.dart';
@@ -25,6 +26,7 @@ enum PlaylistAction {
 }
 
 List<AppMenuEntry<PlaylistAction>> playlistMenuEntries(
+  BuildContext context,
   Map<String, dynamic> playlist, {
   bool includeOpen = true,
 }) {
@@ -34,59 +36,59 @@ List<AppMenuEntry<PlaylistAction>> playlistMenuEntries(
 
   return [
     if (includeOpen)
-      const AppMenuEntry(
+      AppMenuEntry(
         value: PlaylistAction.open,
         icon: Icons.play_circle_outline_rounded,
-        label: 'Открыть',
+        label: L.of(context).commonOpen,
       ),
     if (isCustom) ...[
-      const AppMenuEntry(
+      AppMenuEntry(
         value: PlaylistAction.addMusic,
         icon: Icons.library_add_rounded,
-        label: 'Добавить музыку',
+        label: L.of(context).playlistAddMusic,
       ),
-      const AppMenuEntry(
+      AppMenuEntry(
         value: PlaylistAction.edit,
         icon: Icons.edit_outlined,
-        label: 'Изменить название и описание',
+        label: L.of(context).playlistEditNameDescription,
       ),
-      const AppMenuEntry(
+      AppMenuEntry(
         value: PlaylistAction.cover,
         icon: Icons.image_outlined,
-        label: 'Изменить обложку',
+        label: L.of(context).playlistChangeCover,
       ),
       if (hasCover)
-        const AppMenuEntry(
+        AppMenuEntry(
           value: PlaylistAction.removeCover,
           icon: Icons.hide_image_outlined,
-          label: 'Убрать обложку',
+          label: L.of(context).playlistRemoveCover,
         ),
     ],
-    const AppMenuEntry(
+    AppMenuEntry(
       value: PlaylistAction.share,
       icon: Icons.ios_share_rounded,
-      label: 'Поделиться',
+      label: L.of(context).playlistShare,
     ),
     if (isCustom) ...[
-      const AppMenuEntry(
+      AppMenuEntry(
         value: PlaylistAction.duplicate,
         icon: Icons.copy_all_outlined,
-        label: 'Дублировать',
+        label: L.of(context).playlistDuplicate,
       ),
       // Дальше — необратимое. Черта здесь не украшение: очистка и удаление
       // отличаются от переименования последствиями, а не оттенком текста.
       if (hasTracks)
-        const AppMenuEntry(
+        AppMenuEntry(
           value: PlaylistAction.clear,
           icon: Icons.playlist_remove_rounded,
-          label: 'Очистить плейлист',
+          label: L.of(context).playlistClear,
           danger: true,
           separated: true,
         ),
       AppMenuEntry(
         value: PlaylistAction.delete,
         icon: Icons.delete_outline_rounded,
-        label: 'Удалить плейлист',
+        label: L.of(context).playlistDelete,
         danger: true,
         separated: !hasTracks,
       ),
@@ -129,7 +131,7 @@ Future<void> runPlaylistAction(
 
       case PlaylistAction.removeCover:
         await playlists.removeCover(id);
-        if (context.mounted) showSuccess(context, 'Обложка убрана');
+        if (context.mounted) showSuccess(context, L.of(context).playlistCoverRemoved);
 
       case PlaylistAction.share:
         await _sharePlaylist(context, playlist);
@@ -137,36 +139,37 @@ Future<void> runPlaylistAction(
       case PlaylistAction.duplicate:
         final copy = await playlists.duplicate(id);
         if (context.mounted) {
-          showSuccess(context, 'Создана копия «${copy.playlistName}»');
+          showSuccess(
+            context,
+            L.of(context).playlistCopyCreated(copy.playlistName),
+          );
         }
 
       case PlaylistAction.clear:
         final confirmed = await showConfirmDialog(
           context,
           icon: Icons.playlist_remove_rounded,
-          title: 'Очистить плейлист?',
-          message: 'Из «${playlist.playlistName}» будут удалены все треки. '
-              'Сам плейлист останется.',
-          confirmLabel: 'Очистить',
+          title: L.of(context).playlistClearTitle,
+          message: L.of(context).playlistClearMessage(playlist.playlistName),
+          confirmLabel: L.of(context).commonClear,
         );
         if (!confirmed) return;
         await playlists.clearTracks(id);
         onTracksChanged?.call();
-        if (context.mounted) showSuccess(context, 'Плейлист очищен');
+        if (context.mounted) showSuccess(context, L.of(context).playlistCleared);
 
       case PlaylistAction.delete:
         final confirmed = await showConfirmDialog(
           context,
           icon: Icons.delete_outline_rounded,
-          title: 'Удалить плейлист?',
-          message: '«${playlist.playlistName}» и его список треков будут '
-              'удалены. Сами треки останутся в Spotify.',
-          confirmLabel: 'Удалить',
+          title: L.of(context).playlistDeleteTitle,
+          message: L.of(context).playlistDeleteMessage(playlist.playlistName),
+          confirmLabel: L.of(context).commonDelete,
         );
         if (!confirmed) return;
         await playlists.delete(id);
         onDeleted?.call();
-        if (context.mounted) showSuccess(context, 'Плейлист удалён');
+        if (context.mounted) showSuccess(context, L.of(context).playlistDeleted);
     }
   } catch (err) {
     if (context.mounted) showError(context, err);
@@ -195,8 +198,8 @@ class PlaylistActionsButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppMenuButton<PlaylistAction>(
       iconColor: iconColor ?? context.colors.onSurfaceVariant,
-      tooltip: 'Действия с плейлистом',
-      entries: playlistMenuEntries(playlist, includeOpen: includeOpen),
+      tooltip: L.of(context).playlistActionsTitle,
+      entries: playlistMenuEntries(context, playlist, includeOpen: includeOpen),
       onSelected: (action) => runPlaylistAction(
         context,
         action,
@@ -235,7 +238,7 @@ class PlaylistContextMenuRegion extends StatelessWidget {
         final action = await showAppContextMenu<PlaylistAction>(
           context: context,
           globalPosition: details.globalPosition,
-          entries: playlistMenuEntries(playlist),
+          entries: playlistMenuEntries(context, playlist),
         );
         if (action == null || !context.mounted) return;
         await runPlaylistAction(
@@ -255,15 +258,15 @@ class PlaylistContextMenuRegion extends StatelessWidget {
 const int kPlaylistNameMaxLength = 50;
 final RegExp kPlaylistNameAllowed = RegExp(r'^[а-яА-ЯёЁa-zA-Z0-9 ._\-()]+$');
 
-String? validatePlaylistName(String value) {
+String? validatePlaylistName(BuildContext context, String value) {
   final trimmed = value.trim();
-  if (trimmed.isEmpty) return 'Название не может быть пустым';
-  if (trimmed.length < 2) return 'Минимум 2 символа';
+  if (trimmed.isEmpty) return L.of(context).playlistNameEmpty;
+  if (trimmed.length < 2) return L.of(context).playlistNameTooShort;
   if (trimmed.length > kPlaylistNameMaxLength) {
-    return 'Не более $kPlaylistNameMaxLength символов';
+    return L.of(context).nameDialogTooLong(kPlaylistNameMaxLength);
   }
   if (!kPlaylistNameAllowed.hasMatch(trimmed)) {
-    return 'Только буквы, цифры, пробелы и ._-()';
+    return L.of(context).playlistNameCharset;
   }
   return null;
 }
@@ -273,9 +276,9 @@ typedef PlaylistDraft = ({String name, String description});
 Future<Map<String, dynamic>?> showCreatePlaylistDialog(BuildContext context) async {
   final draft = await _showPlaylistForm(
     context,
-    title: 'Новый плейлист',
+    title: L.of(context).playlistNew,
     icon: Icons.playlist_add_rounded,
-    submitLabel: 'Создать',
+    submitLabel: L.of(context).commonCreate,
   );
   if (draft == null || !context.mounted) return null;
 
@@ -297,9 +300,9 @@ Future<PlaylistDraft?> showPlaylistEditDialog(
 ) {
   return _showPlaylistForm(
     context,
-    title: 'Изменить плейлист',
+    title: L.of(context).playlistEdit,
     icon: Icons.edit_outlined,
-    submitLabel: 'Сохранить',
+    submitLabel: L.of(context).commonSave,
     initialName: playlist.playlistName,
     initialDescription: playlist.playlistDescription,
   );
@@ -315,7 +318,7 @@ Future<PlaylistDraft?> _showPlaylistForm(
 }) {
   final nameController = TextEditingController(text: initialName);
   final descriptionController = TextEditingController(text: initialDescription);
-  var nameError = validatePlaylistName(initialName);
+  var nameError = validatePlaylistName(context, initialName);
 
   return showDialog<PlaylistDraft>(
     context: context,
@@ -348,12 +351,12 @@ Future<PlaylistDraft?> _showPlaylistForm(
                   ),
                 ],
                 decoration: InputDecoration(
-                  labelText: 'Название',
+                  labelText: L.of(context).playlistFieldName,
                   counterText: '',
                   errorText: nameError,
                 ),
                 onChanged: (value) => setDialogState(
-                  () => nameError = validatePlaylistName(value),
+                  () => nameError = validatePlaylistName(context, value),
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -363,9 +366,9 @@ Future<PlaylistDraft?> _showPlaylistForm(
                 maxLines: 2,
                 minLines: 1,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Описание',
-                  hintText: 'Необязательно',
+                decoration: InputDecoration(
+                  labelText: L.of(context).playlistFieldDescription,
+                  hintText: L.of(context).playlistFieldOptional,
                   counterText: '',
                 ),
                 onSubmitted: (_) => submit(),
@@ -375,7 +378,7 @@ Future<PlaylistDraft?> _showPlaylistForm(
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Отмена'),
+              child: Text(L.of(context).commonCancel),
             ),
             FilledButton(
               onPressed: nameError == null ? submit : null,
@@ -407,7 +410,7 @@ Future<void> _pickAndUploadCover(
     if (!context.mounted) return;
     showAppNotification(
       context,
-      message: 'Неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
+      message: L.of(context).avatarBadFormat,
       type: NotificationType.error,
     );
     return;
@@ -418,7 +421,7 @@ Future<void> _pickAndUploadCover(
     if (!context.mounted) return;
     showAppNotification(
       context,
-      message: 'Не удалось прочитать файл',
+      message: L.of(context).avatarReadFailed,
       type: NotificationType.error,
     );
     return;
@@ -430,8 +433,8 @@ Future<void> _pickAndUploadCover(
     MaterialPageRoute(
       builder: (_) => AvatarCropScreen(
         imageBytes: bytes,
-        title: 'Обложка плейлиста',
-        hint: 'Обложка квадратная — так плейлисты выглядят ровно в списке.',
+        title: L.of(context).playlistCoverTitle,
+        hint: L.of(context).playlistCoverHint,
       ),
       fullscreenDialog: true,
     ),
@@ -446,7 +449,7 @@ Future<void> _pickAndUploadCover(
         fileName,
       );
 
-  if (context.mounted) showSuccess(context, 'Обложка обновлена');
+  if (context.mounted) showSuccess(context, L.of(context).playlistCoverUpdated);
 }
 
 Future<void> _sharePlaylist(
@@ -475,5 +478,5 @@ Future<void> _sharePlaylist(
   }
 
   await Clipboard.setData(ClipboardData(text: buffer.toString()));
-  if (context.mounted) showSuccess(context, 'Плейлист скопирован в буфер обмена');
+  if (context.mounted) showSuccess(context, L.of(context).playlistLinkCopied);
 }

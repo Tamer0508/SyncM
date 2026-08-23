@@ -5,58 +5,91 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../l10n/app_localizations.dart';
 import '../services/api_service.dart';
+import 'app_globals.dart';
 import 'notifications.dart';
 
-String getUserFriendlyError(Object? error) {
+/// Текст ошибки для человека.
+///
+/// Локализация берётся из переданного контекста, а если его нет — из
+/// навигатора: ошибку иногда показывают из провайдера, куда дерево виджетов
+/// не дотягивается. Совсем без локализации остаётся последняя линия обороны —
+/// английский текст, потому что он читается везде.
+String getUserFriendlyError(Object? error, [BuildContext? context]) {
+  final l = _localizations(context);
+  if (l == null) return _fallback(error);
+
   if (error is String) return error;
 
   if (error is ApiException) {
-    return _fromApiException(error);
+    return _fromApiException(error, l);
   }
 
   if (error is SocketException) {
-    return 'Нет подключения к интернету. Проверьте сеть.';
+    return l.errorNoInternet;
   }
 
   if (error is http.ClientException) {
-    return kIsWeb
-        ? 'Не удалось связаться с сервером. Проверьте соединение.'
-        : 'Соединение прервалось. Попробуйте ещё раз.';
+    return kIsWeb ? l.errorServerUnreachable : l.errorConnectionDropped;
   }
 
   if (error is TimeoutException) {
-    return 'Сервер долго не отвечает. Попробуйте позже.';
+    return l.errorServerSlow;
   }
 
   if (error is HandshakeException) {
-    return 'Не удалось установить защищённое соединение.';
+    return l.errorHandshake;
   }
 
   if (error is FormatException) {
-    return 'Сервер вернул неожиданный ответ. Попробуйте обновить.';
+    return l.errorBadResponse;
   }
 
   final text = error?.toString() ?? '';
   if (text.contains('XMLHttpRequest error') || text.contains('Failed to fetch')) {
-    return 'Ошибка сети. Проверьте соединение.';
+    return l.errorNetwork;
   }
 
   if (text.contains('GoogleSignInException') || text.contains('PlatformException')) {
-    if (isUserCancelled(error)) return 'Вход отменён';
+    if (isUserCancelled(error)) return l.errorSignInCancelled;
     if (text.contains('network') || text.contains('NETWORK')) {
-      return 'Не удалось связаться с Google. Проверьте соединение.';
+      return l.errorGoogleUnreachable;
     }
     if (text.contains('DEVELOPER_ERROR') || text.contains('10:')) {
-      return 'Вход через Google настроен неверно. Сообщите разработчику.';
+      return l.errorGoogleMisconfigured;
     }
-    return 'Не удалось войти через Google. Попробуйте ещё раз.';
+    return l.errorGoogleFailed;
   }
 
-  return 'Что-то пошло не так. Попробуйте снова.';
+  return l.errorGenericRetry;
 }
 
-String _fromApiException(ApiException error) {
+L? _localizations(BuildContext? context) {
+  final target = context ?? navigatorKey.currentContext;
+  if (target == null) return null;
+
+  try {
+    return L.of(target);
+  } catch (_) {
+    // Дерево ещё не построено или делегаты не подключены — не повод падать
+    // на показе ошибки.
+    return null;
+  }
+}
+
+/// Что показать, когда локализации нет вовсе.
+String _fallback(Object? error) {
+  if (error is String) return error;
+  if (error is ApiException) {
+    final server = error.serverMessage;
+    if (server != null && server.isNotEmpty) return server;
+    if (error.message.isNotEmpty) return error.message;
+  }
+  return 'Something went wrong.';
+}
+
+String _fromApiException(ApiException error, L l) {
   final server = error.serverMessage;
   final hasReadableServerMessage = server != null &&
       server.isNotEmpty &&
@@ -66,25 +99,28 @@ String _fromApiException(ApiException error) {
 
   switch (error.statusCode) {
     case 401:
-      return 'Сессия истекла. Войдите заново.';
+      return l.errorSessionExpired;
     case 403:
-      return hasReadableServerMessage ? server : 'Недостаточно прав для этого действия.';
+      return hasReadableServerMessage ? server : l.errorForbidden;
     case 404:
-      return hasReadableServerMessage ? server : 'Не найдено.';
+      return hasReadableServerMessage ? server : l.errorNotFound;
     case 409:
-      return hasReadableServerMessage ? server : 'Действие уже выполняется или невозможно сейчас.';
+      return hasReadableServerMessage ? server : l.errorConflict;
     case 429:
-      return 'Слишком много запросов. Немного подождите.';
+      return l.errorTooManyRequests;
     case 502:
     case 503:
     case 504:
-      return 'Сервер временно недоступен. Попробуйте через минуту.';
+      return l.errorServerUnavailable;
     case 500:
-      return 'Ошибка на сервере. Мы уже знаем о проблеме.';
+      return l.errorServerFailure;
   }
 
   if (hasReadableServerMessage) return server;
-  return error.message.isNotEmpty ? error.message : 'Что-то пошло не так.';
+
+  // error.message — служебный текст для журнала («Ошибка получения плейлистов»
+  // и подобное). Человеку он ничего не объясняет и не переводится.
+  return l.errorGeneric;
 }
 
 void showError(BuildContext context, Object? error, {bool force = false}) {
@@ -95,7 +131,7 @@ void showError(BuildContext context, Object? error, {bool force = false}) {
 
   showAppNotification(
     context,
-    message: getUserFriendlyError(error),
+    message: getUserFriendlyError(error, context),
     type: NotificationType.error,
   );
 }

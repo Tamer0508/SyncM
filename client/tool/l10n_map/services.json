@@ -1,0 +1,16 @@
+{
+  "file": [
+    "lib/services/spotify_link_service.dart",
+    "lib/widgets/playlist_actions.dart",
+    "lib/widgets/add_to_playlist_sheet.dart"
+  ],
+  "strings": [
+    ["commonCancel", "Отмена", "Cancel"],
+    ["spotifyDisconnect", "Отключить", "Disconnect"],
+    ["spotifyLinked", "Spotify подключён", "Spotify connected"],
+    ["spotifyUnlinked", "Spotify отключён", "Spotify disconnected"],
+    ["spotifyDisconnectTitle", "Отключить Spotify?", "Disconnect Spotify?"],
+    ["spotifyDisconnectMessage", "Плейлисты и совместное прослушивание перестанут работать, пока вы не подключите его снова.", "Playlists and shared listening will stop working until you connect it again."],
+    ["spotifyLinkBusy", "Не удалось начать подключение: предыдущая попытка ещё не завершилась. Подождите несколько секунд и попробуйте снова.", "Could not start connecting: the previous attempt hasn't finished. Wait a few seconds and try again."]
+  ]
+}

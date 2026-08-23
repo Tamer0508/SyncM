@@ -19,6 +19,7 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
 import '../../widgets/app_icon_button.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../models/sync_phase.dart';
 import '../../widgets/pill_selector.dart';
@@ -101,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showingSettings = false;
 
   bool _showingHistory = false;
-  String? _activeFriendView; // 'search' или 'requests'
+  String? _activeFriendView; // 'searchL.of(context).commonOrrequests'
 
 
   @override
@@ -227,21 +228,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 // ответа прямо сейчас, и ждать его не должно ничто другое.
                 if (invites.isNotEmpty) ...[
                   _SectionHeader(
-                    title: 'Вас зовут',
+                    title: L.of(context).homeInvitedYou,
                     badgeCount: invites.length,
                     action: TextButton(
                       onPressed: () => _openInvites(isDesktop),
-                      child: const Text('Все'),
+                      child: Text(L.of(context).homeFilterAll),
                     ),
                   ),
                   ...invites.take(2).map((invite) {
-                    final hostName = prov.hostNameForInvite(invite) ?? 'Друг';
+                    final hostName = prov.hostNameForInvite(invite) ?? L.of(context).homeFilterFriend;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                       child: _HomeTile(
                         icon: Icons.mail_outline_rounded,
-                        title: invite['name'] as String? ?? 'Сессия',
-                        subtitle: 'От $hostName',
+                        title: invite['name'] as String? ?? L.of(context).homeSession,
+                        subtitle: L.of(context).homeInviteFrom(hostName),
                         onTap: () => _openInvites(isDesktop),
                       ),
                     );
@@ -254,10 +255,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   _StartSessionCard(onStart: startSession)
                 else ...[
                   _SectionHeader(
-                    title: 'Сейчас слушаете',
+                    title: L.of(context).homeNowListening,
                     action: TextButton(
                       onPressed: prov.loading ? null : prov.fetchMySessions,
-                      child: const Text('Обновить'),
+                      child: Text(L.of(context).commonRefresh),
                     ),
                   ),
                   ...sessions.map(
@@ -266,7 +267,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: _HomeTile(
                         icon: Icons.graphic_eq_rounded,
                         title: session.name,
-                        subtitle: 'Нажмите, чтобы открыть',
+                        subtitle: L.of(context).homeTapToOpen,
                         highlighted: true,
                         onTap: () => _openSession(session.id),
                       ),
@@ -276,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   OutlinedButton.icon(
                     onPressed: startSession,
                     icon: const Icon(Icons.add_rounded),
-                    label: const Text('Ещё одна сессия'),
+                    label: Text(L.of(context).homeAnotherSession),
                   ),
                 ],
               ],
@@ -310,7 +311,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       children: [
         PillSelector(
-          labels: const ['Мои', 'Spotify'],
+          labels: [L.of(context).homeFilterMine, 'Spotify'],
           selectedIndex: _musicTabIndex,
           onSelected: (index) => setState(() => _musicTabIndex = index),
         ),
@@ -351,18 +352,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildEmptyPlaylists(bool isCustom) {
     if (isCustom) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.playlist_add_rounded,
-        title: 'Своих плейлистов пока нет',
-        message: 'Соберите первый — и его можно будет включить в сессии.',
+        title: L.of(context).homeNoOwnPlaylists,
+        message: L.of(context).homeNoOwnPlaylistsHint,
       );
     }
 
     return EmptyState(
       icon: Icons.link_rounded,
-      title: 'Плейлисты Spotify недоступны',
-      message: 'Подключите аккаунт Spotify, чтобы видеть здесь свою библиотеку.',
-      actionLabel: 'Подключить Spotify',
+      title: L.of(context).homeSpotifyUnavailable,
+      message: L.of(context).homeSpotifyUnavailableHint,
+      actionLabel: L.of(context).homeConnectSpotify,
       onAction: () => _openOwnProfile(context.isWideWindow),
     );
   }
@@ -411,17 +412,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (description.isNotEmpty) return description;
 
     final count = playlist.playlistTrackCount;
-    if (count == 0) return 'Пусто';
+    if (count == 0) return L.of(context).commonEmpty;
 
-    final mod100 = count % 100;
-    final word = (mod100 >= 11 && mod100 <= 14)
-        ? 'треков'
-        : switch (count % 10) {
-            1 => 'трек',
-            2 || 3 || 4 => 'трека',
-            _ => 'треков',
-          };
-    return '$count $word';
+    return L.of(context).trackCount(count);
   }
 
   void _openPlaylist(Map<String, dynamic> playlist, {required bool isCustom}) {
@@ -492,13 +485,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: AppSpacing.sm + 4),
                         Text(
-                          'Ничего не играет',
+                          L.of(context).homeNothingPlaying,
                           style: texts.titleSmall,
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: AppSpacing.xs),
                         Text(
-                          'Выберите трек из плейлиста — управление появится здесь.',
+                          L.of(context).homeNothingPlayingHint,
                           textAlign: TextAlign.center,
                           style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
                         ),
@@ -529,7 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_activeFriendView != null) {
       return _DesktopHeaderShell(
-        title: _activeFriendView == 'search' ? 'Поиск друзей' : 'Заявки в друзья',
+        title: _activeFriendView == 'search' ? L.of(context).homeSearchFriends : L.of(context).homeFriendRequests,
         onBack: () => setState(() => _activeFriendView = null),
       );
     }
@@ -537,14 +530,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_activeSession != null) {
       final isHost = _activeSession!['hostId'] == auth.user?.id;
       return _DesktopHeaderShell(
-        title: _activeSession!['name'] as String? ?? 'Сессия',
+        title: _activeSession!['name'] as String? ?? L.of(context).homeSession,
         onBack: () => setState(() => _activeSession = null),
         actions: [
           if (isHost)
             TextButton.icon(
               onPressed: _endActiveSession,
               icon: const Icon(Icons.stop_circle_outlined),
-              label: const Text('Завершить'),
+              label: Text(L.of(context).commonFinish),
               style: TextButton.styleFrom(foregroundColor: context.colors.error),
             ),
         ],
@@ -553,7 +546,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_creatingSession) {
       return _DesktopHeaderShell(
-        title: 'Новая сессия',
+        title: L.of(context).navNewSession,
         onBack: () => setState(() => _creatingSession = false),
       );
     }
@@ -564,7 +557,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // структуры. После перехода на три вкладки он разошёлся с навигацией:
     // в «Музыке» сверху писалось «Друзья», а во «Друзьях» — «Профиль»,
     // и туда же попадали чужие кнопки в шапке.
-    final tabTitles = kHomeDestinations.map((d) => d.label).toList();
+    final tabTitles = homeDestinations(context).map((d) => d.label).toList();
 
     return _DesktopHeaderShell(
       title: _selectedPlaylist != null
@@ -573,7 +566,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   .byId(_selectedPlaylist!['id'] as String? ?? '')
                   ?.playlistName ??
               _selectedPlaylist!['name'] as String? ??
-              'Плейлист')
+              L.of(context).homePlaylist)
           : tabTitles[_currentIndex.clamp(0, tabTitles.length - 1)],
       titleKey: ValueKey(_selectedPlaylist?['id'] ?? _currentIndex),
       onBack: _selectedPlaylist != null
@@ -586,7 +579,7 @@ class _HomeScreenState extends State<HomeScreen> {
           AppIconButton(
             icon: Icons.person_add_alt_1_rounded,
             onPressed: () => _openOverlay(() => _activeFriendView = 'search'),
-            tooltip: 'Поиск друзей',
+            tooltip: L.of(context).homeSearchFriends,
           ),
           // Счётчик заявок с той же анимацией, что и на узком экране:
           // раньше здесь была обычная иконка без числа, и о новых заявках
@@ -596,7 +589,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icons.mail_outline_rounded,
               activeIcon: Icons.mark_email_unread_rounded,
               count: prov.unreadCount,
-              tooltip: 'Заявки в друзья',
+              tooltip: L.of(context).homeFriendRequests,
               onPressed: () => _openOverlay(() => _activeFriendView = 'requests'),
             ),
           ),
@@ -611,18 +604,18 @@ class _HomeScreenState extends State<HomeScreen> {
               sessions.fetchMySessions();
               sessions.fetchInvites();
             },
-            tooltip: 'Обновить',
+            tooltip: L.of(context).commonRefresh,
           ),
           AppIconButton(
             icon: Icons.add_rounded,
             onPressed: () => _openOverlay(() => _creatingSession = true),
-            tooltip: 'Начать сессию',
+            tooltip: L.of(context).homeStartSession,
           ),
         ],
         AppIconButton(
           icon: themeProvider.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
           onPressed: themeProvider.toggleTheme,
-          tooltip: themeProvider.isDark ? 'Светлая тема' : 'Тёмная тема',
+          tooltip: themeProvider.isDark ? L.of(context).homeLightTheme : L.of(context).homeDarkTheme,
         ),
 
         // Аватар — вход в профиль и настройки.
@@ -870,7 +863,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 children: [
                   _MobileHeader(
-                    title: kHomeDestinations[_currentIndex].label,
+                    title: homeDestinations(context)[_currentIndex].label,
                     onProfile: () =>
                         Navigator.of(context).pushNamed('/profile'),
                   ),
@@ -929,7 +922,7 @@ class _MobileHeader extends StatelessWidget {
           ),
           IconButton(
             onPressed: onProfile,
-            tooltip: 'Профиль',
+            tooltip: L.of(context).accountProfile,
             icon: TappableAvatar(
               imageUrl: user?.effectiveAvatarUrl,
               radius: 16,
@@ -980,7 +973,7 @@ class _CreatePlaylistTile extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
-                child: Text('Создать плейлист', style: context.texts.titleSmall),
+                child: Text(L.of(context).homeCreatePlaylist, style: context.texts.titleSmall),
               ),
             ],
           ),
@@ -1015,14 +1008,13 @@ class _StartSessionCard extends StatelessWidget {
           const Center(child: SyncMark(state: SyncPhase.idle)),
           const SizedBox(height: AppSpacing.md),
           Text(
-            'Слушайте вместе',
+            L.of(context).homeListenTogether,
             textAlign: TextAlign.center,
             style: texts.titleLarge,
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            'Позовите друга — музыка пойдёт у вас одновременно, '
-            'где бы вы ни были.',
+            L.of(context).homeListenTogetherHint,
             textAlign: TextAlign.center,
             style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
           ),
@@ -1031,7 +1023,7 @@ class _StartSessionCard extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onStart,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Начать сессию'),
+              label: Text(L.of(context).homeStartSession),
             ),
           ),
         ],
@@ -1191,7 +1183,7 @@ class _DesktopHeaderShell extends StatelessWidget {
             AppIconButton(
               icon: Icons.arrow_back_rounded,
               onPressed: onBack,
-              tooltip: 'Назад',
+              tooltip: L.of(context).commonBack,
             ),
             const SizedBox(width: AppSpacing.sm),
           ],

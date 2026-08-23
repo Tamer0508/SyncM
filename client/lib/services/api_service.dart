@@ -77,13 +77,29 @@ class ApiService {
   Map<String, String>? _cachedHeaders;
   String? _cachedHeadersFor;
 
+  /// Язык интерфейса. Уходит в Accept-Language: сервер отвечает сообщениями
+  /// об ошибках, и человек должен читать их на том же языке, что и остальное
+  /// приложение.
+  String _language = 'ru';
+
+  set language(String value) {
+    if (value == _language) return;
+    _language = value;
+    // Заголовки кэшируются по токену — сбрасываем, иначе язык сменится только
+    // после следующего входа.
+    _cachedHeaders = null;
+  }
+
   Map<String, String> get _headers {
     final cookie = _cookie;
     if (_cachedHeaders != null && _cachedHeadersFor == cookie) {
       return _cachedHeaders!;
     }
 
-    final h = <String, String>{'Content-Type': 'application/json'};
+    final h = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept-Language': _language,
+    };
     if (cookie != null && cookie.isNotEmpty) {
       final token = cookie.startsWith('connect.sid=')
           ? cookie.replaceFirst('connect.sid=', '')
@@ -276,6 +292,76 @@ class ApiService {
     return res.statusCode == 200;
   }
 
+  /// Активные сеансы: приложения и браузеры, где выполнен вход.
+  Future<List<Map<String, dynamic>>> getAuthDevices({bool refresh = false}) {
+    return _cachedGet('GET /auth/devices', refresh: refresh, () async {
+      final res = await _client
+          .get(_uri('/auth/devices'), headers: _headers)
+          .timeout(timeout);
+      if (res.statusCode != 200) {
+        throw ApiException('Не удалось получить список устройств', res.statusCode,
+            _extractError(res));
+      }
+      final data = jsonDecode(res.body);
+      final devices = data is Map ? data['devices'] : null;
+      return devices is List
+          ? devices.whereType<Map>().map(Map<String, dynamic>.from).toList()
+          : <Map<String, dynamic>>[];
+    });
+  }
+
+  /// Завершает один сеанс. Возвращает true, если это был текущий — вызывающий
+  /// должен увести человека на экран входа.
+  Future<bool> revokeDevice(String deviceId) async {
+    final res = await _client
+        .delete(_uri('/auth/devices/$deviceId'),
+            headers: _headersWithIdempotency('revoke-device:$deviceId'))
+        .timeout(timeout);
+
+    if (res.statusCode != 200) {
+      throw ApiException(
+          'Не удалось завершить сеанс', res.statusCode, _extractError(res));
+    }
+
+    _invalidate('GET /auth/devices');
+
+    final data = jsonDecode(res.body);
+    return data is Map && data['wasCurrent'] == true;
+  }
+
+  /// Выход на всех устройствах, включая это.
+  Future<void> logoutEverywhere() async {
+    final res = await _client
+        .post(_uri('/auth/logout-all'),
+            headers: _headersWithIdempotency('logout-all'))
+        .timeout(timeout);
+
+    if (res.statusCode != 200) {
+      throw ApiException('Не удалось выйти на всех устройствах', res.statusCode,
+          _extractError(res));
+    }
+
+    _cookie = null;
+    clearCache();
+  }
+
+  /// Выгрузка всех данных аккаунта одним JSON-файлом.
+  ///
+  /// Тайм-аут больше обычного: файл собирается из десятка таблиц, и на
+  /// разросшейся истории это дольше обычного запроса.
+  Future<Uint8List> exportMyData() async {
+    final res = await _client
+        .get(_uri('/auth/export'), headers: _headers)
+        .timeout(const Duration(seconds: 60));
+
+    if (res.statusCode != 200) {
+      throw ApiException(
+          'Не удалось выгрузить данные', res.statusCode, _extractError(res));
+    }
+
+    return res.bodyBytes;
+  }
+
   Future<void> deleteAccount() async {
     final res = await _client
         .delete(_uri('/auth/account'), headers: _headers)
@@ -342,6 +428,49 @@ class ApiService {
         return _decode(res.body);
       }
       throw ApiException('Ошибка обновления настроек', res.statusCode, _extractError(res));
+    });
+  }
+
+  /// Настройки аккаунта целиком: приватность, приглашения, общие настройки.
+  Future<Map<String, dynamic>> getUserSettings({bool refresh = false}) {
+    return _cachedGet('GET /auth/settings', refresh: refresh, () async {
+      final res = await _client
+          .get(_uri('/auth/settings'), headers: _headers)
+          .timeout(timeout);
+      if (res.statusCode == 200) {
+        final data = _decode(res.body);
+        return data is Map
+            ? Map<String, dynamic>.from(data)
+            : <String, dynamic>{};
+      }
+      throw ApiException(
+          'Не удалось получить настройки', res.statusCode, _extractError(res));
+    });
+  }
+
+  /// Частичное изменение настроек. Сервер сливает присланное с сохранённым,
+  /// поэтому отправлять весь набор не нужно — и не следует.
+  Future<Map<String, dynamic>> patchUserSettings(Map<String, dynamic> patch) async {
+    // Ключ идемпотентности включает содержимое: два разных изменения подряд
+    // не должны схлопнуться в одно, а повтор одного и того же — должен.
+    final operation = 'patchSettings:${json.encode(patch).hashCode}';
+
+    return _retryMutable(operation, () async {
+      final res = await _client.patch(
+        _uri('/auth/settings'),
+        headers: _headersWithIdempotency(operation),
+        body: json.encode(patch),
+      ).timeout(timeout);
+
+      if (res.statusCode == 200) {
+        _invalidate('GET /auth/settings');
+        final data = _decode(res.body);
+        return data is Map
+            ? Map<String, dynamic>.from(data)
+            : <String, dynamic>{};
+      }
+      throw ApiException(
+          'Не удалось сохранить настройки', res.statusCode, _extractError(res));
     });
   }
 

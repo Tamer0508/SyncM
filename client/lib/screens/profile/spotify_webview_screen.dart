@@ -1,3 +1,4 @@
+import '../../l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -44,7 +45,7 @@ class _SpotifyWebViewState extends State<_SpotifyWebView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Подключение Spotify')),
+      appBar: AppBar(title: Text(L.of(context).spotifyWebviewTitle)),
       body: WebViewWidget(controller: _controller),
     );
   }

@@ -7,6 +7,7 @@ import '../models/friend.dart';
 import '../services/api_service.dart';
 import '../utils/local_store.dart';
 import '../services/socket_service.dart';
+import 'settings_provider.dart';
 import '../utils/app_globals.dart';
 import '../utils/notifications.dart';
 
@@ -238,19 +239,24 @@ class FriendsProvider with ChangeNotifier {
     if (id != null && _friendRequests.any((r) => r['id'] == id)) return;
 
     _friendRequests.insert(0, data);
-    _showNotification(data['fromUserName'] as String? ?? 'пользователь');
+    _showNotification(
+      data['fromUserName'] as String? ?? appL10n?.commonUser ?? 'пользователь',
+    );
     notifyListeners();
   }
 
   void _showNotification(String fromUserName) {
+    if (!NotificationPrefs.allow('friendRequests')) return;
+
     final context = navigatorKey.currentContext;
     if (context == null) return;
 
     showAppNotification(
       context,
-      message: 'Заявка в друзья от $fromUserName',
+      message: appL10n?.requestsNotification(fromUserName) ??
+          'Заявка в друзья от $fromUserName',
       type: NotificationType.info,
-      actionLabel: 'Открыть',
+      actionLabel: appL10n?.commonOpen ?? 'Открыть',
       onAction: () => navigatorKey.currentState?.pushNamed('/friends/requests'),
     );
   }

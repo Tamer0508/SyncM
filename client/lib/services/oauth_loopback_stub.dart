@@ -9,8 +9,7 @@ Future<Map<String, String?>?> runOAuthLoopback({
   String responseHtml = '',
 }) async {
   throw UnsupportedError(
-    'Локальный сервер OAuth недоступен на этой платформе — '
-    'в вебе используется обычный редирект.',
+    'Локальный сервер OAuth недоступен на этой платформе — в вебе используется обычный редирект.',
   );
 }
 

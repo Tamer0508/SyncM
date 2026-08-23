@@ -1,3 +1,5 @@
+import '../utils/app_globals.dart';
+
 class SessionModel {
   final String id;
   final String name;
@@ -9,7 +11,7 @@ class SessionModel {
         id: json['id'] as String,
         // Имя может отсутствовать у старых записей — жёсткое приведение
         // роняло разбор ВСЕГО списка сессий.
-        name: json['name'] as String? ?? 'Сессия',
+        name: json['name'] as String? ?? appL10n?.homeSession ?? 'Сессия',
         isActive: json['isActive'] as bool? ?? true,
       );
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/skeleton.dart';
@@ -80,7 +81,7 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
 
   Future<void> _addTracks(String? sessionId) async {
     if (sessionId == null || sessionId.isEmpty) {
-      showError(context, 'Не удалось определить сессию', force: true);
+      showError(context, L.of(context).pickPlaylistNoSession, force: true);
       return;
     }
 
@@ -89,7 +90,7 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
         : _tracks.where((t) => _selectedTrackUris.contains(t['uri'])).toList();
 
     if (toAdd.isEmpty) {
-      showError(context, 'В плейлисте нет треков', force: true);
+      showError(context, L.of(context).pickPlaylistEmptyPlaylist, force: true);
       return;
     }
 
@@ -114,7 +115,7 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
       }
 
       if (!mounted) return;
-      showSuccess(context, 'Добавлено ${toAdd.length} ${_plural(toAdd.length)}');
+      showSuccess(context, L.of(context).addTracksAdded(toAdd.length));
       Navigator.of(context).pop(true);
     } catch (err) {
       if (!mounted) return;
@@ -122,16 +123,6 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
     } finally {
       if (mounted) setState(() => _adding = false);
     }
-  }
-
-  String _plural(int count) {
-    final mod100 = count % 100;
-    if (mod100 >= 11 && mod100 <= 14) return 'треков';
-    return switch (count % 10) {
-      1 => 'трек',
-      2 || 3 || 4 => 'трека',
-      _ => 'треков',
-    };
   }
 
   @override
@@ -144,11 +135,11 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(inPlaylist ? _selectedPlaylist!['name'] as String? ?? 'Плейлист' : 'Выберите плейлист'),
+        title: Text(inPlaylist ? _selectedPlaylist!['name'] as String? ?? L.of(context).homePlaylist : L.of(context).pickPlaylistTitle),
         leading: inPlaylist
             ? IconButton(
                 icon: const Icon(Icons.arrow_back_rounded),
-                tooltip: 'К списку плейлистов',
+                tooltip: L.of(context).addTracksBackToPlaylists,
                 onPressed: _clearSelection,
               )
             : null,
@@ -167,7 +158,9 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
                         .where((uri) => uri.isNotEmpty));
                 }
               }),
-              child: Text(selectedCount > 0 ? 'Снять ($selectedCount)' : 'Выбрать всё'),
+              child: Text(selectedCount > 0
+                  ? L.of(context).pickPlaylistDeselectCount(selectedCount)
+                  : L.of(context).addTracksSelectAll),
             ),
         ],
       ),
@@ -187,8 +180,8 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
                       : const Icon(Icons.playlist_add_rounded),
                   label: Text(
                     selectedCount == 0
-                        ? 'Добавить все (${_tracks.length})'
-                        : 'Добавить выбранные ($selectedCount)',
+                        ? L.of(context).pickPlaylistAddAll(_tracks.length)
+                        : L.of(context).pickPlaylistAddSelected(selectedCount),
                   ),
                 ),
               ),
@@ -205,9 +198,8 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
     if (_playlists.isEmpty) {
       return _EmptyView(
         icon: Icons.library_music_outlined,
-        title: 'Плейлистов нет',
-        subtitle: 'Подключите Spotify или создайте свой плейлист, '
-            'чтобы добавлять треки в сессии.',
+        title: L.of(context).pickPlaylistNoPlaylists,
+        subtitle: L.of(context).pickPlaylistNoPlaylistsHint,
         onRetry: _loadPlaylists,
       );
     }
@@ -239,11 +231,10 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
     if (_tracks.isEmpty) {
       return _EmptyView(
         icon: Icons.music_off_rounded,
-        title: 'Треков нет',
-        subtitle: 'Этот плейлист пуст либо его содержимое недоступно: '
-            'Spotify отдаёт треки только для ваших собственных плейлистов.',
+        title: L.of(context).pickPlaylistNoTracks,
+        subtitle: L.of(context).pickPlaylistNoTracksHint,
         onRetry: _clearSelection,
-        retryLabel: 'К списку плейлистов',
+        retryLabel: L.of(context).addTracksBackToPlaylists,
       );
     }
 
@@ -263,7 +254,7 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
 
         return TrackCard(
           id: uri ?? '$i',
-          title: track['name'] as String? ?? 'Без названия',
+          title: track['name'] as String? ?? L.of(context).historyUntitled,
           artist: track['artist'] as String? ?? '',
           artworkUrl: track['imageUrl'] as String?,
           durationMs: (track['durationMs'] as num?)?.toInt(),
@@ -336,14 +327,16 @@ class _PlaylistTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      playlist['name'] as String? ?? 'Без названия',
+                      playlist['name'] as String? ?? L.of(context).historyUntitled,
                       style: texts.titleMedium,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: 2),
                     Text(
-                      trackCount > 0 ? '$trackCount в плейлисте' : 'Пусто',
+                      trackCount > 0
+                          ? L.of(context).pickPlaylistInPlaylist(trackCount)
+                          : L.of(context).commonEmpty,
                       style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
                     ),
                   ],
@@ -359,19 +352,19 @@ class _PlaylistTile extends StatelessWidget {
 }
 
 class _EmptyView extends StatelessWidget {
-  const _EmptyView({
+  _EmptyView({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onRetry,
-    this.retryLabel = 'Обновить',
+    this.retryLabel,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onRetry;
-  final String retryLabel;
+  final String? retryLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -394,7 +387,10 @@ class _EmptyView extends StatelessWidget {
               style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
             ),
             const SizedBox(height: AppSpacing.lg),
-            OutlinedButton(onPressed: onRetry, child: Text(retryLabel)),
+            OutlinedButton(
+              onPressed: onRetry,
+              child: Text(retryLabel ?? L.of(context).commonRefresh),
+            ),
           ],
         ),
       ),

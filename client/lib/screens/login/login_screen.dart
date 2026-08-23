@@ -8,6 +8,7 @@ import '../../providers/auth_provider.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../login/google_sign.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/ambient_background.dart';
@@ -159,7 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: AppSpacing.lg),
                           Text(
-                            'Слушайте одну музыку одновременно — где бы вы ни были.',
+                            L.of(context).loginTagline,
                             textAlign: TextAlign.center,
                             style: texts.bodySmall?.copyWith(
                               color: colors.onSurfaceVariant,
@@ -208,7 +209,7 @@ class _Brand extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(
-          'Музыка для друзей',
+          L.of(context).loginSubtitle,
           textAlign: TextAlign.center,
           style: texts.titleMedium?.copyWith(color: colors.onSurfaceVariant),
         ),
@@ -241,12 +242,12 @@ class _SignInCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Вход',
+            L.of(context).loginTitle,
             style: texts.headlineSmall,
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Войдите через Google, чтобы создавать сессии и слушать музыку вместе.',
+            L.of(context).loginHint,
             style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -254,7 +255,7 @@ class _SignInCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           TextButton(
             onPressed: onWebSignIn,
-            child: const Text('Войти через браузер'),
+            child: Text(L.of(context).loginBrowser),
           ),
         ],
       ),

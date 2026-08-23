@@ -10,6 +10,7 @@ import '../../utils/notifications.dart';
 import '../player/now_playing.dart';
 import '../../services/socket_service.dart';
 import '../../models/sync_phase.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/local_store.dart';
 import '../../utils/error_utils.dart';
@@ -126,7 +127,7 @@ class _SessionScreenState extends State<SessionScreen> {
     if (_isWindows && auth.user?.spotifyConnected != true) {
       if (mounted) {
         showAppNotification(context,
-            message: 'Подключите Spotify аккаунт в профиле',
+            message: L.of(context).playlistConnectSpotifyHint,
             type: NotificationType.error);
       }
       return;
@@ -137,7 +138,7 @@ class _SessionScreenState extends State<SessionScreen> {
         final connected = await pb.connect();
         if (!connected && mounted) {
           showAppNotification(context,
-              message: 'Не удалось подключиться к Spotify',
+              message: L.of(context).playbackSpotifyConnectFailed,
               type: NotificationType.error);
           return;
         }
@@ -221,8 +222,8 @@ class _SessionScreenState extends State<SessionScreen> {
         showAppNotification(
           context,
           message: becameHost
-              ? 'Вы теперь ведущий сессии'
-              : 'Ведущий сессии сменился',
+              ? L.of(context).sessionYouAreHost
+              : L.of(context).sessionHostChanged,
           type: NotificationType.info,
         );
       }),
@@ -280,9 +281,9 @@ class _SessionScreenState extends State<SessionScreen> {
     final confirm = await showConfirmDialog(
       context,
       icon: Icons.stop_circle_outlined,
-      title: 'Завершить сессию?',
-      message: 'Сессия будет закрыта для всех участников.',
-      confirmLabel: 'Завершить',
+      title: L.of(context).sessionsEndTitle,
+      message: L.of(context).sessionEndMessagePlain,
+      confirmLabel: L.of(context).commonFinish,
     );
     if (!confirm || !mounted) return;
 
@@ -349,7 +350,7 @@ class _SessionScreenState extends State<SessionScreen> {
     final members = (session['members'] as List?)?.whereType<Map>().toList() ?? const <Map>[];
     final tracks = (session['tracks'] as List?)?.whereType<Map>().toList() ?? const <Map>[];
     final isHost = session['hostId'] == myUserId;
-    final sessionName = session['name'] as String? ?? 'Сессия';
+    final sessionName = session['name'] as String? ?? L.of(context).homeSession;
 
     final content = RefreshIndicator(
       onRefresh: _refreshSession,
@@ -404,13 +405,13 @@ class _SessionScreenState extends State<SessionScreen> {
       IconButton(
         onPressed: _openPlaylistPicker,
         icon: const Icon(Icons.playlist_add_rounded),
-        tooltip: 'Добавить треки',
+        tooltip: L.of(context).sessionAddTracks,
       ),
       if (isHost)
         IconButton(
           onPressed: _endSession,
           icon: const Icon(Icons.stop_circle_outlined),
-          tooltip: 'Завершить сессию',
+          tooltip: L.of(context).sessionEndAction,
           color: colors.error,
         ),
     ];
@@ -544,7 +545,7 @@ class _SessionHeader extends StatelessWidget {
                 AnimatedSwitcher(
                   duration: AppMotion.short,
                   child: Text(
-                    _labelFor(shown),
+                    _labelFor(context, shown),
                     key: ValueKey(shown),
                     style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
                   ),
@@ -570,7 +571,9 @@ class _SessionHeader extends StatelessWidget {
               Icon(Icons.queue_music_rounded, size: 18, color: colors.onSurfaceVariant),
               const SizedBox(width: AppSpacing.sm),
               Text(
-                trackCount == 0 ? 'Пока без треков' : '$trackCount в очереди',
+                trackCount == 0
+                    ? L.of(context).sessionNoTracksYet
+                    : L.of(context).sessionInQueue(trackCount),
                 style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
               ),
             ],
@@ -584,11 +587,11 @@ class _SessionHeader extends StatelessWidget {
   ///
   /// Называет то, что человек видит, а не то, как устроен механизм: не
   /// «якорь установлен», а «звучит одновременно».
-  static String _labelFor(SyncPhase phase) => switch (phase) {
-        SyncPhase.idle => 'Сессия не запущена',
-        SyncPhase.waiting => 'Ждём второго',
-        SyncPhase.synced => 'Звучит одновременно',
-        SyncPhase.drifting => 'Подстраиваемся',
+  static String _labelFor(BuildContext context, SyncPhase phase) => switch (phase) {
+        SyncPhase.idle => L.of(context).sessionNotStarted,
+        SyncPhase.waiting => L.of(context).sessionWaitingForSecond,
+        SyncPhase.synced => L.of(context).sessionInSync,
+        SyncPhase.drifting => L.of(context).sessionAdjusting,
       };
 }
 
@@ -603,7 +606,7 @@ class _MemberChip extends StatelessWidget {
     final colors = context.colors;
     final texts = context.texts;
     final user = member['user'] as Map?;
-    final name = user?['username'] as String? ?? 'Участник';
+    final name = user?['username'] as String? ?? L.of(context).sessionParticipant;
     final avatarUrl = (user?['spotifyUser'] as Map?)?['avatarUrl'] as String?;
 
     return Container(
@@ -656,9 +659,9 @@ class _EmptyTracksView extends StatelessWidget {
   Widget build(BuildContext context) {
     return EmptyState(
       icon: Icons.library_music_outlined,
-      title: 'Очередь пуста',
-      message: 'Добавьте треки из своих плейлистов — их услышат все участники.',
-      actionLabel: 'Добавить треки',
+      title: L.of(context).sessionQueueEmpty,
+      message: L.of(context).sessionQueueEmptyHint,
+      actionLabel: L.of(context).sessionAddTracks,
       onAction: onAddTracks,
     );
   }
@@ -743,9 +746,9 @@ class _RatingButtons extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(right: AppSpacing.xs),
             child: Tooltip(
-              message: 'Второй участник уже оценил',
+              message: L.of(context).sessionAlreadyRated,
               child: Semantics(
-                label: 'Второй участник уже оценил',
+                label: L.of(context).sessionAlreadyRated,
                 child: Icon(
                   Icons.circle_rounded,
                   size: 8,
@@ -759,7 +762,7 @@ class _RatingButtons extends StatelessWidget {
           activeIcon: Icons.thumb_down_rounded,
           isActive: myRating == -1,
           activeColor: colors.error,
-          tooltip: 'Не нравится',
+          tooltip: L.of(context).sessionDislike,
           onPressed: () => onRate(-1),
         ),
         _RatingButton(
@@ -767,7 +770,7 @@ class _RatingButtons extends StatelessWidget {
           activeIcon: Icons.thumb_up_rounded,
           isActive: myRating == 1,
           activeColor: colors.primary,
-          tooltip: 'Нравится',
+          tooltip: L.of(context).sessionLike,
           onPressed: () => onRate(1),
         ),
       ],

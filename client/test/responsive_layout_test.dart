@@ -1,4 +1,5 @@
 
+import 'package:syncm/l10n/app_localizations.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -148,6 +149,8 @@ void main() {
 
       late AppLayout seen;
       await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: L.localizationsDelegates,
+        supportedLocales: L.supportedLocales,
         home: AppLayoutScope(
           child: Builder(builder: (context) {
             seen = context.layout;
@@ -166,6 +169,8 @@ void main() {
 
         late AppLayout seen;
         await tester.pumpWidget(MaterialApp(
+          localizationsDelegates: L.localizationsDelegates,
+          supportedLocales: L.supportedLocales,
           home: AppLayoutScope(
             child: Builder(builder: (context) {
               seen = context.layout;
@@ -190,6 +195,8 @@ void main() {
         late AppLayout seen;
         late Size seenMedia;
         await tester.pumpWidget(MaterialApp(
+          localizationsDelegates: L.localizationsDelegates,
+          supportedLocales: L.supportedLocales,
           home: AppLayoutScope(
             child: Builder(builder: (context) {
               seen = context.layout;
@@ -222,6 +229,8 @@ void main() {
 
           late AppLayout seen;
           await tester.pumpWidget(MaterialApp(
+            localizationsDelegates: L.localizationsDelegates,
+            supportedLocales: L.supportedLocales,
             home: AppLayoutScope(
               child: Builder(builder: (context) {
                 seen = context.layout;
@@ -239,6 +248,8 @@ void main() {
 
   group('Боковая навигация', () {
     Widget rail(AppLayout layout) => MaterialApp(
+          localizationsDelegates: L.localizationsDelegates,
+          supportedLocales: L.supportedLocales,
           theme: AppTheme.build(
             brightness: Brightness.dark,
             accent: AccentColor.values.first,
@@ -350,6 +361,8 @@ void main() {
 
   group('Панель «сейчас играет»', () {
     Widget panel(double width, double height) => MaterialApp(
+          localizationsDelegates: L.localizationsDelegates,
+          supportedLocales: L.supportedLocales,
           theme: AppTheme.build(
             brightness: Brightness.dark,
             accent: AccentColor.values.first,

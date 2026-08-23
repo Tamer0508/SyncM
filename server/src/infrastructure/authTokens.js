@@ -1,5 +1,6 @@
 const crypto = require('crypto');
-const { set, get, del, isRedisAvailable, redisClient } = require('./redis');
+const { set, get, del, getWithTTL, isRedisAvailable, redisClient } = require('./redis');
+const { deviceIdFor } = require('../utils/device');
 const logger = require('./logger');
 
 
@@ -15,15 +16,20 @@ function keyFor(token) {
   return `${KEY_PREFIX}${token}`;
 }
 
-async function issueAuthToken(userId, { ttlSeconds = TOKEN_TTL_SECONDS } = {}) {
+async function issueAuthToken(userId, { ttlSeconds = TOKEN_TTL_SECONDS, device = null } = {}) {
   if (!userId) throw new Error('issueAuthToken: userId обязателен');
 
   if (!isRedisAvailable()) {
     throw new Error('Невозможно выдать токен аутентификации: Redis недоступен');
   }
 
+  const now = Date.now();
   const token = crypto.randomBytes(TOKEN_BYTES).toString('hex');
-  const stored = await set(keyFor(token), { userId, issuedAt: Date.now() }, ttlSeconds);
+  const stored = await set(
+    keyFor(token),
+    { userId, issuedAt: now, lastSeenAt: now, device },
+    ttlSeconds
+  );
   if (!stored) {
     throw new Error('Невозможно выдать токен аутентификации: ошибка записи в Redis');
   }
@@ -48,7 +54,115 @@ async function resolveAuthToken(token) {
 
 async function revokeAuthToken(token) {
   if (!token || typeof token !== 'string' || !TOKEN_REGEX.test(token)) return false;
-  return del(keyFor(token));
+
+  const record = await get(keyFor(token));
+  const removed = await del(keyFor(token));
+
+  // Обратный указатель чистим сразу, иначе список устройств копил бы записи,
+  // от которых остались только имена.
+  if (record?.userId) {
+    try {
+      await redisClient?.srem(`${USER_TOKENS_PREFIX}${record.userId}`, token);
+    } catch (err) {
+      logger.warn({ err }, 'Не удалось убрать токен из списка пользователя');
+    }
+  }
+
+  return removed;
+}
+
+// Отметка «сеанс живой». Пишется не чаще раза в TOUCH_INTERVAL_MS: запись на
+// каждый запрос — это лишний поход в Redis на любой чих клиента, а список
+// устройств от точности до секунды не выигрывает.
+const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
+
+async function touchAuthToken(token) {
+  if (!token || !TOKEN_REGEX.test(token) || !isRedisAvailable()) return;
+
+  try {
+    const entry = await getWithTTL(keyFor(token));
+    const record = entry?.value;
+    const ttl = entry?.ttl;
+    if (!record || typeof ttl !== 'number' || ttl <= 0) return;
+
+    const now = Date.now();
+    if (record.lastSeenAt && now - record.lastSeenAt < TOUCH_INTERVAL_MS) return;
+
+    // Срок жизни не продлеваем: токен должен истечь ровно тогда, когда был
+    // выдан + TTL, иначе активный клиент жил бы вечно.
+    await set(keyFor(token), { ...record, lastSeenAt: now }, ttl);
+  } catch (err) {
+    logger.warn({ err }, 'Не удалось обновить отметку последнего визита токена');
+  }
+}
+
+// Активные сеансы пользователя, выданные приложению (не браузерной сессии).
+async function listUserTokens(userId) {
+  if (!userId || !isRedisAvailable()) return [];
+
+  const setKey = `${USER_TOKENS_PREFIX}${userId}`;
+
+  let tokens = [];
+  try {
+    tokens = (await redisClient?.smembers(setKey)) || [];
+  } catch (err) {
+    logger.error({ err, userId }, 'Не удалось прочитать список токенов пользователя');
+    return [];
+  }
+
+  const records = await Promise.all(
+    tokens.map(async (token) => ({ token, record: await get(keyFor(token)) }))
+  );
+
+  const stale = records.filter(({ record }) => !record).map(({ token }) => token);
+  if (stale.length > 0) {
+    // Истёкшие токены остаются в множестве: у самого множества TTL свой.
+    try {
+      await redisClient?.srem(setKey, ...stale);
+    } catch (err) {
+      logger.warn({ err, userId }, 'Не удалось почистить истёкшие токены');
+    }
+  }
+
+  return records
+    .filter(({ record }) => record && record.userId === userId)
+    .map(({ token, record }) => ({
+      id: deviceIdFor(token),
+      kind: 'app',
+      device: record.device || null,
+      issuedAt: record.issuedAt || null,
+      lastSeenAt: record.lastSeenAt || record.issuedAt || null,
+    }));
+}
+
+// Отзыв конкретного сеанса по наружному идентификатору.
+//
+// Ищем перебором собственных токенов пользователя: id — односторонний хеш,
+// обратного пути нет, а токенов у одного человека единицы.
+async function revokeUserTokenById(userId, deviceId) {
+  if (!userId || !deviceId || !isRedisAvailable()) return false;
+
+  let tokens = [];
+  try {
+    tokens = (await redisClient?.smembers(`${USER_TOKENS_PREFIX}${userId}`)) || [];
+  } catch (err) {
+    logger.error({ err, userId }, 'Не удалось прочитать список токенов пользователя');
+    return false;
+  }
+
+  const match = tokens.find((token) => deviceIdFor(token) === deviceId);
+  if (!match) return false;
+
+  // Проверка владельца обязательна: множество могло устареть, а чужой токен
+  // мы отозвать не имеем права ни при каких обстоятельствах.
+  const record = await get(keyFor(match));
+  if (record && record.userId !== userId) {
+    logger.error({ userId }, 'Токен из списка пользователя принадлежит другому — пропускаем');
+    return false;
+  }
+
+  await revokeAuthToken(match);
+  return true;
 }
 
 async function revokeAllUserTokens(userId) {
@@ -80,6 +194,9 @@ module.exports = {
   issueAuthToken,
   resolveAuthToken,
   revokeAuthToken,
+  touchAuthToken,
+  listUserTokens,
+  revokeUserTokenById,
 
   revokeAllUserTokens,
   extractBearerToken,

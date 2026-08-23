@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../config.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../widgets/screen_chrome.dart';
 import 'legal_document_screen.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {
-  const PrivacyPolicyScreen({
+  PrivacyPolicyScreen({
     super.key,
     this.embedded = false,
     this.onBack,
@@ -18,45 +19,40 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
   final VoidCallback? onOpenFullText;
 
-  static const _stored = <({IconData icon, String title, String detail})>[
+  List<({IconData icon, String title, String detail})> _stored(BuildContext context) =>
+      <({IconData icon, String title, String detail})>[
     (
       icon: Icons.person_outline_rounded,
-      title: 'Профиль',
-      detail: 'Имя, адрес почты и аватар. Почта нужна для входа, '
-          'имя и аватар видят друзья.',
+      title: L.of(context).accountProfile,
+      detail: L.of(context).privacyDocProfile,
     ),
     (
       icon: Icons.people_outline_rounded,
-      title: 'Друзья и заявки',
-      detail: 'С кем вы дружите и кому отправляли заявки. '
-          'Заблокированные хранятся отдельно и никому не показываются.',
+      title: L.of(context).privacyDocFriends,
+      detail: L.of(context).privacyDocFriendsText,
     ),
     (
       icon: Icons.headphones_outlined,
-      title: 'Сессии',
-      detail: 'Названия совместных прослушиваний, их участники, добавленные '
-          'треки и оценки — чтобы показать совпадения в конце.',
+      title: L.of(context).sectionSessions,
+      detail: L.of(context).privacyDocSessionsText,
     ),
     (
       icon: Icons.history_rounded,
-      title: 'История прослушанного',
-      detail: 'Треки, которые вы включали в приложении, и время. '
-          'Её можно очистить в разделе «Данные».',
+      title: L.of(context).privacyHistory,
+      detail: L.of(context).privacyDocHistoryText,
     ),
     (
       icon: Icons.music_note_outlined,
-      title: 'Подключение Spotify',
-      detail: 'Идентификатор аккаунта и токены доступа — в зашифрованном '
-          'виде. Пароль от Spotify приложение не видит и не получает.',
+      title: L.of(context).privacyDocSpotify,
+      detail: L.of(context).privacyDocSpotifyText,
     ),
-  ];
+      ];
 
-  static const _notStored = <String>[
-    'Пароль от Spotify — авторизация проходит на стороне Spotify.',
-    'Содержимое прослушивания вне приложения: что вы слушаете сами, '
-        'без сессии, никуда не отправляется.',
-    'Платёжные данные — приложение бесплатное и ничего не принимает.',
-  ];
+  List<String> _notStored(BuildContext context) => <String>[
+    L.of(context).privacyDocNoPassword,
+    L.of(context).privacyDocNoOutsideListening,
+        L.of(context).privacyDocNoPayments,
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +62,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
     return ScreenChrome(
       embedded: embedded,
       header: ScreenHeader(
-        title: 'Данные и приватность',
+        title: L.of(context).aboutDataPrivacy,
         onBack: onBack ?? (embedded ? null : () => Navigator.of(context).pop()),
       ),
       child: ListView(
@@ -87,18 +83,17 @@ class PrivacyPolicyScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Что хранится',
+                    L.of(context).privacyDocStoredTitle,
                     style: texts.titleMedium,
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'Список собран по тому, что приложение действительно '
-                    'записывает в базу.',
+                    L.of(context).privacyDocStoredHint,
                     style: texts.bodySmall
                         ?.copyWith(color: colors.onSurfaceVariant),
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  for (final item in _stored) ...[
+                  for (final item in _stored(context)) ...[
                     _DataRow(
                       icon: item.icon,
                       title: item.title,
@@ -107,9 +102,9 @@ class PrivacyPolicyScreen extends StatelessWidget {
                     const SizedBox(height: AppSpacing.sm),
                   ],
                   const SizedBox(height: AppSpacing.lg),
-                  Text('Чего нет', style: texts.titleMedium),
+                  Text(L.of(context).privacyDocNotStoredTitle, style: texts.titleMedium),
                   const SizedBox(height: AppSpacing.sm),
-                  for (final line in _notStored) ...[
+                  for (final line in _notStored(context)) ...[
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -131,23 +126,18 @@ class PrivacyPolicyScreen extends StatelessWidget {
                     const SizedBox(height: AppSpacing.sm),
                   ],
                   const SizedBox(height: AppSpacing.lg),
-                  Text('Как удалить', style: texts.titleMedium),
+                  Text(L.of(context).privacyDocHowToDeleteTitle, style: texts.titleMedium),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'История прослушанного очищается в разделе «Данные». '
-                    'Там же удаляется аккаунт целиком — вместе с профилем, '
-                    'друзьями, сессиями и подключением Spotify. Это '
-                    'необратимо.',
+                    L.of(context).privacyDocHowToDeleteText,
                     style: texts.bodyMedium
                         ?.copyWith(color: colors.onSurfaceVariant),
                   ),
                   const SizedBox(height: AppSpacing.lg),
-                  Text('Полный текст', style: texts.titleMedium),
+                  Text(L.of(context).privacyDocFullTitle, style: texts.titleMedium),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'Всё написанное выше — краткий пересказ. Полная политика '
-                    'конфиденциальности с формулировками и сроками хранения '
-                    'открывается ниже.',
+                    L.of(context).privacyDocFullHint,
                     style: texts.bodyMedium
                         ?.copyWith(color: colors.onSurfaceVariant),
                   ),
@@ -157,14 +147,14 @@ class PrivacyPolicyScreen extends StatelessWidget {
                         () => Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => LegalDocumentScreen(
-                                  title: 'Политика конфиденциальности',
+                                  title: L.of(context).aboutPrivacyPolicy,
                                   assetPath: Config.privacyPolicyAsset,
                                   url: Config.privacyPolicyUrl,
                                 ),
                               ),
                             ),
                     icon: const Icon(Icons.article_outlined, size: 18),
-                    label: const Text('Политика конфиденциальности'),
+                    label: Text(L.of(context).aboutPrivacyPolicy),
                   ),
                 ],
               ),

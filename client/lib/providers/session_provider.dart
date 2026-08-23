@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../theme.dart';
 import '../utils/local_store.dart';
 import '../services/socket_service.dart';
+import 'settings_provider.dart';
 import '../utils/app_globals.dart';
 import '../utils/notifications.dart';
 
@@ -189,10 +190,12 @@ class SessionProvider with ChangeNotifier {
     if (!alreadyListed) {
       _invites.insert(0, {
         'id': sessionId,
-        'name': data['sessionName'] ?? 'Сессия',
+        'name': data['sessionName'] ?? appL10n?.homeSession ?? 'Сессия',
         'hostId': data['hostId'],
       });
-      _showInviteNotification(data['sessionName'] as String? ?? 'Сессия');
+      _showInviteNotification(
+        data['sessionName'] as String? ?? appL10n?.homeSession ?? 'Сессия',
+      );
       notifyListeners();
     }
 
@@ -202,18 +205,17 @@ class SessionProvider with ChangeNotifier {
   void markInvitesAsRead() {}
 
   void _showInviteNotification(String sessionName) {
-    if (!LocalStore.readBool(StoreKeys.inviteNotifications, defaultValue: true)) {
-      return;
-    }
+    if (!NotificationPrefs.allow('sessionInvites')) return;
 
     final context = navigatorKey.currentContext;
     if (context == null) return;
 
     showAppNotification(
       context,
-      message: 'Приглашение в сессию «$sessionName»',
+      message: appL10n?.invitesNotification(sessionName) ??
+          'Приглашение в сессию «$sessionName»',
       type: NotificationType.info,
-      actionLabel: 'Открыть',
+      actionLabel: appL10n?.commonOpen ?? 'Открыть',
       onAction: () => navigatorKey.currentState?.pushNamed('/session/invites'),
     );
   }

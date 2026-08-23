@@ -1,3 +1,4 @@
+const { t } = require('../infrastructure/i18n');
 const crypto = require('crypto');
 const { z } = require('zod');
 const prisma = require('../db/prisma');
@@ -87,12 +88,12 @@ const respondToInviteBodySchema = z.object({
 
 const createSession = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { name, friendId } = createSessionSchema.parse(req.body);
 
   if (userId === friendId) {
-    return res.status(400).json({ error: 'Нельзя создать сессию с самим собой' });
+    return res.status(400).json({ error: t(req, 'cannotSessionWithSelf') });
   }
 
   await withLock(`session:create:${userId}`, 5000, async () => {
@@ -107,7 +108,24 @@ const createSession = asyncHandler(async (req, res) => {
     });
 
     if (!friendship) {
-      return res.status(403).json({ error: 'Вы не друзья с этим пользователем' });
+      return res.status(403).json({ error: t(req, 'notFriends') });
+    }
+
+    // Настройку «кто может звать» соблюдает сервер, а не интерфейс: спрятать
+    // кнопку в клиенте недостаточно — запрос можно послать и без неё.
+    const invitee = await prisma.user.findUnique({
+      where: { id: friendId },
+      select: { allowSessionInvites: true, username: true },
+    });
+
+    if (!invitee) {
+      return res.status(404).json({ error: t(req, 'userNotFound') });
+    }
+
+    if (invitee.allowSessionInvites === 'nobody') {
+      return res
+        .status(403)
+        .json({ error: t(req, 'invitesDisabled', { name: invitee.username }) });
     }
 
     const session = await prisma.$transaction(async (tx) => {
@@ -182,7 +200,7 @@ const createSession = asyncHandler(async (req, res) => {
 
 const getMySessions = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const sessions = await getOrSet(`db:sessions-list:${userId}`, 'list', 30, async () => {
     return prisma.session.findMany({
@@ -212,7 +230,7 @@ const getMySessions = asyncHandler(async (req, res) => {
 
 const addTracks = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { sessionId } = sessionIdParamsSchema.parse(req.params);
   const { tracks } = addTracksBodySchema.parse(req.body);
@@ -223,13 +241,13 @@ const addTracks = asyncHandler(async (req, res) => {
       include: { members: true },
     });
 
-    if (!session) return res.status(404).json({ error: 'Сессия не найдена' });
-    if (!session.isActive) return res.status(400).json({ error: 'Сессия не активна' });
+    if (!session) return res.status(404).json({ error: t(req, 'sessionNotFound') });
+    if (!session.isActive) return res.status(400).json({ error: t(req, 'sessionNotActive') });
 
     const isMember = session.members.some(
       (m) => m.userId === userId && m.status === 'accepted'
     );
-    if (!isMember) return res.status(403).json({ error: 'Вы не участник этой сессии' });
+    if (!isMember) return res.status(403).json({ error: t(req, 'sessionNotMember') });
 
     const ids = tracks.map(() => crypto.randomUUID()).sort();
     const rows = tracks.map((t, index) => ({
@@ -302,7 +320,7 @@ const addTracks = asyncHandler(async (req, res) => {
 
 const rateTrack = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { trackId } = trackIdParamsSchema.parse(req.params);
   const { rating } = rateTrackBodySchema.parse(req.body);
@@ -313,12 +331,12 @@ const rateTrack = asyncHandler(async (req, res) => {
       include: { session: { include: { members: true } } },
     });
 
-    if (!track || !track.session) return res.status(404).json({ error: 'Трек не найден' });
+    if (!track || !track.session) return res.status(404).json({ error: t(req, 'trackNotFound') });
 
     const isMember = track.session.members.some(
       (m) => m.userId === userId && m.status === 'accepted'
     );
-    if (!isMember) return res.status(403).json({ error: 'Вы не участник этой сессии' });
+    if (!isMember) return res.status(403).json({ error: t(req, 'sessionNotMember') });
 
     const result = await prisma.trackRating.upsert({
       where: { trackId_userId: { trackId, userId } },
@@ -345,7 +363,7 @@ const rateTrack = asyncHandler(async (req, res) => {
 
 const endSession = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { sessionId } = sessionIdParamsSchema.parse(req.params);
 
@@ -355,15 +373,15 @@ const endSession = asyncHandler(async (req, res) => {
       include: { members: true },
     });
 
-    if (!session) return res.status(404).json({ error: 'Сессия не найдена' });
-    if (!session.isActive) return res.status(400).json({ error: 'Сессия уже завершена' });
+    if (!session) return res.status(404).json({ error: t(req, 'sessionNotFound') });
+    if (!session.isActive) return res.status(400).json({ error: t(req, 'sessionAlreadyEnded') });
 
     if (session.hostId !== userId) {
       const isMember = session.members.some(
         (m) => m.userId === userId && m.status === 'accepted'
       );
-      if (!isMember) return res.status(403).json({ error: 'Вы не участник этой сессии' });
-      return res.status(403).json({ error: 'Только создатель сессии может её завершить' });
+      if (!isMember) return res.status(403).json({ error: t(req, 'sessionNotMember') });
+      return res.status(403).json({ error: t(req, 'onlyHostCanEnd') });
     }
 
     await prisma.session.update({
@@ -402,7 +420,7 @@ const endSession = asyncHandler(async (req, res) => {
 
 const respondToInvite = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { sessionId } = sessionIdParamsSchema.parse(req.params);
   const { accept } = respondToInviteBodySchema.parse(req.body);
@@ -416,7 +434,7 @@ const respondToInvite = asyncHandler(async (req, res) => {
     });
 
     if (count === 0) {
-      return res.status(404).json({ error: 'Приглашение не найдено' });
+      return res.status(404).json({ error: t(req, 'inviteNotFound') });
     }
 
     if (!accept) forgetMembership(sessionId, userId);
@@ -472,7 +490,7 @@ const respondToInvite = asyncHandler(async (req, res) => {
 
 const getMyInvites = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const invites = await getOrSet(`db:invites-list:${userId}`, 'list', 30, async () => {
     const invitesData = await prisma.sessionMember.findMany({

@@ -1,3 +1,5 @@
+import '../utils/app_globals.dart';
+
 class User {
   final String id;
 
@@ -67,7 +69,8 @@ class User {
     return User(
       id: json['id'] as String,
       publicId: json['publicId'] as String?,
-      displayName: json['displayName'] as String? ?? 'Без имени',
+      displayName:
+          json['displayName'] as String? ?? appL10n?.commonNoName ?? 'Без имени',
       email: json['email'] as String?,
       avatarUrl: json['avatarUrl'] as String?,
       customAvatarUrl: json['customAvatarUrl'] as String?,

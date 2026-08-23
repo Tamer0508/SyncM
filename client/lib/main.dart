@@ -8,6 +8,9 @@ import 'providers/session_provider.dart';
 import 'providers/playback_provider.dart';
 import 'providers/playlists_provider.dart';
 import 'providers/appearance_provider.dart';
+import 'l10n/app_localizations.dart';
+import 'providers/locale_provider.dart';
+import 'providers/settings_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/socket_service.dart';
 import 'services/api_service.dart';
@@ -41,6 +44,9 @@ class MyApp extends StatelessWidget {
     
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => AppearanceProvider()),
+        ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProxyProvider<AuthProvider, FriendsProvider>(
           create: (_) => FriendsProvider(),
@@ -81,13 +87,24 @@ class MyApp extends StatelessWidget {
             return pb;
           },
         ),
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => AppearanceProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, SettingsProvider>(
+          create: (ctx) => SettingsProvider(
+            appearance: ctx.read<AppearanceProvider>(),
+            theme: ctx.read<ThemeProvider>(),
+            localeProvider: ctx.read<LocaleProvider>(),
+          ),
+          update: (_, auth, settings) => settings!..syncAuth(auth),
+        ),
         Provider<SocketService>.value(value: SocketService()),
       ],
-      child: Consumer2<ThemeProvider, AppearanceProvider>(
-        builder: (context, themeProvider, appearance, _) => MaterialApp(
+      child: Consumer3<ThemeProvider, AppearanceProvider, LocaleProvider>(
+        builder: (context, themeProvider, appearance, localeProvider, _) =>
+            MaterialApp(
           title: 'SyncM',
+          localizationsDelegates: L.localizationsDelegates,
+          supportedLocales: L.supportedLocales,
+          // null — «как в системе»: MaterialApp сам выберет из поддерживаемых.
+          locale: localeProvider.locale,
           theme: _ThemeCache.of(
             brightness: Brightness.light,
             accent: appearance.accent,

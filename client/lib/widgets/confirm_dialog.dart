@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 
 Future<bool> showConfirmDialog(
@@ -8,7 +9,7 @@ Future<bool> showConfirmDialog(
   required String title,
   required String message,
   required String confirmLabel,
-  String cancelLabel = 'Отмена',
+  String? cancelLabel,
   bool destructive = true,
 }) async {
   final result = await showDialog<bool>(
@@ -24,7 +25,7 @@ Future<bool> showConfirmDialog(
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(cancelLabel),
+            child: Text(cancelLabel ?? L.of(ctx).commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),

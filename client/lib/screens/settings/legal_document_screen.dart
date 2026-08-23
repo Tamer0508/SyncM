@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/screen_chrome.dart';
@@ -109,11 +110,11 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
           if (_text != null && _webView == null)
             IconButton(
               icon: const Icon(Icons.copy_rounded),
-              tooltip: 'Скопировать текст',
+              tooltip: L.of(context).legalCopyText,
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: _text!));
                 if (!mounted) return;
-                showSuccess(context, 'Текст скопирован');
+                showSuccess(context, L.of(context).legalTextCopied);
               },
             ),
         ],
@@ -131,7 +132,7 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),
           child: Text(
-            'Не удалось открыть документ.',
+            L.of(context).legalOpenFailed,
             style: context.texts.bodyMedium
                 ?.copyWith(color: context.colors.onSurfaceVariant),
           ),

@@ -1,0 +1,7 @@
+# Русский — исходный язык: приложение писалось на нём, и в нём формулировки
+# первичны. Английский перевод сверяется с ним, а не наоборот.
+arb-dir: lib/l10n
+template-arb-file: app_ru.arb
+output-localization-file: app_localizations.dart
+output-class: L
+nullable-getter: false

@@ -1,3 +1,4 @@
+const { t } = require('../infrastructure/i18n');
 const { z } = require('zod');
 const prisma = require('../db/prisma');
 const { getOrSet, incrementVersion } = require('../infrastructure/redis');
@@ -59,7 +60,7 @@ const friendIdParamsSchema = z.object({
 
 const searchUsers = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { query } = searchQuerySchema.parse(req.query);
 
@@ -136,12 +137,12 @@ const searchUsers = asyncHandler(async (req, res) => {
 
 const sendRequest = asyncHandler(async (req, res) => {
   const senderId = req.userId;
-  if (!senderId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!senderId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { receiverId } = sendRequestBodySchema.parse(req.body);
 
   if (senderId === receiverId) {
-    return res.status(400).json({ error: 'Нельзя добавить себя' });
+    return res.status(400).json({ error: t(req, 'cannotAddSelf') });
   }
 
   const blocked = await prisma.block.findFirst({
@@ -154,7 +155,7 @@ const sendRequest = asyncHandler(async (req, res) => {
     select: { id: true },
   });
   if (blocked) {
-    return res.status(400).json({ error: 'Не удалось отправить заявку' });
+    return res.status(400).json({ error: t(req, 'requestFailed') });
   }
 
   const pairKey = [senderId, receiverId].sort().join(':');
@@ -223,7 +224,7 @@ const sendRequest = asyncHandler(async (req, res) => {
 
 const acceptRequest = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { friendshipId } = friendshipIdParamsSchema.parse(req.params);
 
@@ -233,7 +234,7 @@ const acceptRequest = asyncHandler(async (req, res) => {
     });
 
     if (!friendship || friendship.receiverId !== userId) {
-      return res.status(404).json({ error: 'Заявка не найдена или нет доступа' });
+      return res.status(404).json({ error: t(req, 'requestNotFound') });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -310,7 +311,7 @@ const acceptRequest = asyncHandler(async (req, res) => {
 
 const getFriends = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { cursor, limit } = cursorLimitSchema.parse(req.query);
 
@@ -384,7 +385,7 @@ const getUserById = asyncHandler(async (req, res) => {
   });
 
   if (!user) {
-    return res.status(404).json({ error: 'Пользователь не найден' });
+    return res.status(404).json({ error: t(req, 'userNotFound') });
   }
 
   res.json(user);
@@ -392,7 +393,7 @@ const getUserById = asyncHandler(async (req, res) => {
 
 const getIncomingRequests = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { cursor, limit } = cursorLimitSchema.parse(req.query);
 
@@ -440,7 +441,7 @@ const getIncomingRequests = asyncHandler(async (req, res) => {
 
 const deleteRequest = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { friendshipId } = friendshipIdParamsSchema.parse(req.params);
 
@@ -449,13 +450,13 @@ const deleteRequest = asyncHandler(async (req, res) => {
       where: { id: friendshipId },
     });
 
-    if (!friendship) return res.status(404).json({ error: 'Не найдено' });
+    if (!friendship) return res.status(404).json({ error: t(req, 'notFound') });
 
     if (friendship.status === 'accepted') {
-      return res.status(400).json({ error: 'Для удаления друга используйте /friends/by-user/:friendId' });
+      return res.status(400).json({ error: t(req, 'useFriendsByUser') });
     }
     if (friendship.senderId !== userId && friendship.receiverId !== userId) {
-      return res.status(403).json({ error: 'Нет доступа' });
+      return res.status(403).json({ error: t(req, 'forbidden') });
     }
 
     await prisma.friendship.delete({ where: { id: friendshipId } });
@@ -467,7 +468,7 @@ const deleteRequest = asyncHandler(async (req, res) => {
 
 const deleteFriendByUserId = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { friendId } = friendIdParamsSchema.parse(req.params);
 
@@ -481,7 +482,7 @@ const deleteFriendByUserId = asyncHandler(async (req, res) => {
     },
   });
 
-  if (!friendship) return res.status(404).json({ error: 'Дружба не найдена' });
+  if (!friendship) return res.status(404).json({ error: t(req, 'friendshipNotFound') });
 
   await withLock(`friendship:${friendship.id}`, 5000, async () => {
     try {
@@ -515,7 +516,7 @@ const deleteFriendByUserId = asyncHandler(async (req, res) => {
       });
     } catch (err) {
       if (err.code === 'P2025') {
-        return res.status(404).json({ error: 'Дружба уже удалена' });
+        return res.status(404).json({ error: t(req, 'friendshipAlreadyRemoved') });
       }
       throw err;
     }
@@ -532,14 +533,14 @@ const blockUser = asyncHandler(async (req, res) => {
   const { userId: blockedId } = userIdParamsSchema.parse(req.params);
 
   if (blockerId === blockedId) {
-    return res.status(400).json({ error: 'Нельзя заблокировать себя' });
+    return res.status(400).json({ error: t(req, 'cannotBlockSelf') });
   }
 
   const target = await prisma.user.findUnique({
     where: { id: blockedId },
     select: { id: true },
   });
-  if (!target) return res.status(404).json({ error: 'Пользователь не найден' });
+  if (!target) return res.status(404).json({ error: t(req, 'userNotFound') });
 
   await prisma.$transaction(async (tx) => {
     await tx.block.upsert({
@@ -653,7 +654,7 @@ const getUserActivity = asyncHandler(async (req, res) => {
     }),
   ]);
 
-  if (!target) return res.status(404).json({ error: 'Пользователь не найден' });
+  if (!target) return res.status(404).json({ error: t(req, 'userNotFound') });
 
   if (target.isActivityHidden || blocked || !friendship) {
     return res.json({ history: [], likedCount: 0 });

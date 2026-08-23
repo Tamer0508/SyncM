@@ -5,6 +5,7 @@ import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/playback_provider.dart';
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import '../utils/duration_text.dart';
 import '../utils/image_cache.dart';
@@ -97,7 +98,7 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
       final colors = context.colors;
       final texts = context.texts;
 
-      final title = track['title'] as String? ?? 'Неизвестный трек';
+      final title = track['title'] as String? ?? L.of(context).playerUnknownTrack;
       final artist = track['artist'] as String? ?? '';
       final imageBytes = pb.currentImageBytes;
       final imageUrl = track['imageUrl'] as String?;
@@ -330,14 +331,14 @@ class _PanelControls extends StatelessWidget {
           icon: Icons.shuffle_rounded,
           size: 22,
           color: pb.shuffleActive ? accentColor : muted,
-          tooltip: pb.shuffleActive ? 'Перемешивание включено' : 'Перемешать',
+          tooltip: pb.shuffleActive ? L.of(context).playerShuffleOn : L.of(context).playerShuffle,
           onPressed: () => pb.setShuffle(!pb.shuffleActive),
         ),
         AppIconButton(
           icon: Icons.skip_previous_rounded,
           size: 28,
           color: colors.onSurface,
-          tooltip: 'Предыдущий трек',
+          tooltip: L.of(context).playerPrevious,
           onPressed: () {
             pb.goToPrevious();
             onSeekReset();
@@ -351,7 +352,7 @@ class _PanelControls extends StatelessWidget {
             icon: pb.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
             size: 28,
             color: onAccent,
-            tooltip: pb.isPlaying ? 'Пауза' : 'Воспроизвести',
+            tooltip: pb.isPlaying ? L.of(context).playerPause : L.of(context).playerPlay,
             onPressed: pb.togglePlay,
           ),
         ),
@@ -359,7 +360,7 @@ class _PanelControls extends StatelessWidget {
           icon: Icons.skip_next_rounded,
           size: 28,
           color: colors.onSurface,
-          tooltip: 'Следующий трек',
+          tooltip: L.of(context).playerNext,
           onPressed: () {
             pb.goToNext();
             onSeekReset();
@@ -372,9 +373,9 @@ class _PanelControls extends StatelessWidget {
           size: 22,
           color: pb.repeatActive ? accentColor : muted,
           tooltip: switch (pb.repeatMode) {
-            'track' => 'Повтор одного трека',
-            'context' => 'Повтор списка',
-            _ => 'Повтор выключен',
+            'track' => L.of(context).playerRepeatOne,
+            'context' => L.of(context).playerRepeatAll,
+            _ => L.of(context).playerRepeatOff,
           },
           onPressed: pb.cycleRepeatMode,
         ),

@@ -14,6 +14,7 @@ import '../services/socket_service.dart';
 import '../services/session_foreground_service.dart';
 import '../utils/artwork_color_store.dart';
 import '../utils/image_cache.dart';
+import '../utils/app_globals.dart';
 import '../utils/local_store.dart';
 
 typedef SessionTracksCallback = void Function(Map<String, dynamic> data);
@@ -995,8 +996,7 @@ class PlaybackProvider extends ChangeNotifier {
         await SpotifySdk.getAccessToken(
           clientId: _clientId,
           redirectUrl: _redirectUrl,
-          scope: 'app-remote-control,user-modify-playback-state,'
-              'user-read-playback-state,playlist-read-private,streaming',
+          scope: 'app-remote-control,user-modify-playback-state,user-read-playback-state,playlist-read-private,streaming',
         );
         _isConnected = await SpotifySdk.connectToSpotifyRemote(
           clientId: _clientId,
@@ -1020,8 +1020,7 @@ class PlaybackProvider extends ChangeNotifier {
         await SpotifySdk.getAccessToken(
           clientId: _clientId,
           redirectUrl: _redirectUrl,
-          scope: 'app-remote-control,user-modify-playback-state,'
-              'user-read-playback-state,playlist-read-private,streaming',
+          scope: 'app-remote-control,user-modify-playback-state,user-read-playback-state,playlist-read-private,streaming',
         );
         _isConnected = await SpotifySdk.connectToSpotifyRemote(
           clientId: _clientId,
@@ -2301,7 +2300,8 @@ class PlaybackProvider extends ChangeNotifier {
         await _restoreVolumeIfMuted();
         final msg = e is ApiException
             ? e.userMessage
-            : 'Откройте Spotify и запустите любой трек, затем повторите.';
+            : appL10n?.playbackOpenSpotifyHint ??
+                'Откройте Spotify и запустите любой трек, затем повторите.';
         onPrepareError?.call(msg);
       }
     }

@@ -1,3 +1,4 @@
+import '../utils/app_globals.dart';
 import 'dart:async';
 import 'dart:collection';
 
@@ -226,7 +227,8 @@ class PlaylistsProvider with ChangeNotifier {
 
 extension PlaylistFields on Map<String, dynamic> {
   String get playlistId => this['id'] as String? ?? '';
-  String get playlistName => this['name'] as String? ?? 'Без названия';
+  String get playlistName =>
+      this['name'] as String? ?? appL10n?.historyUntitled ?? 'Без названия';
   String get playlistDescription => this['description'] as String? ?? '';
   String? get playlistImageUrl {
     final url = this['imageUrl'] as String?;

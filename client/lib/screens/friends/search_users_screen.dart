@@ -6,6 +6,7 @@ import 'package:rxdart/rxdart.dart';
 
 import '../../models/friend.dart';
 import '../../providers/friends_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/screen_chrome.dart';
@@ -90,7 +91,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       await context.read<FriendsProvider>().sendRequest(user.id);
       if (!mounted) return;
       setState(() => _sentTo.add(user.id));
-      showSuccess(context, 'Заявка отправлена');
+      showSuccess(context, L.of(context).searchRequestSent);
     } catch (err) {
       if (!mounted) return;
       showError(context, err);
@@ -115,13 +116,13 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
             autofocus: !widget.embedded,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Имя или код',
+              hintText: L.of(context).searchFieldHint,
               prefixIcon: const Icon(Icons.search_rounded),
               suffixIcon: _controller.text.isEmpty
                   ? null
                   : IconButton(
                       icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Очистить',
+                      tooltip: L.of(context).commonClear,
                       onPressed: () {
                         _controller.clear();
                         _searchSubject.add('');
@@ -149,7 +150,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
     return ScreenChrome(
       embedded: widget.embedded,
       header: ScreenHeader(
-        title: 'Поиск друзей',
+        title: L.of(context).homeSearchFriends,
         onBack: widget.onBack ??
             (widget.embedded ? null : () => Navigator.of(context).pop()),
       ),
@@ -166,9 +167,8 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       return _SearchPlaceholder(
         key: const ValueKey('idle'),
         icon: Icons.person_search_rounded,
-        title: 'Найдите друзей',
-        subtitle: 'Введите имя или код из восьми символов. Свой код можно '
-            'посмотреть в настройках, в разделе «Аккаунт».',
+        title: L.of(context).searchEmptyTitle,
+        subtitle: L.of(context).searchEmptyMessage,
       );
     }
 
@@ -176,9 +176,8 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       return _SearchPlaceholder(
         key: const ValueKey('empty'),
         icon: Icons.search_off_rounded,
-        title: 'Никого не нашлось',
-        subtitle: 'Проверьте написание. По коду человек находится, даже если '
-            'скрыл себя из поиска.',
+        title: L.of(context).searchNothingFound,
+        subtitle: L.of(context).searchNothingFoundHint,
       );
     }
 
@@ -312,14 +311,14 @@ class _ActionButton extends StatelessWidget {
     }
 
     if (isSent || status == FriendshipStatus.sent) {
-      return label('Отправлено', icon: Icons.schedule_rounded);
+      return label(L.of(context).searchStatusSent, icon: Icons.schedule_rounded);
     }
 
     switch (status) {
       case FriendshipStatus.friends:
-        return label('В друзьях', icon: Icons.check_rounded, color: colors.primary);
+        return label(L.of(context).searchStatusFriends, icon: Icons.check_rounded, color: colors.primary);
       case FriendshipStatus.received:
-        return label('Ждёт ответа', icon: Icons.mark_email_unread_rounded);
+        return label(L.of(context).searchStatusWaiting, icon: Icons.mark_email_unread_rounded);
       case FriendshipStatus.none:
       case FriendshipStatus.sent:
         // Круглая кнопка вместо надписи «Добавить»: текстовая занимала
@@ -329,7 +328,7 @@ class _ActionButton extends StatelessWidget {
         return IconButton.filledTonal(
           onPressed: onSend,
           icon: const Icon(Icons.person_add_alt_1_rounded),
-          tooltip: 'Отправить заявку',
+          tooltip: L.of(context).searchSendRequest,
           visualDensity: VisualDensity.compact,
         );
     }

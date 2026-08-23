@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/playback_provider.dart';
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import '../utils/duration_text.dart';
 import '../utils/image_cache.dart';
@@ -197,7 +198,7 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
                       child: IconButton(
                         onPressed: _toggleLike,
                         visualDensity: VisualDensity.compact,
-                        tooltip: _isLiked ? 'Убрать из любимых' : 'В любимые',
+                        tooltip: _isLiked ? L.of(context).trackUnlike : L.of(context).trackLike,
                         icon: Icon(
                           _isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                           size: 20,
@@ -210,7 +211,7 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
                     IconButton(
                       onPressed: widget.onMore,
                       visualDensity: VisualDensity.compact,
-                      tooltip: 'Ещё',
+                      tooltip: L.of(context).commonMore,
                       icon: Icon(
                         Icons.more_vert_rounded,
                         size: 20,

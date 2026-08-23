@@ -1,3 +1,4 @@
+const { t } = require('../infrastructure/i18n');
 const { z } = require('zod');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -134,7 +135,7 @@ const invalidatePlaylistTracks = (userId, playlistId) =>
 
 const createCustomPlaylist = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { name, description, imageUrl } = createCustomPlaylistSchema.parse(req.body);
 
@@ -154,7 +155,7 @@ const createCustomPlaylist = asyncHandler(async (req, res) => {
 
 const getUserPlaylists = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const playlists = await getOrSet(`db:user-playlists-db:${userId}`, 'list-v2', 120, async () => {
     const rows = await prisma.playlist.findMany({
@@ -170,7 +171,7 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
 
 const updatePlaylist = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
   const patch = updatePlaylistSchema.parse(req.body);
@@ -196,7 +197,7 @@ const updatePlaylist = asyncHandler(async (req, res) => {
 
 const toggleLike = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { spotifyUri, trackName, artistName, imageUrl } = toggleLikeSchema.parse(req.body);
 
@@ -219,7 +220,7 @@ const toggleLike = asyncHandler(async (req, res) => {
 
 const getLikedTracks = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const tracks = await getOrSet(`db:liked-tracks:${userId}`, 'list-v2', 120, async () => {
     const rows = await prisma.likedTrack.findMany({
@@ -234,7 +235,7 @@ const getLikedTracks = asyncHandler(async (req, res) => {
 
 const importPlaylist = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { spotifyPlaylistId, name, description, imageUrl } = importPlaylistSchema.parse(req.body);
 
@@ -273,7 +274,7 @@ const importPlaylist = asyncHandler(async (req, res) => {
 
 const duplicatePlaylist = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
   const { name } = duplicateSchema.parse(req.body ?? {});
@@ -282,8 +283,8 @@ const duplicatePlaylist = asyncHandler(async (req, res) => {
     where: { id: playlistId },
     include: { playlistTracks: { orderBy: [{ position: 'asc' }, { addedAt: 'asc' }] } },
   });
-  if (!source) return res.status(404).json({ error: 'Плейлист не найден' });
-  if (source.userId !== userId) return res.status(403).json({ error: 'Нет доступа' });
+  if (!source) return res.status(404).json({ error: t(req, 'playlistNotFound') });
+  if (source.userId !== userId) return res.status(403).json({ error: t(req, 'forbidden') });
 
   const copyName = (name ?? `${source.name} — копия`).slice(0, 100);
 
@@ -321,14 +322,14 @@ const duplicatePlaylist = asyncHandler(async (req, res) => {
 
 const deletePlaylist = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
 
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } });
-  if (!playlist) return res.status(404).json({ error: 'Плейлист не найден' });
-  if (playlist.userId !== userId) return res.status(403).json({ error: 'Нет доступа' });
-  if (!playlist.isCustom) return res.status(400).json({ error: 'Нельзя удалить импортированный плейлист' });
+  if (!playlist) return res.status(404).json({ error: t(req, 'playlistNotFound') });
+  if (playlist.userId !== userId) return res.status(403).json({ error: t(req, 'forbidden') });
+  if (!playlist.isCustom) return res.status(400).json({ error: t(req, 'playlistImported') });
 
   await prisma.playlist.delete({ where: { id: playlistId } });
   await safeDeleteCover(playlist.imageUrl);
@@ -348,7 +349,7 @@ const nextPosition = async (playlistId) => {
 
 const addTrackToPlaylist = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
   const { trackUri, trackName, artistName, imageUrl, durationMs } = addTrackSchema.parse(req.body);
@@ -371,7 +372,7 @@ const addTrackToPlaylist = asyncHandler(async (req, res) => {
     });
   } catch (err) {
     if (err.code === 'P2002') {
-      return res.status(409).json({ error: 'Трек уже есть в этом плейлисте' });
+      return res.status(409).json({ error: t(req, 'trackAlreadyInPlaylist') });
     }
     throw err; // пробрасываем остальные ошибки
   }
@@ -382,7 +383,7 @@ const addTrackToPlaylist = asyncHandler(async (req, res) => {
 
 const addTracksBulk = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
   const { tracks } = addTracksBulkSchema.parse(req.body);
@@ -429,7 +430,7 @@ const addTracksBulk = asyncHandler(async (req, res) => {
 
 const reorderTracks = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
   const { trackUris } = reorderSchema.parse(req.body);
@@ -472,7 +473,7 @@ const reorderTracks = asyncHandler(async (req, res) => {
 
 const removeTrackFromPlaylist = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
   const { trackUri } = trackUriParamsSchema.parse(req.params);
@@ -493,7 +494,7 @@ const removeTrackFromPlaylist = asyncHandler(async (req, res) => {
 
 const clearPlaylist = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
 
@@ -508,15 +509,15 @@ const clearPlaylist = asyncHandler(async (req, res) => {
 
 const getPlaylistTracks = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
 
   const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } });
-  if (!playlist) return res.status(404).json({ error: 'Плейлист не найден' });
+  if (!playlist) return res.status(404).json({ error: t(req, 'playlistNotFound') });
 
   if (playlist.userId !== userId) {
-    return res.status(403).json({ error: 'Нет доступа к этому плейлисту' });
+    return res.status(403).json({ error: t(req, 'playlistNoAccess') });
   }
 
   const tracks = await getOrSet(`db:playlist-tracks-db:${playlistId}`, 'list-v2', 120, async () => {
@@ -532,7 +533,7 @@ const getPlaylistTracks = asyncHandler(async (req, res) => {
 
 const logPlay = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { spotifyUri, trackName, artistName, imageUrl } = logPlaySchema.parse(req.body);
 
@@ -595,7 +596,7 @@ async function safeDeleteCover(coverUrl, currentFilename) {
 
 const uploadCover = (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   coverUpload(req, res, async (err) => {
     if (err) {
@@ -606,7 +607,7 @@ const uploadCover = (req, res) => {
     }
     if (!req.file) {
       return res.status(400).json({
-        error: 'Файл не выбран или имеет неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
+        error: t(req, 'fileNotChosen'),
       });
     }
 
@@ -637,14 +638,14 @@ const uploadCover = (req, res) => {
       logger.error({ err: error, userId }, 'Upload playlist cover error');
       // Не оставляем осиротевший файл, если запись в БД не удалась.
       await cleanup();
-      res.status(500).json({ error: 'Ошибка сохранения обложки' });
+      res.status(500).json({ error: t(req, 'coverSaveFailed') });
     }
   });
 };
 
 const deleteCover = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
   const { playlist, error } = await requireEditablePlaylist(playlistId, userId);

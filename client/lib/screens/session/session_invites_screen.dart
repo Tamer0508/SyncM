@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/session_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/app_icon_button.dart';
@@ -47,12 +48,12 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
       if (!mounted) return;
 
       if (result == null) {
-        showError(context, 'Не удалось ответить на приглашение', force: true);
+        showError(context, L.of(context).invitesReplyFailed, force: true);
         return;
       }
 
       if (!accept) {
-        showSuccess(context, 'Приглашение отклонено');
+        showSuccess(context, L.of(context).invitesDeclined);
         return;
       }
 
@@ -70,7 +71,7 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
         }
         Navigator.of(context).pushReplacementNamed('/session', arguments: session);
       } else {
-        showSuccess(context, 'Приглашение принято');
+        showSuccess(context, L.of(context).invitesAccepted);
       }
     } catch (err) {
       if (!mounted) return;
@@ -113,13 +114,13 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
     return ScreenChrome(
       embedded: widget.embedded,
       header: ScreenHeader(
-        title: 'Приглашения',
+        title: L.of(context).invitesTitle,
         onBack: widget.onBack ??
             (widget.embedded ? null : () => Navigator.of(context).pop()),
         actions: [
           AppIconButton(
             icon: Icons.refresh_rounded,
-            tooltip: 'Обновить',
+            tooltip: L.of(context).commonRefresh,
             onPressed: () =>
                 context.read<SessionProvider>().fetchInvites(),
           ),
@@ -137,10 +138,9 @@ class _EmptyInvitesView extends StatelessWidget {
   Widget build(BuildContext context) {
     return EmptyState(
       icon: Icons.mail_outline_rounded,
-      title: 'Приглашений пока нет',
-      message: 'Друг позовёт, приглашение появится здесь. Можно и не ждать: '
-          'начните сессию сами.',
-      actionLabel: 'Начать сессию',
+      title: L.of(context).invitesEmptyTitle,
+      message: L.of(context).invitesEmptyMessage,
+      actionLabel: L.of(context).homeStartSession,
       onAction: () => Navigator.of(context).pushNamed('/session/create'),
     );
   }
@@ -178,8 +178,8 @@ class _InvitesList extends StatelessWidget {
         final sessionId = invite['id'] as String;
 
         return _InviteCard(
-          sessionName: invite['name'] as String? ?? 'Сессия',
-          hostName: hostNameForInvite(invite) ?? 'Друг',
+          sessionName: invite['name'] as String? ?? L.of(context).homeSession,
+          hostName: hostNameForInvite(invite) ?? L.of(context).homeFilterFriend,
           trackCount: (invite['tracks'] as List?)?.length ?? 0,
           isResponding: responding.contains(sessionId),
           onAccept: () => onAccept(sessionId),
@@ -245,7 +245,7 @@ class _InviteCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'От $hostName',
+                      L.of(context).homeInviteFrom(hostName),
                       style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -264,7 +264,7 @@ class _InviteCard extends StatelessWidget {
                 Icon(Icons.queue_music_rounded, size: 18, color: colors.onSurfaceVariant),
                 const SizedBox(width: AppSpacing.sm),
                 Text(
-                  '$trackCount ${_plural(trackCount)}',
+                  L.of(context).trackCount(trackCount),
                   style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
                 ),
               ],
@@ -280,7 +280,7 @@ class _InviteCard extends StatelessWidget {
                     foregroundColor: colors.error,
                     side: BorderSide(color: colors.error.withValues(alpha: 0.5)),
                   ),
-                  child: const Text('Отклонить'),
+                  child: Text(L.of(context).requestsDecline),
                 ),
               ),
               const SizedBox(width: AppSpacing.sm + 4),
@@ -298,7 +298,7 @@ class _InviteCard extends StatelessWidget {
                             color: colors.onPrimary,
                           ),
                         )
-                      : const Text('Принять'),
+                      : Text(L.of(context).requestsAccept),
                 ),
               ),
             ],
@@ -306,16 +306,5 @@ class _InviteCard extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  /// Склонение слова «трек» по числу.
-  String _plural(int count) {
-    final mod100 = count % 100;
-    if (mod100 >= 11 && mod100 <= 14) return 'треков';
-    return switch (count % 10) {
-      1 => 'трек',
-      2 || 3 || 4 => 'трека',
-      _ => 'треков',
-    };
   }
 }

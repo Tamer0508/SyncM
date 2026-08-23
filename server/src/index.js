@@ -1,6 +1,7 @@
 require('dotenv').config();
 require('./infrastructure/redis');
 
+const { t } = require('./infrastructure/i18n');
 const { rateLimitMiddleware } = require('./infrastructure/rateLimiter');
 const express = require('express');
 const compression = require('compression');
@@ -199,7 +200,7 @@ app.get('/', (req, res) => {
 });
 
 app.use((req, res) => {
-  res.status(404).json({ error: 'Не найдено' });
+  res.status(404).json({ error: t(req, 'notFound') });
 });
 
 app.use((err, req, res, next) => {
@@ -209,18 +210,18 @@ app.use((err, req, res, next) => {
 
   if (err instanceof ZodError) {
     return res.status(400).json({
-      error: 'Ошибка валидации',
+      error: t(req, 'validationFailed'),
       details: err.issues.map((e) => ({ path: e.path.join('.'), message: e.message })),
     });
   }
 
   if (err.code === 'P2025') {
     log.warn({ err }, 'Prisma record not found');
-    return res.status(404).json({ error: 'Запись не найдена' });
+    return res.status(404).json({ error: t(req, 'recordNotFound') });
   }
   if (err.code === 'P2002') {
     log.warn({ err }, 'Prisma unique constraint violation');
-    return res.status(409).json({ error: 'Такая запись уже существует' });
+    return res.status(409).json({ error: t(req, 'conflict') });
   }
 
   const status = err.statusCode || err.status || 500;

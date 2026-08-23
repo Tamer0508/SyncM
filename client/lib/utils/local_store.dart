@@ -216,6 +216,18 @@ class StoreKeys {
 
   static const railWidth = 'settings:rail_width';
 
+  /// Язык интерфейса: system, ru или en. Как и тема, принадлежит устройству
+  /// и переживает выход из аккаунта.
+  static const language = 'settings:language';
+
+  /// Когда настройки последний раз меняли на этом устройстве. По этой отметке
+  /// решается спор с сервером: чья версия новее, та и остаётся.
+  static const settingsUpdatedAt = 'settings:updated_at';
+
+  /// Копия серверных настроек уведомлений. Нужна на старте: всплывающая
+  /// карточка может прийти раньше, чем ответ сервера с настройками.
+  static const notificationPrefs = 'settings:notifications';
+
   static const startTab = 'settings:start_tab';
 
   static const artworkColors = 'cache:artwork_colors';

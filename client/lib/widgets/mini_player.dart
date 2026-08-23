@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/playback_provider.dart';
 import '../screens/player/now_playing.dart';
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import '../utils/image_cache.dart';
 
@@ -183,7 +184,7 @@ class _MiniPlayerBody extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    track['title'] as String? ?? 'Неизвестный трек',
+                                    track['title'] as String? ?? L.of(context).playerUnknownTrack,
                                     style: texts.titleSmall?.copyWith(
                                       fontWeight: FontWeight.w700,
                                       color: onBackground,
@@ -208,9 +209,9 @@ class _MiniPlayerBody extends StatelessWidget {
                   ),
                   IconButton(
                     onPressed: pb.goToPrevious,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.skip_previous_rounded,
-                      semanticLabel: 'Предыдущий трек',
+                      semanticLabel: L.of(context).playerPrevious,
                     ),
                     iconSize: isCompact ? 24 : 28,
                     color: onBackground,
@@ -225,9 +226,9 @@ class _MiniPlayerBody extends StatelessWidget {
                   ),
                   IconButton(
                     onPressed: pb.goToNext,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.skip_next_rounded,
-                      semanticLabel: 'Следующий трек',
+                      semanticLabel: L.of(context).playerNext,
                     ),
                     iconSize: isCompact ? 24 : 28,
                     color: onBackground,
@@ -278,7 +279,7 @@ class _PlayButton extends StatelessWidget {
           isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
           key: ValueKey(isPlaying),
           size: 26,
-          semanticLabel: isPlaying ? 'Пауза' : 'Воспроизвести',
+          semanticLabel: isPlaying ? L.of(context).playerPause : L.of(context).playerPlay,
         ),
       ),
     );

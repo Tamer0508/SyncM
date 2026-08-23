@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import 'mini_player.dart';
 
@@ -77,7 +78,7 @@ class _HeaderBar extends StatelessWidget {
             IconButton(
               onPressed: header.onBack,
               icon: const Icon(Icons.arrow_back_rounded),
-              tooltip: 'Назад',
+              tooltip: L.of(context).commonBack,
             )
           else
             const SizedBox(width: AppSpacing.md),

@@ -1,4 +1,5 @@
 const { ZodError } = require('zod');
+const { t } = require('../infrastructure/i18n');
 
 function asyncHandler(fn) {
   return (req, res, next) => {
@@ -11,7 +12,7 @@ function asyncHandler(fn) {
           message: e.message,
         }));
         return res.status(400).json({
-          error: 'Ошибка валидации',
+          error: t(req, 'validationFailed'),
           details,
         });
       }

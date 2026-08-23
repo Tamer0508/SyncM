@@ -4,6 +4,8 @@ import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../utils/app_globals.dart';
+
 /// Управляет foreground-сервисом и wakelock на время активной сессии.
 ///
 /// Зачем: когда экран гаснет, Android через некоторое время замораживает
@@ -29,9 +31,10 @@ class SessionForegroundService {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'syncm_session',
-        channelName: 'Активная сессия SyncM',
+        channelName: appL10n?.foregroundChannelName ?? 'Активная сессия SyncM',
         channelDescription:
-            'Показывается, пока идёт совместное прослушивание, чтобы синхронизация не прерывалась.',
+            appL10n?.foregroundChannelDescription ??
+                'Показывается, пока идёт совместное прослушивание, чтобы синхронизация не прерывалась.',
         channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
       ),
@@ -47,8 +50,8 @@ class SessionForegroundService {
   }
 
   static Future<void> start({
-    String title = 'Сессия SyncM активна',
-    String text = 'Слушаете вместе с друзьями',
+    String? title,
+    String? text,
     bool keepScreenOn = true,
   }) async {
     if (keepScreenOn) {
@@ -60,16 +63,21 @@ class SessionForegroundService {
     if (!_isAndroid) return;
     _ensureInitialized();
 
+    // Текст видно в системной шторке, поэтому язык — как в приложении.
+    final l = appL10n;
+    final notificationTitle = title ?? l?.foregroundTitle ?? 'Сессия SyncM активна';
+    final notificationText = text ?? l?.foregroundText ?? 'Слушаете вместе с друзьями';
+
     try {
       if (await FlutterForegroundTask.isRunningService) {
         await FlutterForegroundTask.updateService(
-          notificationTitle: title,
-          notificationText: text,
+          notificationTitle: notificationTitle,
+          notificationText: notificationText,
         );
       } else {
         await FlutterForegroundTask.startService(
-          notificationTitle: title,
-          notificationText: text,
+          notificationTitle: notificationTitle,
+          notificationText: notificationText,
         );
       }
       _running = true;

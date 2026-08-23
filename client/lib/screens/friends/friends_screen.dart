@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../models/friend.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/animated_notification_button.dart';
@@ -58,9 +59,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return showConfirmDialog(
       context,
       icon: Icons.person_remove_rounded,
-      title: 'Удалить из друзей?',
-      message: '$name пропадёт из вашего списка друзей.',
-      confirmLabel: 'Удалить',
+      title: L.of(context).friendsRemoveTitle,
+      message: L.of(context).friendsRemoveMessage(name),
+      confirmLabel: L.of(context).commonDelete,
     );
   }
 
@@ -68,10 +69,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final confirmed = await showConfirmDialog(
       context,
       icon: Icons.block_rounded,
-      title: 'Заблокировать ${friend.name}?',
-      message: 'Он не найдёт вас в поиске, не сможет отправить заявку или '
-          'позвать в сессию. Дружба будет удалена. Уведомления он не получит.',
-      confirmLabel: 'Заблокировать',
+      title: L.of(context).friendsBlockTitle(friend.name),
+      message: L.of(context).friendsBlockMessage,
+      confirmLabel: L.of(context).friendBlock,
     );
 
     if (!confirmed || !mounted) return;
@@ -82,9 +82,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
       if (ok) {
         context.read<FriendsProvider>().fetchFriends(refresh: true).ignore();
-        showSuccess(context, '${friend.name} заблокирован');
+        showSuccess(context, L.of(context).friendsBlocked(friend.name));
       } else {
-        showError(context, 'Не удалось заблокировать', force: true);
+        showError(context, L.of(context).friendsBlockFailed, force: true);
       }
     } catch (err) {
       if (!mounted) return;
@@ -102,9 +102,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
       if (!mounted) return;
 
       if (removed) {
-        showSuccess(context, '${friend.name} удалён из друзей');
+        showSuccess(context, L.of(context).friendsRemoved(friend.name));
       } else {
-        showError(context, 'Не удалось удалить друга', force: true);
+        showError(context, L.of(context).friendsRemoveFailed, force: true);
       }
     } catch (err) {
       if (!mounted) return;
@@ -176,13 +176,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
       AppIconButton(
         icon: Icons.person_add_alt_1_rounded,
         onPressed: _openSearch,
-        tooltip: 'Найти друзей',
+        tooltip: L.of(context).navFindFriends,
       ),
       AnimatedNotificationButton(
         icon: Icons.mail_outline_rounded,
         activeIcon: Icons.mark_email_unread_rounded,
         count: prov.unreadCount,
-        tooltip: 'Заявки в друзья',
+        tooltip: L.of(context).homeFriendRequests,
         onPressed: () => Navigator.of(context).pushNamed('/friends/requests'),
       ),
     ];
@@ -202,7 +202,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
     return ScreenChrome(
       header: ScreenHeader(
-        title: 'Друзья',
+        title: L.of(context).commonFriends,
         onBack: () => Navigator.of(context).pop(),
         actions: actions,
       ),
@@ -220,9 +220,9 @@ class _EmptyFriendsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return EmptyState(
       icon: Icons.people_outline_rounded,
-      title: 'Добавьте друзей',
-      message: 'С другом можно слушать музыку одновременно — где бы вы ни были.',
-      actionLabel: 'Найти друзей',
+      title: L.of(context).friendsEmptyTitle,
+      message: L.of(context).friendsEmptyMessage,
+      actionLabel: L.of(context).navFindFriends,
       onAction: onFindFriends,
     );
   }
@@ -273,7 +273,7 @@ class _FriendsListView extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
             child: OutlinedButton(
               onPressed: onLoadMore,
-              child: const Text('Загрузить ещё'),
+              child: Text(L.of(context).commonLoadMore),
             ),
           );
         }

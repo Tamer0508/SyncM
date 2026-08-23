@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/playlists_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/pill_selector.dart';
@@ -219,19 +220,11 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
   }
 
   String _addedMessage(int added, int skipped) {
-    if (added == 0) return 'Все выбранные треки уже в плейлисте';
-    final base = 'Добавлено $added ${_plural(added)}';
-    return skipped == 0 ? base : '$base, $skipped уже было';
-  }
+    final l = L.of(context);
+    if (added == 0) return l.addTracksAllPresent;
 
-  String _plural(int count) {
-    final mod100 = count % 100;
-    if (mod100 >= 11 && mod100 <= 14) return 'треков';
-    return switch (count % 10) {
-      1 => 'трек',
-      2 || 3 || 4 => 'трека',
-      _ => 'треков',
-    };
+    final base = l.addTracksAdded(added);
+    return skipped == 0 ? base : l.addTracksAddedWithSkipped(base, skipped);
   }
 
 
@@ -250,7 +243,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
             0,
           ),
           child: PillSelector(
-            labels: const ['Поиск', 'Из плейлиста'],
+            labels: [L.of(context).addTracksSearch, L.of(context).addTracksFromPlaylist],
             selectedIndex: _sourceIndex,
             onSelected: (index) => setState(() => _sourceIndex = index),
           ),
@@ -272,7 +265,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.playlist_add_rounded),
-                label: Text('Добавить ($selectedCount)'),
+                label: Text(L.of(context).addTracksAddCount(selectedCount)),
               ),
             ),
           ),
@@ -280,7 +273,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
     );
 
     final title = Text(
-      'Добавить в «${widget.playlist.playlistName}»',
+      L.of(context).addTracksToPlaylist(widget.playlist.playlistName),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
@@ -301,7 +294,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
                 IconButton(
                   onPressed: () => Navigator.of(context).pop(_changed),
                   icon: const Icon(Icons.close_rounded),
-                  tooltip: 'Закрыть',
+                  tooltip: L.of(context).commonClose,
                 ),
               ],
             ),
@@ -321,7 +314,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
           title: title,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
-            tooltip: 'Назад',
+            tooltip: L.of(context).commonBack,
             onPressed: () => Navigator.of(context).pop(_changed),
           ),
         ),
@@ -346,13 +339,13 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
               if (query.isNotEmpty) _search(query);
             },
             decoration: InputDecoration(
-              hintText: 'Название трека или исполнитель',
+              hintText: L.of(context).addTracksSearchHint,
               prefixIcon: const Icon(Icons.search_rounded),
               suffixIcon: _searchController.text.isEmpty
                   ? null
                   : IconButton(
                       icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Очистить',
+                      tooltip: L.of(context).commonClear,
                       onPressed: () {
                         _searchController.clear();
                         _onQueryChanged('');
@@ -372,16 +365,16 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
     }
 
     if (_query.isEmpty) {
-      return const _Hint(
+      return _Hint(
         icon: Icons.search_rounded,
-        text: 'Найдите трек в Spotify и добавьте его в плейлист.',
+        text: L.of(context).addTracksSearchEmpty,
       );
     }
 
     if (_searchResults.isEmpty) {
-      return const _Hint(
+      return _Hint(
         icon: Icons.search_off_rounded,
-        text: 'Ничего не нашлось. Попробуйте другой запрос.',
+        text: L.of(context).addTracksNothingFound,
       );
     }
 
@@ -391,9 +384,9 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
   Widget _buildFromPlaylistTab() {
     if (_selectedSource == null) {
       if (_sourcePlaylists.isEmpty) {
-        return const _Hint(
+        return _Hint(
           icon: Icons.library_music_outlined,
-          text: 'Других плейлистов пока нет — брать треки не из чего.',
+          text: L.of(context).addTracksNoOtherPlaylists,
         );
       }
 
@@ -421,7 +414,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             subtitle: Text(
-              playlist.isCustomPlaylist ? 'Ваш плейлист' : 'Spotify',
+              playlist.isCustomPlaylist ? L.of(context).addTracksYourPlaylist : 'Spotify',
               style: context.texts.bodySmall,
             ),
             trailing: const Icon(Icons.chevron_right_rounded),
@@ -448,7 +441,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
             children: [
               IconButton(
                 icon: const Icon(Icons.arrow_back_rounded),
-                tooltip: 'К списку плейлистов',
+                tooltip: L.of(context).addTracksBackToPlaylists,
                 onPressed: () => setState(() {
                   _selectedSource = null;
                   _sourceTracks = const [];
@@ -465,22 +458,21 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
               if (_sourceTracks.isNotEmpty)
                 TextButton(
                   onPressed: _toggleAllFromSource,
-                  child: Text(_allSourceSelected ? 'Снять' : 'Выбрать всё'),
+                  child: Text(_allSourceSelected ? L.of(context).addTracksDeselect : L.of(context).addTracksSelectAll),
                 ),
             ],
           ),
         ),
         Expanded(
           child: _sourceUnavailable
-              ? const _Hint(
+              ? _Hint(
                   icon: Icons.lock_outline_rounded,
-                  text: 'Spotify не отдаёт содержимое этого плейлиста — '
-                      'доступны только ваши собственные и совместные.',
+                  text: L.of(context).addTracksForeignPlaylist,
                 )
               : _sourceTracks.isEmpty
-                  ? const _Hint(
+                  ? _Hint(
                       icon: Icons.music_off_rounded,
-                      text: 'В этом плейлисте нет треков.',
+                      text: L.of(context).addTracksEmptyPlaylist,
                     )
                   : _buildTrackList(_sourceTracks),
         ),
@@ -534,7 +526,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
 
         return TrackCard(
           id: uri.isEmpty ? '$i' : uri,
-          title: track['name'] as String? ?? 'Без названия',
+          title: track['name'] as String? ?? L.of(context).historyUntitled,
           artist: track['artist'] as String? ?? '',
           artworkUrl: track['imageUrl'] as String?,
           durationMs: (track['durationMs'] as num?)?.toInt(),
@@ -556,7 +548,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
                   // нельзя, и неактивный флажок читался бы как «сейчас
                   // нельзя, попробуйте иначе», а не как «уже сделано».
                   ? Tooltip(
-                      message: 'Уже в плейлисте',
+                      message: L.of(context).addTracksAlreadyIn,
                       child: Icon(
                         Icons.check_circle_rounded,
                         color: context.colors.primary,

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/screen_chrome.dart';
@@ -63,9 +64,14 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         // Список друзей мог измениться: блокировка удаляла дружбу, и после
         // разблокировки состояние в приложении должно быть согласованным.
         context.read<FriendsProvider>().fetchFriends(refresh: true).ignore();
-        showSuccess(context, '${user['displayName'] ?? 'Пользователь'} разблокирован');
+        showSuccess(
+          context,
+          L.of(context).blockedUnblocked(
+            user['displayName'] as String? ?? L.of(context).commonUser,
+          ),
+        );
       } else {
-        showError(context, 'Не удалось разблокировать', force: true);
+        showError(context, L.of(context).blockedUnblockFailed, force: true);
       }
     } catch (err) {
       if (!mounted) return;
@@ -80,7 +86,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     return ScreenChrome(
       embedded: widget.embedded,
       header: ScreenHeader(
-        title: 'Заблокированные',
+        title: L.of(context).privacyBlocked,
         onBack: widget.onBack ??
             (widget.embedded ? null : () => Navigator.of(context).pop()),
       ),
@@ -109,8 +115,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
           return Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: Text(
-              'Эти люди не найдут вас в поиске и не смогут отправить заявку '
-              'или позвать в сессию. Они об этом не узнают.',
+              L.of(context).blockedHint,
               style: context.texts.bodySmall
                   ?.copyWith(color: context.colors.onSurfaceVariant),
             ),
@@ -140,7 +145,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Text(
-                  user['displayName'] as String? ?? 'Пользователь',
+                  user['displayName'] as String? ?? L.of(context).commonUser,
                   style: context.texts.titleSmall,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -155,7 +160,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
               else
                 TextButton(
                   onPressed: () => _unblock(user),
-                  child: const Text('Разблокировать'),
+                  child: Text(L.of(context).blockedUnblock),
                 ),
             ],
           ),
@@ -170,10 +175,10 @@ class _EmptyBlocked extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const EmptyState(
+    return EmptyState(
       icon: Icons.block_rounded,
-      title: 'Никто не заблокирован',
-      message: 'Заблокировать можно из профиля человека или из списка друзей.',
+      title: L.of(context).blockedEmptyTitle,
+      message: L.of(context).blockedEmptyMessage,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/friend.dart';
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import 'app_menu.dart';
 import 'tappable_avatar.dart';
@@ -88,29 +89,29 @@ class _FriendTileState extends State<FriendTile> {
               ),
               AppMenuButton<_FriendAction>(
                 iconColor: colors.onSurfaceVariant,
-                tooltip: 'Действия',
+                tooltip: L.of(context).friendActions,
                 onSelected: (action) => switch (action) {
                   _FriendAction.profile => widget.onViewProfile(),
                   _FriendAction.remove => widget.onRemoveFriend(),
                   _FriendAction.block => widget.onBlock?.call(),
                 },
                 entries: [
-                  const AppMenuEntry(
+                  AppMenuEntry(
                     value: _FriendAction.profile,
                     icon: Icons.person_outline_rounded,
-                    label: 'Открыть профиль',
+                    label: L.of(context).friendOpenProfile,
                   ),
                   if (widget.onBlock != null)
-                    const AppMenuEntry(
+                    AppMenuEntry(
                       value: _FriendAction.block,
                       icon: Icons.block_rounded,
-                      label: 'Заблокировать',
+                      label: L.of(context).friendBlock,
                       danger: true,
                     ),
-                  const AppMenuEntry(
+                  AppMenuEntry(
                     value: _FriendAction.remove,
                     icon: Icons.person_remove_outlined,
-                    label: 'Удалить из друзей',
+                    label: L.of(context).friendRemove,
                     danger: true,
                   ),
                 ],
@@ -178,7 +179,7 @@ class _PresenceLabel extends StatelessWidget {
 
     if (friend.isOnline) {
       return Text(
-        'В сети',
+        L.of(context).friendOnline,
         style: texts.bodySmall?.copyWith(
           color: context.brand.online,
           fontWeight: FontWeight.w600,
@@ -190,26 +191,27 @@ class _PresenceLabel extends StatelessWidget {
 
     if (lastSeen == null) {
       return Text(
-        'Не в сети',
+        L.of(context).friendOffline,
         style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
       );
     }
 
     return Text(
-      'Был(а) в сети ${_formatLastSeen(lastSeen)}',
+      L.of(context).friendLastSeen(_formatLastSeen(context, lastSeen)),
       style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
   }
 
-  String _formatLastSeen(DateTime lastSeen) {
+  String _formatLastSeen(BuildContext context, DateTime lastSeen) {
+    final l = L.of(context);
     final diff = DateTime.now().difference(lastSeen);
 
-    if (diff.isNegative || diff.inMinutes < 1) return 'только что';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} мин. назад';
-    if (diff.inHours < 24) return '${diff.inHours} ч. назад';
-    if (diff.inDays < 7) return '${diff.inDays} д. назад';
-    return 'давно';
+    if (diff.isNegative || diff.inMinutes < 1) return l.commonJustNow;
+    if (diff.inMinutes < 60) return l.minutesAgoShort(diff.inMinutes);
+    if (diff.inHours < 24) return l.hoursAgoShort(diff.inHours);
+    if (diff.inDays < 7) return l.daysAgoShort(diff.inDays);
+    return l.commonLongAgo;
   }
 }

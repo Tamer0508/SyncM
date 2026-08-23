@@ -27,6 +27,18 @@ model User {
   isActivityHidden Boolean   @default(false)
   isSearchHidden   Boolean   @default(false)
 
+  // Кто может звать в сессию. Проверяется на сервере при создании сессии:
+  // клиентская настройка, которую бэкенд не соблюдает, — не настройка.
+  allowSessionInvites InviteScope @default(friends)
+
+  // Настройки, общие для всех устройств: уведомления и оформление.
+  //
+  // Одна колонка, а не колонка на переключатель: набор меняется вместе с
+  // интерфейсом, и каждая новая галочка не должна стоить миграции. Всё, что
+  // влияет на доступ к данным, по-прежнему живёт отдельными колонками —
+  // по ним ходят запросы и строятся индексы.
+  preferences      Json      @default("{}")
+
   friendsCount    Int @default(0)
   sessionsCount   Int @default(0)
 
@@ -62,6 +74,11 @@ model SpotifyUser {
   user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
 
   @@index([displayName])
+}
+
+enum InviteScope {
+  friends
+  nobody
 }
 
 enum FriendshipStatus {

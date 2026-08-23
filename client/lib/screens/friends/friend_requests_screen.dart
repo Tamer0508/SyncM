@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/friends_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/empty_state.dart';
@@ -42,7 +43,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     try {
       await context.read<FriendsProvider>().acceptRequest(requestId);
       if (!mounted) return;
-      showSuccess(context, 'Заявка принята');
+      showSuccess(context, L.of(context).requestsAccepted);
     } catch (err) {
       if (!mounted) return;
       showError(context, err);
@@ -57,9 +58,9 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     final confirmed = await showConfirmDialog(
       context,
       icon: Icons.person_remove_rounded,
-      title: 'Отклонить заявку?',
-      message: '$senderName не увидит, что вы отклонили заявку.',
-      confirmLabel: 'Отклонить',
+      title: L.of(context).requestsDeclineTitle,
+      message: L.of(context).requestsDeclineMessage(senderName),
+      confirmLabel: L.of(context).requestsDecline,
     );
 
     if (!confirmed || !mounted) return;
@@ -126,13 +127,13 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
     return ScreenChrome(
       embedded: widget.embedded,
       header: ScreenHeader(
-        title: 'Заявки в друзья',
+        title: L.of(context).homeFriendRequests,
         onBack: widget.onBack ??
             (widget.embedded ? null : () => Navigator.of(context).pop()),
         actions: [
           AppIconButton(
             icon: Icons.refresh_rounded,
-            tooltip: 'Обновить',
+            tooltip: L.of(context).commonRefresh,
             onPressed: () =>
                 context.read<FriendsProvider>().fetchIncomingRequests(refresh: true),
           ),
@@ -150,10 +151,9 @@ class _EmptyRequestsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return EmptyState(
       icon: Icons.mail_outline_rounded,
-      title: 'Заявок пока нет',
-      message: 'Здесь появятся приглашения в друзья. Отправить свою — быстрее, '
-          'чем ждать.',
-      actionLabel: 'Найти друзей',
+      title: L.of(context).requestsEmptyTitle,
+      message: L.of(context).requestsEmptyMessage,
+      actionLabel: L.of(context).navFindFriends,
       onAction: () => Navigator.of(context).pushNamed('/friends/search'),
     );
   }
@@ -202,14 +202,14 @@ class _RequestsList extends StatelessWidget {
           }
           return OutlinedButton(
             onPressed: onLoadMore,
-            child: const Text('Загрузить ещё'),
+            child: Text(L.of(context).commonLoadMore),
           );
         }
 
         final request = requests[i];
         final requestId = request['id'] as String;
         final sender = request['sender'] as Map<String, dynamic>?;
-        final senderName = sender?['displayName'] as String? ?? 'Пользователь';
+        final senderName = sender?['displayName'] as String? ?? L.of(context).commonUser;
         final avatarUrl = sender?['avatarUrl'] as String?;
 
         return _RequestCard(
@@ -277,7 +277,7 @@ class _RequestCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Хочет добавить вас в друзья',
+                  L.of(context).requestsWantsToAdd,
                   style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
                 ),
               ],
@@ -297,14 +297,14 @@ class _RequestCard extends StatelessWidget {
                 IconButton(
                   onPressed: onDecline,
                   icon: const Icon(Icons.close_rounded, size: 22),
-                  tooltip: 'Отклонить',
+                  tooltip: L.of(context).requestsDecline,
                   color: colors.onSurfaceVariant,
                   visualDensity: VisualDensity.compact,
                 ),
                 IconButton.filled(
                   onPressed: onAccept,
                   icon: const Icon(Icons.check_rounded, size: 22),
-                  tooltip: 'Принять',
+                  tooltip: L.of(context).requestsAccept,
                   visualDensity: VisualDensity.compact,
                 ),
               ],

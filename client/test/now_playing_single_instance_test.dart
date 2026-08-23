@@ -1,3 +1,4 @@
+import 'package:syncm/l10n/app_localizations.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -36,6 +37,8 @@ Widget _host(PlaybackProvider playback, {required GlobalKey<NavigatorState> key}
       ),
     ],
     child: MaterialApp(
+      localizationsDelegates: L.localizationsDelegates,
+      supportedLocales: L.supportedLocales,
       navigatorKey: key,
       home: const Scaffold(body: Center(child: Text('session'))),
     ),

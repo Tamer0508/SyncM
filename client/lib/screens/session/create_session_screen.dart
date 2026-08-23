@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../models/friend.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/friends_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../utils/error_utils.dart';
 import '../../widgets/screen_chrome.dart';
@@ -77,10 +78,12 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
 
   String? get _nameError {
     if (!_nameTouched) return null;
-    if (_name.isEmpty) return 'Введите название';
-    if (_name.length < 2) return 'Минимум 2 символа';
-    if (_name.length > _maxNameLength) return 'Не более $_maxNameLength символов';
-    if (!_validNameChars.hasMatch(_name)) return 'Только буквы, цифры, пробелы и ._-()';
+    if (_name.isEmpty) return L.of(context).playlistNameEmptyGeneric;
+    if (_name.length < 2) return L.of(context).playlistNameTooShort;
+    if (_name.length > _maxNameLength) {
+      return L.of(context).nameDialogTooLong(_maxNameLength);
+    }
+    if (!_validNameChars.hasMatch(_name)) return L.of(context).playlistNameCharset;
     return null;
   }
 
@@ -99,7 +102,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
       if (!mounted) return;
 
       if (session == null) {
-        showError(context, 'Не удалось создать сессию', force: true);
+        showError(context, L.of(context).createSessionFailed, force: true);
         return;
       }
 
@@ -143,7 +146,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
       ),
       children: [
         Text(
-          'Пригласите друга и слушайте музыку одновременно.',
+          L.of(context).createSessionHint,
           style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
         ),
         const SizedBox(height: AppSpacing.lg),
@@ -158,7 +161,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
             FilteringTextInputFormatter.allow(RegExp(r'[а-яА-ЯёЁa-zA-Z0-9 ._\-()]')),
           ],
           decoration: InputDecoration(
-            labelText: 'Название сессии',
+            labelText: L.of(context).createSessionName,
             counterText: _name.length > _maxNameLength - 20 ? null : '',
             errorText: _nameError,
           ),
@@ -167,7 +170,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
         ),
 
         const SizedBox(height: AppSpacing.lg),
-        Text('С кем слушаем', style: texts.titleMedium),
+        Text(L.of(context).createSessionWithWhom, style: texts.titleMedium),
         const SizedBox(height: AppSpacing.sm + 4),
 
         if (friends.isEmpty)
@@ -178,13 +181,13 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
               controller: _friendSearchController,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: 'Поиск среди друзей',
+                hintText: L.of(context).createSessionSearchFriends,
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _friendQuery.isEmpty
                     ? null
                     : IconButton(
                         icon: const Icon(Icons.close_rounded),
-                        tooltip: 'Очистить',
+                        tooltip: L.of(context).commonClear,
                         onPressed: () {
                           _friendSearchController.clear();
                           setState(() => _friendQuery = '');
@@ -200,7 +203,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
               child: Text(
-                'Никого с таким именем',
+                L.of(context).createSessionNobodyFound,
                 style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
               ),
             )
@@ -233,7 +236,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
                   width: 20,
                   child: CircularProgressIndicator(strokeWidth: 2, color: colors.onPrimary),
                 )
-              : const Text('Начать сессию'),
+              : Text(L.of(context).homeStartSession),
           ),
         ),
 
@@ -243,7 +246,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
         if (_nameValid && _selectedFriend == null) ...[
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'Выберите друга, чтобы продолжить',
+            L.of(context).createSessionPickFriend,
             textAlign: TextAlign.center,
             style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
           ),
@@ -254,7 +257,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
     return ScreenChrome(
       embedded: widget.embedded,
       header: ScreenHeader(
-        title: 'Новая сессия',
+        title: L.of(context).navNewSession,
         onBack: widget.onCancel ??
             (widget.embedded ? null : () => Navigator.of(context).pop()),
       ),
@@ -284,13 +287,13 @@ class _NoFriendsHint extends StatelessWidget {
           Icon(Icons.people_outline_rounded, size: 44, color: colors.onSurfaceVariant),
           const SizedBox(height: AppSpacing.sm + 4),
           Text(
-            'Сессию можно создать только с другом',
+            L.of(context).createSessionFriendsOnly,
             style: texts.titleSmall,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            'Добавьте кого-нибудь в друзья, и он появится в этом списке.',
+            L.of(context).createSessionFriendsOnlyHint,
             textAlign: TextAlign.center,
             style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
           ),
@@ -300,7 +303,7 @@ class _NoFriendsHint extends StatelessWidget {
           FilledButton.tonalIcon(
             onPressed: onFindFriends,
             icon: const Icon(Icons.person_add_rounded),
-            label: const Text('Найти друзей'),
+            label: Text(L.of(context).navFindFriends),
           ),
         ],
       ),

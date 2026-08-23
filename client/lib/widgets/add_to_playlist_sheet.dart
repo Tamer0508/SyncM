@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/playlists_provider.dart';
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import '../utils/error_utils.dart';
 import 'app_bottom_sheet.dart';
@@ -22,7 +23,7 @@ Future<void> showAddToPlaylistSheet(
 
   await showAppSheet<void>(
     context: context,
-    title: 'Добавить в плейлист',
+    title: L.of(context).addToPlaylistTitle,
     builder: (_) => _AddToPlaylistBody(track: track),
   );
 }
@@ -56,8 +57,8 @@ class _AddToPlaylistBody extends StatelessWidget {
       showSuccess(
         context,
         result.added > 0
-            ? 'Добавлено в «${playlist.playlistName}»'
-            : 'Уже в «${playlist.playlistName}»',
+            ? L.of(context).addedToPlaylist(playlist.playlistName)
+            : L.of(context).alreadyInPlaylist(playlist.playlistName),
       );
     } catch (err) {
       navigator.pop();
@@ -101,7 +102,7 @@ class _AddToPlaylistBody extends StatelessWidget {
                 AppSpacing.md,
               ),
               child: Text(
-                'Своих плейлистов пока нет. Создайте первый — трек попадёт в него сразу.',
+                L.of(context).addToPlaylistEmpty,
                 style: context.texts.bodyMedium?.copyWith(
                   color: context.colors.onSurfaceVariant,
                 ),
@@ -120,7 +121,7 @@ class _AddToPlaylistBody extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: Text(
-                  _trackCountLabel(playlist.playlistTrackCount),
+                  _trackCountLabel(context, playlist.playlistTrackCount),
                   style: context.texts.bodySmall,
                 ),
                 contentPadding: const EdgeInsets.symmetric(
@@ -137,7 +138,7 @@ class _AddToPlaylistBody extends StatelessWidget {
           ListTile(
             leading: Icon(Icons.add_rounded, color: context.colors.primary),
             title: Text(
-              'Создать новый',
+              L.of(context).addToPlaylistCreate,
               style: context.texts.bodyLarge?.copyWith(color: context.colors.primary),
             ),
             contentPadding: const EdgeInsets.symmetric(
@@ -151,16 +152,8 @@ class _AddToPlaylistBody extends StatelessWidget {
     );
   }
 
-  String _trackCountLabel(int count) {
-    if (count == 0) return 'Пусто';
-    final mod100 = count % 100;
-    final word = (mod100 >= 11 && mod100 <= 14)
-        ? 'треков'
-        : switch (count % 10) {
-            1 => 'трек',
-            2 || 3 || 4 => 'трека',
-            _ => 'треков',
-          };
-    return '$count $word';
+  String _trackCountLabel(BuildContext context, int count) {
+    if (count == 0) return L.of(context).commonEmpty;
+    return L.of(context).trackCount(count);
   }
 }

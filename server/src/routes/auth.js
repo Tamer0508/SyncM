@@ -23,6 +23,14 @@ const {
   clearPlayHistory,
 
   createSpotifyLinkIntent,
+
+  exportUserData,
+
+  getDevices,
+
+  revokeDevice,
+
+  logoutEverywhere,
 } = require('../controllers/authController');
 
 const authLimit = (limit, windowSeconds) =>
@@ -44,8 +52,16 @@ router.get('/settings',    requireAuth, rateLimitMiddleware(15, 60), getSettings
 router.patch('/settings',  requireAuth, rateLimitMiddleware(10, 60), idempotency, updateSettings);
 router.patch('/profile',   requireAuth, rateLimitMiddleware(10, 60), idempotency, updateProfile);
 
+router.get('/devices',              requireAuth, rateLimitMiddleware(15, 60), getDevices);
+router.delete('/devices/:deviceId', requireAuth, rateLimitMiddleware(10, 60), idempotency, revokeDevice);
+router.post('/logout-all',          requireAuth, rateLimitMiddleware(5, 60, { failOpen: false }), idempotency, logoutEverywhere);
+
 router.get('/history',    requireAuth, rateLimitMiddleware(15, 60), getPlayHistory);
 router.delete('/history', requireAuth, rateLimitMiddleware(5, 60), idempotency, clearPlayHistory);
+
+// Выгрузка тяжёлая и нужна редко: два запроса в час хватит любому, а
+// перебирать её нет смысла — данные те же.
+router.get('/export', requireAuth, rateLimitMiddleware(2, 3600, { failOpen: false }), exportUserData);
 
 router.delete('/account', requireAuth, rateLimitMiddleware(3, 3600, { failOpen: false }), deleteAccount);
 

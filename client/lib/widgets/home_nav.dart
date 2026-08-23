@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 import '../utils/local_store.dart';
 
 class HomeDestination {
-  const HomeDestination({
+  HomeDestination({
     required this.icon,
     required this.selectedIcon,
     required this.label,
@@ -15,26 +16,26 @@ class HomeDestination {
   final String label;
 }
 
-const List<HomeDestination> kHomeDestinations = [
-  HomeDestination(
-    icon: Icons.radio_outlined,
-    selectedIcon: Icons.radio_rounded,
-    label: 'Сейчас',
-  ),
-  HomeDestination(
-    icon: Icons.library_music_outlined,
-    selectedIcon: Icons.library_music_rounded,
-    label: 'Музыка',
-  ),
-  HomeDestination(
-    icon: Icons.people_outline_rounded,
-    selectedIcon: Icons.people_rounded,
-    label: 'Друзья',
-  ),
-];
+List<HomeDestination> homeDestinations(BuildContext context) => [
+      HomeDestination(
+        icon: Icons.radio_outlined,
+        selectedIcon: Icons.radio_rounded,
+        label: L.of(context).tabNow,
+      ),
+      HomeDestination(
+        icon: Icons.library_music_outlined,
+        selectedIcon: Icons.library_music_rounded,
+        label: L.of(context).tabMusic,
+      ),
+      HomeDestination(
+        icon: Icons.people_outline_rounded,
+        selectedIcon: Icons.people_rounded,
+        label: L.of(context).commonFriends,
+      ),
+    ];
 
 class HomeBottomNav extends StatelessWidget {
-  const HomeBottomNav({
+  HomeBottomNav({
     super.key,
     required this.currentIndex,
     required this.onSelected,
@@ -47,7 +48,7 @@ class HomeBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const destinations = kHomeDestinations;
+    final destinations = homeDestinations(context);
 
     return NavigationBar(
       selectedIndex: currentIndex.clamp(0, destinations.length - 1),
@@ -148,7 +149,7 @@ class _HomeNavigationRailState extends State<HomeNavigationRail> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    const destinations = kHomeDestinations;
+    final destinations = homeDestinations(context);
     final labels = widget.showLabels;
 
     return Row(
@@ -179,36 +180,36 @@ class _HomeNavigationRailState extends State<HomeNavigationRail> {
 
               const _RailDivider(),
 
-              if (labels) const _RailSectionTitle('Быстро'),
+              if (labels) _RailSectionTitle(L.of(context).navQuick),
               if (widget.onCreateSession != null)
                 _RailAction(
                   icon: Icons.add_circle_outline_rounded,
-                  label: 'Новая сессия',
+                  label: L.of(context).navNewSession,
                   showLabel: labels,
                   onTap: widget.onCreateSession!,
                 ),
               if (widget.onFindFriends != null)
                 _RailAction(
                   icon: Icons.person_search_outlined,
-                  label: 'Найти друзей',
+                  label: L.of(context).navFindFriends,
                   showLabel: labels,
                   onTap: widget.onFindFriends!,
                 ),
 
               const _RailDivider(),
 
-              if (labels) const _RailSectionTitle('Библиотека'),
+              if (labels) _RailSectionTitle(L.of(context).navLibrary),
               if (widget.onOpenLiked != null)
                 _RailAction(
                   icon: Icons.favorite_border_rounded,
-                  label: 'Любимые треки',
+                  label: L.of(context).navLikedTracks,
                   showLabel: labels,
                   onTap: widget.onOpenLiked!,
                 ),
               if (widget.onOpenHistory != null)
                 _RailAction(
                   icon: Icons.history_rounded,
-                  label: 'История',
+                  label: L.of(context).historyTitle,
                   showLabel: labels,
                   onTap: widget.onOpenHistory!,
                 ),
