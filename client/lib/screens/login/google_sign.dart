@@ -80,10 +80,6 @@ class GoogleSignInButton extends StatelessWidget {
       }
 
       await auth.fetchMe();
-
-      if (auth.isLoggedIn && context.mounted) {
-        Navigator.of(context).pushReplacementNamed('/home');
-      }
     } catch (e) {
       debugPrint('Windows Google Sign-In error: $e');
       if (context.mounted) {
@@ -100,36 +96,13 @@ class GoogleSignInButton extends StatelessWidget {
 
       final account = await GoogleSignIn.instance.authenticate();
 
-      final googleAuth = account.authentication;
-      final idToken = googleAuth.idToken;
-
-      if (idToken == null) {
-        if (context.mounted) {
-          showAppNotification(context, message: L.of(context).loginGoogleNoToken, type: NotificationType.error);
-        }
+      if (account.authentication.idToken == null && context.mounted) {
+        showAppNotification(
+          context,
+          message: L.of(context).loginGoogleNoToken,
+          type: NotificationType.error,
+        );
         return;
-      }
-
-      final api = ApiService();
-      final resp = await api.googleLogin(idToken);
-
-      if (context.mounted) {
-        final auth = Provider.of<AuthProvider>(context, listen: false);
-        final cookie = resp['cookie'] as String?;
-        final user = resp['user'] as Map<String, dynamic>?;
-        final issued = resp['authToken'] as String?;
-        if (issued != null && issued.isNotEmpty) {
-          auth.setCookie(issued);
-        } else if (cookie != null && cookie.isNotEmpty) {
-          auth.setCookie(cookie);
-        }
-        if (user != null) {
-          auth.setUser(auth.userFromMap(user));
-        }
-        await auth.fetchMe();
-        if (auth.isLoggedIn && context.mounted) {
-          Navigator.of(context).pushReplacementNamed('/home');
-        }
       }
 
       onSignInSuccess();

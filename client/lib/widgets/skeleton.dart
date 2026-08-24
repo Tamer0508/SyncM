@@ -427,40 +427,75 @@ class SkeletonSectionHeader extends StatelessWidget {
   }
 }
 
-/// Горизонтальный ряд заглушек-карточек плейлистов.
-class SkeletonPlaylistRow extends StatelessWidget {
-  const SkeletonPlaylistRow({super.key, this.itemCount = 3, this.cardWidth = 150});
+class SkeletonPlaylistTile extends StatelessWidget {
+  const SkeletonPlaylistTile({
+    super.key,
+    this.titleWidth = 150,
+    this.subtitleWidth = 92,
+  });
+
+  final double titleWidth;
+  final double subtitleWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          SkeletonBox(width: 52, height: 52, borderRadius: AppRadius.small),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SkeletonBox(width: titleWidth, height: 14),
+                const SizedBox(height: AppSpacing.sm),
+                SkeletonBox(width: subtitleWidth, height: 11),
+              ],
+            ),
+          ),
+          // Место кнопки действий: у неё ширина IconButton, а не иконки.
+          const SizedBox(
+            width: 48,
+            child: Center(child: SkeletonBox(width: 4, height: 18)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SkeletonPlaylistList extends StatelessWidget {
+  const SkeletonPlaylistList({super.key, this.itemCount = 8, this.padding});
 
   final int itemCount;
-  final double cardWidth;
+  final EdgeInsetsGeometry? padding;
+
+  static const _titleWidths = [150.0, 112.0, 178.0, 132.0, 164.0];
+  static const _subtitleWidths = [92.0, 70.0, 116.0, 84.0, 100.0];
 
   @override
   Widget build(BuildContext context) {
     return Skeleton(
       child: ListView.separated(
-        scrollDirection: Axis.horizontal,
         physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+        padding: padding ??
+            const EdgeInsets.fromLTRB(
+              AppSpacing.sm,
+              AppSpacing.sm,
+              AppSpacing.sm,
+              AppSpacing.xl,
+            ),
         itemCount: itemCount,
-        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm + 4),
-        itemBuilder: (_, _) => SizedBox(
-          width: cardWidth,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: SkeletonBox(
-                  height: double.infinity,
-                  borderRadius: AppRadius.medium,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              const SkeletonBox(width: 100, height: 12),
-              const SizedBox(height: AppSpacing.xs + 2),
-              const SkeletonBox(width: 60, height: 10),
-              const SizedBox(height: AppSpacing.sm),
-            ],
-          ),
+        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
+        itemBuilder: (_, i) => SkeletonPlaylistTile(
+          titleWidth: _titleWidths[i % _titleWidths.length],
+          subtitleWidth: _subtitleWidths[i % _subtitleWidths.length],
         ),
       ),
     );

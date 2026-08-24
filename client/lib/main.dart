@@ -133,7 +133,7 @@ class MyApp extends StatelessWidget {
               ),
             );
           },
-          home: const _AuthGate(),
+          home: const AuthGate(),
           onGenerateRoute: generateRoute,
         ),
       ),
@@ -165,14 +165,14 @@ class _ThemeCache {
   }
 }
 
-class _AuthGate extends StatefulWidget {
-  const _AuthGate({Key? key}) : super(key: key);
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
 
   @override
-  State<_AuthGate> createState() => _AuthGateState();
+  State<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<_AuthGate> with WidgetsBindingObserver {
+class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();

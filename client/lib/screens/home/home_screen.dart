@@ -108,9 +108,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAllPlaylists();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+
+      // Загрузка плейлистов начинается после кадра, а не из initState.
+      //
+      // `PlaylistsProvider.loadCustom/loadSpotify` выставляют флаг загрузки и
+      // зовут notifyListeners синхронно, до первого await. Из initState это
+      // приходится на фазу построения кадра: слушатели провайдера, которые
+      // уже построились, получают markNeedsBuild посреди build.
+      _loadAllPlaylists();
 
       final socket = SocketService();
       final friendsProv = context.read<FriendsProvider>();
@@ -326,7 +333,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final playlists = isCustom ? provider.custom : provider.spotify;
     final loading = isCustom ? provider.loadingCustom : provider.loadingSpotify;
 
-    if (loading && playlists.isEmpty) return const SkeletonPlaylistRow();
+    // Заглушка занимает место списка, а не всей вкладки: шапка со створкой
+    // «создать плейлист» остаётся на месте, и содержимое встаёт туда же, где
+    // только что мерцали заглушки.
+    final showSkeleton = loading && playlists.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -342,9 +352,11 @@ class _HomeScreenState extends State<HomeScreen> {
             child: _CreatePlaylistTile(onTap: _createCustomPlaylist),
           ),
         Expanded(
-          child: playlists.isEmpty
-              ? _buildEmptyPlaylists(isCustom)
-              : _buildPlaylistList(playlists, isCustom: isCustom),
+          child: showSkeleton
+              ? const SkeletonPlaylistList()
+              : playlists.isEmpty
+                  ? _buildEmptyPlaylists(isCustom)
+                  : _buildPlaylistList(playlists, isCustom: isCustom),
         ),
       ],
     );

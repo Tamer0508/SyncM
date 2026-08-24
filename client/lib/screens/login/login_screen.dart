@@ -29,6 +29,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _handledAuth = false;
   StreamSubscription? _googleAuthSubscription;
 
+  bool _signingIn = false;
+
   @override
   void initState() {
     super.initState();
@@ -49,13 +51,9 @@ class _LoginScreenState extends State<LoginScreen> {
             final api = ApiService();
             final base = api.baseUrl;
             final data = await fetchMeWithCredentials(base);
-            if (data != null) {
+            if (data != null && mounted) {
               final auth = Provider.of<AuthProvider>(context, listen: false);
-              final user = auth.userFromMap(data);
-              auth.setUser(user);
-              if (mounted) {
-                Navigator.of(context).pushReplacementNamed('/home');
-              }
+              auth.setUser(auth.userFromMap(data));
             }
           } catch (_) {}
         }
@@ -81,38 +79,40 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _onGoogleSignInSuccess(GoogleSignInAccount googleUser) async {
+    if (_signingIn) return;
+
     final GoogleSignInAuthentication googleAuth = googleUser.authentication;
     final idToken = googleAuth.idToken;
+    if (idToken == null) return;
 
-    if (idToken != null) {
-      final api = ApiService();
-      try {
-        final resp = await api.googleLogin(idToken);
-        final user = resp['user'] as Map<String, dynamic>?;
-        if (user != null) {
-          if (!mounted) return;
-          final auth = Provider.of<AuthProvider>(context, listen: false);
-          auth.setUser(auth.userFromMap(user));
-          final issued = resp['authToken'] as String?;
-          if (issued != null && issued.isNotEmpty) auth.setCookie(issued);
-          await auth.fetchMe();
-          if (auth.isLoggedIn && mounted) {
-            Navigator.of(context).pushReplacementNamed('/home');
-          }
-        }
-      } catch (e) {
-        debugPrint('onGoogleSignInSuccess error: $e');
-        if (mounted) {
-          showError(context, e);
-        }
+    _signingIn = true;
+    final api = ApiService();
+    try {
+      final resp = await api.googleLogin(idToken);
+      final user = resp['user'] as Map<String, dynamic>?;
+      if (user == null) return;
+      if (!mounted) return;
+
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+
+      final issued = resp['authToken'] as String?;
+      if (issued != null && issued.isNotEmpty) auth.setCookie(issued);
+      auth.setUser(auth.userFromMap(user));
+
+      await auth.fetchMe();
+    } catch (e) {
+      debugPrint('onGoogleSignInSuccess error: $e');
+      if (mounted) {
+        showError(context, e);
       }
+    } finally {
+      _signingIn = false;
     }
   }
 
   Future<void> _signInWithGoogle() async {
     try {
-      final GoogleSignInAccount googleUser = await GoogleSignIn.instance.authenticate();
-      await _onGoogleSignInSuccess(googleUser);
+      await GoogleSignIn.instance.authenticate();
     } catch (e) {
       debugPrint('_signInWithGoogle error: $e');
       if (mounted) {

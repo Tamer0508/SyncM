@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/login/login_screen.dart';
+import 'main.dart' show AuthGate;
 import 'screens/home/home_screen.dart';
 import 'screens/friends/friends_screen.dart';
 import 'screens/friends/friend_requests_screen.dart';
@@ -15,8 +15,15 @@ import 'screens/session/session_invites_screen.dart';
 
 Route<dynamic> generateRoute(RouteSettings settings) {
   switch (settings.name) {
+    // Корневой маршрут — тот же шлюз, что и стартовый экран приложения.
+    //
+    // Раньше здесь стоял LoginScreen напрямую, и после выхода из аккаунта
+    // (`pushNamedAndRemoveUntil('/')`) шлюз из дерева пропадал: вход больше
+    // некому было заметить, поэтому экранам логина приходилось самим звать
+    // `pushReplacementNamed('/home')`. Две системы навигации показывали два
+    // независимых HomeScreen одновременно.
     case '/':
-      return MaterialPageRoute(builder: (_) => const LoginScreen());
+      return MaterialPageRoute(builder: (_) => const AuthGate());
     case '/home':
       return MaterialPageRoute(builder: (_) => const HomeScreen());
     case '/friends':
