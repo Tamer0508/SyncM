@@ -17,7 +17,11 @@ import '../../widgets/mini_player.dart';
 import '../../widgets/app_menu.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/tappable_avatar.dart';
+import '../../providers/playlists_provider.dart';
+import '../playlist/playlist_tracks_screen.dart';
 import '../settings/play_history_screen.dart';
+import 'music_summary.dart';
+import 'profile_sections.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -27,6 +31,7 @@ class ProfileScreen extends StatefulWidget {
     this.onBack,
     this.onOpenSettings,
     this.onOpenHistory,
+    this.onOpenPlaylist,
   });
 
   final bool embedded;
@@ -38,6 +43,8 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback? onOpenSettings;
 
   final VoidCallback? onOpenHistory;
+
+  final void Function(Map<String, dynamic> playlist)? onOpenPlaylist;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -119,6 +126,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return _displayId == auth.user?.id;
   }
 
+  void _openPlaylist(Map<String, dynamic> playlist) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlaylistTracksScreen(
+          playlistId: playlist.playlistId,
+          playlistName: playlist.playlistName,
+          imageUrl: playlist.playlistImageUrl,
+          isCustom: true,
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmBlock(BuildContext context, String name) async {
     final confirmed = await showConfirmDialog(
       context,
@@ -178,8 +198,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 const SkeletonProfileHeader(),
                 SkeletonProfileActions(isOwnProfile: isOwnProfile),
+                const SkeletonProfileArtists(),
+                if (!isOwnProfile) const SkeletonProfileSharedMusic(),
                 const SkeletonProfileTrackSection(),
-                // Второй раздел — «понравившиеся» — есть только у себя.
+                // Второй раздел — «любимые треки» — есть только у себя.
                 if (isOwnProfile) const SkeletonProfileTrackSection(),
                 const SizedBox(height: AppSpacing.xl),
               ],
@@ -203,6 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       MaterialPageRoute(
                           builder: (_) => const PlayHistoryScreen()),
                     ),
+            onOpenPlaylist: widget.onOpenPlaylist ?? _openPlaylist,
           );
 
     return Scaffold(
@@ -264,6 +287,7 @@ class _ProfileContent extends StatefulWidget {
     required this.onDisconnectSpotify,
     required this.onOpenSettings,
     required this.onOpenHistory,
+    required this.onOpenPlaylist,
   });
 
   final bool isOwnProfile;
@@ -277,6 +301,7 @@ class _ProfileContent extends StatefulWidget {
   final VoidCallback onDisconnectSpotify;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenHistory;
+  final void Function(Map<String, dynamic> playlist) onOpenPlaylist;
 
   @override
   State<_ProfileContent> createState() => _ProfileContentState();
@@ -291,6 +316,11 @@ class _ProfileContentState extends State<_ProfileContent> {
   List<Map<String, dynamic>> _liked = [];
 
   int _likedCount = 0;
+
+  /// Сводка и пересечение вкусов считаются один раз при получении списков,
+  /// а не в build: на каждой перерисовке пересобирать их незачем.
+  MusicSummary _summary = MusicSummary.empty;
+  SharedMusic _shared = SharedMusic.none;
 
   bool _loadingLists = true;
 
@@ -340,13 +370,17 @@ class _ProfileContentState extends State<_ProfileContent> {
         final liked = await likedRequest;
         if (!mounted) return;
 
+        final likedAll =
+            liked.whereType<Map>().map(Map<String, dynamic>.from).toList();
+
         setState(() {
           _history = history;
-          _liked = liked
-              .whereType<Map>()
-              .map(Map<String, dynamic>.from)
-              .take(20)
-              .toList();
+          // В разделе показываются первые двадцать, но исполнители и
+          // подпись в шапке считаются по всему списку: иначе «любимых»
+          // всегда было бы ровно двадцать.
+          _liked = likedAll.take(20).toList();
+          _likedCount = likedAll.length;
+          _summary = MusicSummary.of(history: history, liked: likedAll);
         });
         return;
       }
@@ -354,7 +388,16 @@ class _ProfileContentState extends State<_ProfileContent> {
       final id = widget.targetId;
       if (id == null) return;
 
-      final data = await api.getUserActivity(id);
+      // Свои любимые нужны здесь же: по ним считается «Общая музыка».
+      // Запрос кэшируется вместе с остальными, лишнего похода в сеть нет.
+      final activityRequest = api.getUserActivity(id);
+      // Не сорвать профиль из-за необязательной секции: если свои любимые
+      // не пришли, «Общая музыка» просто окажется пустой.
+      final myLikedRequest =
+          api.getLikedTracks().catchError((_) => const <dynamic>[]);
+
+      final data = await activityRequest;
+      final myLiked = await myLikedRequest;
       if (!mounted) return;
 
       setState(() {
@@ -364,6 +407,13 @@ class _ProfileContentState extends State<_ProfileContent> {
                 .toList() ??
             [];
         _likedCount = data['likedCount'] as int? ?? 0;
+        // Список любимых чужого профиля сервер не отдаёт — только число,
+        // поэтому исполнители считаются по одной истории.
+        _summary = MusicSummary.of(history: _history, liked: const []);
+        _shared = SharedMusic.between(
+          mine: myLiked.whereType<Map>().map(Map<String, dynamic>.from).toList(),
+          theirs: _history,
+        );
       });
     } catch (err) {
       // Списки второстепенны: профиль полезен и без них.
@@ -373,7 +423,9 @@ class _ProfileContentState extends State<_ProfileContent> {
     }
   }
 
-  int get _likedTotal => widget.isOwnProfile ? _liked.length : _likedCount;
+  /// Сколько всего любимых треков: у себя — длина полного списка, у
+  /// чужого профиля — число, присланное сервером.
+  int get _likedTotal => _likedCount;
 
   String _buildSubtitle() {
     final l = L.of(context);
@@ -391,6 +443,12 @@ class _ProfileContentState extends State<_ProfileContent> {
 
   @override
   Widget build(BuildContext context) {
+    // Свои подборки берём у общего провайдера: он уже загружен вкладкой
+    // «Музыка», второй раз их запрашивать незачем.
+    final ownPlaylists = widget.isOwnProfile
+        ? context.watch<PlaylistsProvider>().custom
+        : const <Map<String, dynamic>>[];
+
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -417,13 +475,38 @@ class _ProfileContentState extends State<_ProfileContent> {
         ),
 
         if (_loadingLists) ...[
-          // Заглушка на месте самих разделов, а не вместо них: заголовок
-          // и отступы у неё те же, поэтому список встаёт туда же, где
+          // Заглушки на месте самих разделов, а не вместо них: заголовки
+          // и отступы у них те же, поэтому содержимое встаёт туда же, где
           // только что мерцали полосы.
+          const SliverToBoxAdapter(child: SkeletonProfileArtists()),
+          if (!widget.isOwnProfile)
+            const SliverToBoxAdapter(child: SkeletonProfileSharedMusic()),
           const SliverToBoxAdapter(child: SkeletonProfileTrackSection()),
           if (widget.isOwnProfile)
             const SliverToBoxAdapter(child: SkeletonProfileTrackSection()),
         ] else ...[
+          // Разделы, которым нечего показать, не занимают места вовсе:
+          // пустая карусель хуже её отсутствия.
+          if (_summary.topArtists.isNotEmpty)
+            SliverToBoxAdapter(
+              child: ProfileArtistsSection(artists: _summary.topArtists),
+            ),
+
+          // «Общая музыка» остаётся на месте и без совпадений — с ней
+          // разделы ниже не подпрыгивают, когда пересечение досчитается.
+          if (!widget.isOwnProfile)
+            SliverToBoxAdapter(
+              child: ProfileSharedMusicSection(shared: _shared),
+            ),
+
+          if (widget.isOwnProfile && ownPlaylists.isNotEmpty)
+            SliverToBoxAdapter(
+              child: ProfilePlaylistsSection(
+                playlists: ownPlaylists,
+                onOpen: widget.onOpenPlaylist,
+              ),
+            ),
+
           SliverToBoxAdapter(
             child: _TrackSection(
               title: L.of(context).profileRecentlyPlayed,
@@ -763,7 +846,7 @@ class _TrackSectionState extends State<_TrackSection> {
     final canExpand = total > _collapsedCount;
 
     return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.lg),
+      padding: ProfileSectionHeader.outerPadding,
       // GestureDetector, а не InkWell.
       //
       // Нажатие в любом месте секции разворачивает и сворачивает её, но
@@ -776,45 +859,29 @@ class _TrackSectionState extends State<_TrackSection> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(widget.title, style: texts.titleLarge),
-                        const SizedBox(height: 2),
-                        Text(
-                          widget.hint,
-                          style: texts.bodySmall
-                              ?.copyWith(color: colors.onSurfaceVariant),
-                        ),
-                      ],
+            ProfileSectionHeader(
+              title: widget.title,
+              hint: widget.hint,
+              trailing: [
+                if (widget.onShowAll != null)
+                  TextButton(
+                    onPressed: widget.onShowAll,
+                    child: Text(L.of(context).homeFilterAll),
+                  ),
+                if (canExpand)
+                  // Стрелка показывает, что секцию можно раскрыть, и
+                  // поворачивается вместе с состоянием.
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: AppMotion.short,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
-                  if (widget.onShowAll != null)
-                    TextButton(
-                      onPressed: widget.onShowAll,
-                      child: Text(L.of(context).homeFilterAll),
-                    ),
-                  if (canExpand)
-                    // Стрелка показывает, что секцию можно раскрыть, и
-                    // поворачивается вместе с состоянием.
-                    AnimatedRotation(
-                      turns: _expanded ? 0.5 : 0,
-                      duration: AppMotion.short,
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(height: ProfileSectionHeader.gap),
 
             AnimatedSize(
               duration: AppMotion.medium,

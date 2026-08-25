@@ -2677,6 +2677,30 @@ abstract class L {
   /// **'{count, plural, one{{count} друг} few{{count} друга} many{{count} друзей} other{{count} друга}}'**
   String profileFriendsCount(int count);
 
+  /// No description provided for @profileInCommonEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока ничего общего не нашлось'**
+  String get profileInCommonEmpty;
+
+  /// No description provided for @profileInCommonHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Из ваших любимых'**
+  String get profileInCommonHint;
+
+  /// No description provided for @profileInCommonTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Общая музыка'**
+  String get profileInCommonTitle;
+
+  /// No description provided for @profileInCommonTracks.
+  ///
+  /// In ru, this message translates to:
+  /// **'{count, plural, one{{count} общий трек} few{{count} общих трека} many{{count} общих треков} other{{count} общих трека}}'**
+  String profileInCommonTracks(int count);
+
   /// No description provided for @profileInSelection.
   ///
   /// In ru, this message translates to:
@@ -2719,6 +2743,18 @@ abstract class L {
   /// **'Ничего не показывается'**
   String get profileNothingShown;
 
+  /// No description provided for @profilePlaylistsHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ваши подборки'**
+  String get profilePlaylistsHint;
+
+  /// No description provided for @profilePlaylistsTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Плейлисты'**
+  String get profilePlaylistsTitle;
+
   /// No description provided for @profileRecentlyPlayed.
   ///
   /// In ru, this message translates to:
@@ -2736,6 +2772,18 @@ abstract class L {
   /// In ru, this message translates to:
   /// **'{count, plural, one{{count} сессия} few{{count} сессии} many{{count} сессий} other{{count} сессии}}'**
   String profileSessionsCount(int count);
+
+  /// No description provided for @profileTopArtists.
+  ///
+  /// In ru, this message translates to:
+  /// **'Чаще всего звучит'**
+  String get profileTopArtists;
+
+  /// No description provided for @profileTopArtistsHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'По прослушанному и любимому'**
+  String get profileTopArtistsHint;
 
   /// No description provided for @profileVisibleToYouOnly.
   ///

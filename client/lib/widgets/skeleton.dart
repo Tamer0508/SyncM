@@ -221,6 +221,17 @@ double _labelWidth(BuildContext context, String label, TextStyle? style) {
   return painter.width;
 }
 
+double textLineHeight(BuildContext context, TextStyle? style) {
+  final painter = TextPainter(
+    text: TextSpan(text: '​', style: style),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+    maxLines: 1,
+  )..layout();
+
+  return painter.height;
+}
+
 const List<double> _titleFactors = [0.54, 0.38, 0.64, 0.46, 0.58];
 const List<double> _subtitleFactors = [0.32, 0.24, 0.40, 0.28, 0.35];
 

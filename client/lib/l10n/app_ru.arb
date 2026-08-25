@@ -754,6 +754,17 @@
     }
   },
   "profileFriendsCount": "{count, plural, one{{count} друг} few{{count} друга} many{{count} друзей} other{{count} друга}}",
+  "profileInCommonEmpty": "Пока ничего общего не нашлось",
+  "profileInCommonHint": "Из ваших любимых",
+  "profileInCommonTitle": "Общая музыка",
+  "@profileInCommonTracks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileInCommonTracks": "{count, plural, one{{count} общий трек} few{{count} общих трека} many{{count} общих треков} other{{count} общих трека}}",
   "@profileInSelection": {
     "placeholders": {
       "count": {
@@ -782,6 +793,8 @@
   },
   "profileMutualCount": "{count} общих",
   "profileNothingShown": "Ничего не показывается",
+  "profilePlaylistsHint": "Ваши подборки",
+  "profilePlaylistsTitle": "Плейлисты",
   "profileRecentlyPlayed": "Недавно слушали",
   "profileRecentlyPlayedEmpty": "Здесь появятся треки, которые вы включали",
   "@profileSessionsCount": {
@@ -792,6 +805,8 @@
     }
   },
   "profileSessionsCount": "{count, plural, one{{count} сессия} few{{count} сессии} many{{count} сессий} other{{count} сессии}}",
+  "profileTopArtists": "Чаще всего звучит",
+  "profileTopArtistsHint": "По прослушанному и любимому",
   "profileVisibleToYouOnly": "Видно только вам",
   "requestsAccept": "Принять",
   "requestsAccepted": "Заявка принята",

@@ -1506,6 +1506,26 @@ class LEn extends L {
   }
 
   @override
+  String get profileInCommonEmpty => 'Nothing in common yet';
+
+  @override
+  String get profileInCommonHint => 'From your liked tracks';
+
+  @override
+  String get profileInCommonTitle => 'Music in common';
+
+  @override
+  String profileInCommonTracks(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tracks in common',
+      one: '$count track in common',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String profileInSelection(int count) {
     return '$count in the selection';
   }
@@ -1534,6 +1554,12 @@ class LEn extends L {
   String get profileNothingShown => 'Nothing is shown';
 
   @override
+  String get profilePlaylistsHint => 'Your collections';
+
+  @override
+  String get profilePlaylistsTitle => 'Playlists';
+
+  @override
   String get profileRecentlyPlayed => 'Recently played';
 
   @override
@@ -1549,6 +1575,12 @@ class LEn extends L {
     );
     return '$_temp0';
   }
+
+  @override
+  String get profileTopArtists => 'On repeat';
+
+  @override
+  String get profileTopArtistsHint => 'From plays and liked tracks';
 
   @override
   String get profileVisibleToYouOnly => 'Visible only to you';

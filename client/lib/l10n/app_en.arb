@@ -754,6 +754,17 @@
     }
   },
   "profileFriendsCount": "{count, plural, one{{count} friend} other{{count} friends}}",
+  "profileInCommonEmpty": "Nothing in common yet",
+  "profileInCommonHint": "From your liked tracks",
+  "profileInCommonTitle": "Music in common",
+  "@profileInCommonTracks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileInCommonTracks": "{count, plural, one{{count} track in common} other{{count} tracks in common}}",
   "@profileInSelection": {
     "placeholders": {
       "count": {
@@ -782,6 +793,8 @@
   },
   "profileMutualCount": "{count} mutual",
   "profileNothingShown": "Nothing is shown",
+  "profilePlaylistsHint": "Your collections",
+  "profilePlaylistsTitle": "Playlists",
   "profileRecentlyPlayed": "Recently played",
   "profileRecentlyPlayedEmpty": "Tracks you play will show up here",
   "@profileSessionsCount": {
@@ -792,6 +805,8 @@
     }
   },
   "profileSessionsCount": "{count, plural, one{{count} session} other{{count} sessions}}",
+  "profileTopArtists": "On repeat",
+  "profileTopArtistsHint": "From plays and liked tracks",
   "profileVisibleToYouOnly": "Visible only to you",
   "requestsAccept": "Accept",
   "requestsAccepted": "Request accepted",

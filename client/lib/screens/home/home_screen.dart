@@ -779,6 +779,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                     () => _showingHistory = true),
                                 onOpenSettings: () => _openOverlay(
                                     () => _showingSettings = true),
+                                // В профиле показаны только свои подборки,
+                                // поэтому открываются они как свои.
+                                onOpenPlaylist: (playlist) =>
+                                    _openPlaylist(playlist, isCustom: true),
                                 onBack: () => setState(
                                     () => _showingOwnProfile = false),
                               )

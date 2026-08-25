@@ -1521,6 +1521,28 @@ class LRu extends L {
   }
 
   @override
+  String get profileInCommonEmpty => 'Пока ничего общего не нашлось';
+
+  @override
+  String get profileInCommonHint => 'Из ваших любимых';
+
+  @override
+  String get profileInCommonTitle => 'Общая музыка';
+
+  @override
+  String profileInCommonTracks(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count общих трека',
+      many: '$count общих треков',
+      few: '$count общих трека',
+      one: '$count общий трек',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String profileInSelection(int count) {
     return '$count в подборке';
   }
@@ -1549,6 +1571,12 @@ class LRu extends L {
   String get profileNothingShown => 'Ничего не показывается';
 
   @override
+  String get profilePlaylistsHint => 'Ваши подборки';
+
+  @override
+  String get profilePlaylistsTitle => 'Плейлисты';
+
+  @override
   String get profileRecentlyPlayed => 'Недавно слушали';
 
   @override
@@ -1567,6 +1595,12 @@ class LRu extends L {
     );
     return '$_temp0';
   }
+
+  @override
+  String get profileTopArtists => 'Чаще всего звучит';
+
+  @override
+  String get profileTopArtistsHint => 'По прослушанному и любимому';
 
   @override
   String get profileVisibleToYouOnly => 'Видно только вам';
