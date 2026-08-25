@@ -340,7 +340,23 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         if (!_unavailable && _error == null)
           SliverToBoxAdapter(child: _buildHeaderActions(playlist)),
         if (_loading && _tracks.isEmpty)
-          const SliverToBoxAdapter(child: SkeletonTrackList(itemCount: 8))
+          SliverToBoxAdapter(
+            child: SkeletonTrackList(
+              itemCount: 8,
+              // Отступы списка треков: сверху и по бокам — от SliverPadding,
+              // снизу к ним добавляется промежуток после последней строки.
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.sm,
+                AppSpacing.sm,
+                AppSpacing.sm,
+                AppSpacing.sm + AppSpacing.xs,
+              ),
+              showLike: true,
+              trailing: widget.isCustom && wide
+                  ? SkeletonTrackTrailing.menuAndHandle
+                  : SkeletonTrackTrailing.menu,
+            ),
+          )
         else if (_unavailable)
           SliverFillRemaining(
             hasScrollBody: false,

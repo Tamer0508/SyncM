@@ -192,7 +192,9 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
 
   Widget _buildPlaylists() {
     if (_loadingPlaylists) {
-      return const SingleChildScrollView(child: SkeletonList(itemCount: 6));
+      return const SingleChildScrollView(
+        child: SkeletonPickPlaylistList(itemCount: 6),
+      );
     }
 
     if (_playlists.isEmpty) {
@@ -225,7 +227,12 @@ class _PickPlaylistScreenState extends State<PickPlaylistScreen> {
 
   Widget _buildTracks() {
     if (_loadingTracks) {
-      return const SingleChildScrollView(child: SkeletonTrackList(itemCount: 8));
+      return const SingleChildScrollView(
+        child: SkeletonTrackList(
+          itemCount: 8,
+          trailing: SkeletonTrackTrailing.checkbox,
+        ),
+      );
     }
 
     if (_tracks.isEmpty) {

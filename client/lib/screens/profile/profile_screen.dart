@@ -169,41 +169,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final friendsCount = _profileData?['friendsCount'] as int? ?? 0;
     final mutualCount = _profileData?['mutualFriendsCount'] as int? ?? 0;
 
+    // Заглушка повторяет строение _ProfileContent: шапка, ряд кнопок и
+    // разделы со списками — в том же порядке и с теми же отступами.
     final body = _loading && _profileData == null
-        ? const SingleChildScrollView(
+        ? SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SkeletonProfileHeader(),
-                // Ряд кнопок под шапкой — круглая шестерёнка и троеточие.
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    AppSpacing.md,
-                    AppSpacing.md,
-                    AppSpacing.md,
-                    AppSpacing.lg,
-                  ),
-                  child: Row(
-                    children: [
-                      SkeletonBox(width: 44, height: 44, circle: true),
-                      SizedBox(width: AppSpacing.md),
-                      SkeletonBox(width: 28, height: 28, circle: true),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                  child: SkeletonSectionHeader(titleWidth: 186),
-                ),
-                SizedBox(height: AppSpacing.sm),
-                SkeletonProfileTrackList(itemCount: 3),
-                SizedBox(height: AppSpacing.lg),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                  child: SkeletonSectionHeader(titleWidth: 148),
-                ),
-                SizedBox(height: AppSpacing.sm),
-                SkeletonProfileTrackList(itemCount: 4),
+                const SkeletonProfileHeader(),
+                SkeletonProfileActions(isOwnProfile: isOwnProfile),
+                const SkeletonProfileTrackSection(),
+                // Второй раздел — «понравившиеся» — есть только у себя.
+                if (isOwnProfile) const SkeletonProfileTrackSection(),
+                const SizedBox(height: AppSpacing.xl),
               ],
             ),
           )
@@ -438,14 +416,14 @@ class _ProfileContentState extends State<_ProfileContent> {
           ),
         ),
 
-        if (_loadingLists)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: SkeletonProfileTrackList(itemCount: 3),
-            ),
-          )
-        else ...[
+        if (_loadingLists) ...[
+          // Заглушка на месте самих разделов, а не вместо них: заголовок
+          // и отступы у неё те же, поэтому список встаёт туда же, где
+          // только что мерцали полосы.
+          const SliverToBoxAdapter(child: SkeletonProfileTrackSection()),
+          if (widget.isOwnProfile)
+            const SliverToBoxAdapter(child: SkeletonProfileTrackSection()),
+        ] else ...[
           SliverToBoxAdapter(
             child: _TrackSection(
               title: L.of(context).profileRecentlyPlayed,

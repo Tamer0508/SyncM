@@ -361,7 +361,12 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
 
   Widget _buildSearchResults() {
     if (_searching && _searchResults.isEmpty) {
-      return const SingleChildScrollView(child: SkeletonTrackList(itemCount: 6));
+      return const SingleChildScrollView(
+        child: SkeletonTrackList(
+          itemCount: 6,
+          trailing: SkeletonTrackTrailing.box,
+        ),
+      );
     }
 
     if (_query.isEmpty) {
@@ -425,7 +430,12 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
     }
 
     if (_loadingSourceTracks) {
-      return const SingleChildScrollView(child: SkeletonTrackList(itemCount: 8));
+      return const SingleChildScrollView(
+        child: SkeletonTrackList(
+          itemCount: 8,
+          trailing: SkeletonTrackTrailing.box,
+        ),
+      );
     }
 
     return Column(

@@ -178,7 +178,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const SingleChildScrollView(child: SkeletonList(itemCount: 3));
+      return const SingleChildScrollView(child: SkeletonDeviceList(itemCount: 3));
     }
 
     if (_devices.isEmpty) {

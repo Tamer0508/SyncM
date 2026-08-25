@@ -138,7 +138,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       content = const SizedBox.expand(
         child: SingleChildScrollView(
           physics: AlwaysScrollableScrollPhysics(),
-          child: SkeletonList(itemCount: 6),
+          child: SkeletonFriendList(itemCount: 6),
         ),
       );
     } else if (prov.friends.isEmpty) {

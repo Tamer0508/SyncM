@@ -115,7 +115,7 @@ class _PlayHistoryScreenState extends State<PlayHistoryScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const SingleChildScrollView(child: SkeletonTrackList(itemCount: 6));
+      return const SingleChildScrollView(child: SkeletonHistoryList(itemCount: 6));
     }
 
     if (_items.isEmpty) return const _EmptyHistory();

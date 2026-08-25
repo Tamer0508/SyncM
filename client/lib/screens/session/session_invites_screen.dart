@@ -87,7 +87,7 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
     final body = Consumer<SessionProvider>(
       builder: (context, prov, _) {
         if (prov.invitesLoading && prov.invites.isEmpty) {
-          return const SingleChildScrollView(child: SkeletonList(itemCount: 4));
+          return const SingleChildScrollView(child: SkeletonInviteList(itemCount: 3));
         }
 
         if (prov.invites.isEmpty) {

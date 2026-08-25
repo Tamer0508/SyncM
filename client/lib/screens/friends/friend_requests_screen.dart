@@ -87,7 +87,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
         final isInitialLoad = prov.incomingLoading && prov.incomingRequests.isEmpty;
 
         if (isInitialLoad) {
-          return const SingleChildScrollView(child: SkeletonList(itemCount: 4));
+          return const SingleChildScrollView(child: SkeletonRequestList(itemCount: 4));
         }
 
         if (prov.incomingRequests.isEmpty) {

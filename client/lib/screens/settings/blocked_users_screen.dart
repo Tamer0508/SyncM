@@ -96,7 +96,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const SingleChildScrollView(child: SkeletonList(itemCount: 4));
+      return const SingleChildScrollView(child: SkeletonBlockedList(itemCount: 4));
     }
 
     if (_blocked.isEmpty) return const _EmptyBlocked();
