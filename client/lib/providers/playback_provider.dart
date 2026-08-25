@@ -1961,7 +1961,9 @@ class PlaybackProvider extends ChangeNotifier {
 
   Color? dominantColorForUrl(String? url) {
     if (url == null || url.isEmpty) return null;
-    return _paletteCache[url]?.dominantColor?.color;
+
+    return _paletteCache[url]?.dominantColor?.color ??
+        ArtworkColorStore.cached(url);
   }
 
   Color? mutedColorForUrl(String? url) {

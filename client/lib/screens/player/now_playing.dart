@@ -85,6 +85,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   Color get _displayDominant => _colorDominantAnim.value ?? _targetDominant;
   Color get _displayVibrant => _colorVibrantAnim.value ?? _targetVibrant;
 
+  String? _colorTrackId;
+
   String? _lastTrackUri;
   int? _lastPaletteImageSig;
 
@@ -202,15 +204,29 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   void _adoptNeighbourColor(PlaybackProvider pb, int direction) {
     final track =
         direction > 0 ? pb.nextQueueTrack : pb.previousQueueTrack;
-    final color = pb.dominantColorForUrl(track?['imageUrl'] as String?);
-    if (color == null) return;
+    final trackId = track?['uri'] as String?;
 
-    _colorAnimController.stop();
-    setState(() {
-      _targetDominant = color;
-      _colorDominantAnim =
-          ColorTween(begin: color, end: color).animate(_colorAnimController);
-    });
+    _handOverColorTo(trackId);
+
+    final url = track?['imageUrl'] as String?;
+
+    final palette = url == null ? null : pb.paletteCache[url];
+    if (palette != null) {
+      _applyTrackColors(
+        trackId,
+        palette.dominantColor?.color ?? _displayDominant,
+        palette.vibrantColor?.color ??
+            palette.lightVibrantColor?.color ??
+            _displayVibrant,
+        animate: false,
+      );
+      return;
+    }
+
+    final dominant = pb.dominantColorForUrl(url);
+    if (dominant == null) return;
+
+    _applyTrackColors(trackId, dominant, _displayVibrant, animate: false);
   }
 
   void _slideTo(int direction, VoidCallback fallback) {
@@ -298,8 +314,24 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     return hash;
   }
 
-  void _setTargetColors(Color dominant, Color vibrant) {
+  void _handOverColorTo(String? trackId) {
+    if (_colorTrackId == trackId) return;
+
+    _colorTrackId = trackId;
+
+    // Расчёты палитры прежнего трека с этого момента недействительны.
+    _paletteRequest++;
+  }
+  void _applyTrackColors(
+    String? trackId,
+    Color dominant,
+    Color vibrant, {
+    bool animate = true,
+  }) {
+    if (trackId != _colorTrackId) return;
+
     if (_targetDominant == dominant && _targetVibrant == vibrant) return;
+
     _targetDominant = dominant;
     _targetVibrant = vibrant;
 
@@ -307,6 +339,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         .animate(_colorAnimController);
     _colorVibrantAnim = ColorTween(begin: _displayVibrant, end: vibrant)
         .animate(_colorAnimController);
+
+    if (!animate) {
+      _colorAnimController.value = 1;
+      return;
+    }
 
     _colorAnimController
       ..reset()
@@ -319,7 +356,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     required String? trackUri,
   }) async {
     if (imageBytes == null && (imageUrl == null || imageUrl.isEmpty)) {
-      _setTargetColors(Colors.deepPurple, Colors.purpleAccent);
+      // У трека нет обложки вообще — это его собственный цвет, а не заглушка
+      // на время расчёта.
+      _applyTrackColors(trackUri, Colors.deepPurple, Colors.purpleAccent);
       return;
     }
 
@@ -328,8 +367,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     final String? cacheKey = imageUrl ?? trackUri;
 
     if (cacheKey != null && provider.paletteCache.containsKey(cacheKey)) {
-      final p = provider.paletteCache[cacheKey]!;
-      _applyPalette(p, trackUri, provider);
+      _applyPalette(provider.paletteCache[cacheKey]!, trackUri);
       return;
     }
 
@@ -352,18 +390,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
     if (palette == null || !mounted || request != _paletteRequest) return;
 
-    _applyPalette(palette, trackUri, provider);
+    _applyPalette(palette, trackUri);
   }
 
-  void _applyPalette(PaletteGenerator p, String? trackUri, PlaybackProvider provider) {
+  void _applyPalette(PaletteGenerator p, String? trackUri) {
     if (!mounted) return;
-    final current = provider.currentTrack?['uri'];
-    if (trackUri != null && current != null && current != trackUri) {
-      return;
-    }
-    _setTargetColors(
+
+    _applyTrackColors(
+      trackUri,
       p.dominantColor?.color ?? Colors.deepPurple,
-      p.vibrantColor?.color ?? (p.lightVibrantColor?.color ?? Colors.purpleAccent),
+      p.vibrantColor?.color ??
+          (p.lightVibrantColor?.color ?? Colors.purpleAccent),
     );
   }
 
@@ -402,36 +439,20 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         if (currentUri != _lastTrackUri) {
           _lastTrackUri = currentUri;
 
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            final freshBytes = pb.currentImageBytes;
-            final freshUrl = pb.currentTrack?['imageUrl'] ?? widget.artworkUrl;
-
-            final cached = freshUrl != null ? pb.paletteCache[freshUrl] : null;
-            if (cached != null) {
-              _setTargetColors(
-                cached.dominantColor?.color ?? Colors.blueGrey.shade800,
-                cached.vibrantColor?.color ?? Colors.blueGrey.shade600,
-              );
-            } else {
-              _setTargetColors(Colors.blueGrey.shade900, Colors.blueGrey.shade700);
-            }
-
-            _updatePalette(imageBytes: freshBytes, imageUrl: freshUrl, trackUri: currentUri);
-          });
+          _handOverColorTo(currentUri);
         }
 
         final imageUrlNow = pb.currentTrack?['imageUrl'] as String? ?? widget.artworkUrl;
-        final int? imageSig = imageBytes != null
-            ? _imageSignature(imageBytes, currentUri)
-            : (imageUrlNow != null ? Object.hash(imageUrlNow, currentUri) : null);
 
-        if (imageSig != null && imageSig != _lastPaletteImageSig) {
+        final int imageSig = imageBytes != null
+            ? _imageSignature(imageBytes, currentUri)
+            : Object.hash(imageUrlNow, currentUri);
+
+        if (imageSig != _lastPaletteImageSig) {
           _lastPaletteImageSig = imageSig;
           final captUri = currentUri;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            if (pb.currentTrack?['uri'] != captUri) return;
+            if (!mounted || _colorTrackId != captUri) return;
             _updatePalette(
               imageBytes: pb.currentImageBytes,
               imageUrl: pb.currentTrack?['imageUrl'] ?? widget.artworkUrl,
@@ -489,7 +510,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         final progress = swipe.abs().clamp(0.0, 1.0);
                         final Color base;
                         if (neighbour == null) {
-                          base = Color.lerp(_displayDominant, surface, progress)!;
+                          base = _displayDominant;
                         } else if (progress < 0.5) {
                           base = Color.lerp(
                               _displayDominant, surface, progress * 2)!;
