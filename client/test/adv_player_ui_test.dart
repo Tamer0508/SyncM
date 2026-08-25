@@ -253,14 +253,18 @@ void main() {
   });
 
   group('artwork pager', () {
+    ArtworkSlot slot(String trackId, [String? url]) =>
+        ArtworkSlot(trackId: trackId, source: ArtworkSource(url: url));
+
     Widget pagerHost({
       required GlobalKey<ArtworkPagerState> key,
       required ValueNotifier<double> progress,
-      required VoidCallback onNext,
-      required VoidCallback onPrevious,
-      ArtworkSource? next,
-      ArtworkSource? previous,
+      required bool Function() onNext,
+      required bool Function() onPrevious,
+      ArtworkSlot? next,
+      ArtworkSlot? previous,
       String currentKey = 'a',
+      bool switching = false,
     }) {
       return MaterialApp(
         home: Scaffold(
@@ -271,10 +275,10 @@ void main() {
               child: ArtworkPager(
                 key: key,
                 size: 300,
-                currentKey: currentKey,
-                current: const ArtworkSource(),
+                current: slot(currentKey),
                 previous: previous,
                 next: next,
+                switching: switching,
                 progress: progress,
                 onNext: onNext,
                 onPrevious: onPrevious,
@@ -295,9 +299,15 @@ void main() {
       await tester.pumpWidget(pagerHost(
         key: key,
         progress: progress,
-        onNext: () => next++,
-        onPrevious: () => previous++,
-        next: const ArtworkSource(url: 'https://example.com/n.png'),
+        onNext: () {
+          next++;
+          return true;
+        },
+        onPrevious: () {
+          previous++;
+          return true;
+        },
+        next: slot('b', 'https://example.com/n.png'),
       ));
 
       await tester.drag(find.byType(ArtworkPager), const Offset(280, 0));
@@ -315,20 +325,34 @@ void main() {
       final progress = ValueNotifier<double>(0);
       var next = 0;
 
-      await tester.pumpWidget(pagerHost(
-        key: key,
-        progress: progress,
-        onNext: () => next++,
-        onPrevious: () {},
-        next: const ArtworkSource(url: 'https://example.com/n.png'),
-      ));
+      Widget host({required bool switching}) => pagerHost(
+            key: key,
+            progress: progress,
+            switching: switching,
+            onNext: () {
+              next++;
+              return true;
+            },
+            onPrevious: () => true,
+            next: slot('b', 'https://example.com/n.png'),
+          );
 
-      // Свайп «вперёд». Очередь переключиться не смогла (замок скипа,
-      // недоступный трек) — currentKey остаётся прежним.
+      await tester.pumpWidget(host(switching: false));
+
+      // Свайп «вперёд»: команда принята, провайдер начал переключение.
       expect(key.currentState!.animateTo(1), isTrue);
       await tester.pumpAndSettle();
 
       expect(next, 1);
+
+      await tester.pumpWidget(host(switching: true));
+      await tester.pumpAndSettle();
+
+      // Очередь переключиться так и не смогла (замок скипа, недоступный
+      // трек): текущий трек прежний, переключение закончилось.
+      await tester.pumpWidget(host(switching: false));
+      await tester.pumpAndSettle();
+
       expect(
         progress.value,
         0,
@@ -348,9 +372,12 @@ void main() {
       await tester.pumpWidget(pagerHost(
         key: key,
         progress: progress,
-        onNext: () => next++,
-        onPrevious: () {},
-        next: const ArtworkSource(url: 'https://example.com/n.png'),
+        onNext: () {
+          next++;
+          return true;
+        },
+        onPrevious: () => true,
+        next: slot('b', 'https://example.com/n.png'),
       ));
 
       for (var i = 0; i < 10; i++) {

@@ -32,7 +32,18 @@ class PlaybackProvider extends ChangeNotifier {
   int _durationMs = 0;
   int _positionMs = 0;
   Uint8List? _currentImageBytes;
+
+  /// Трек, которому принадлежат [_currentImageBytes]. Байты приезжают из
+  /// `SpotifySdk.getImage` асинхронно, поэтому наружу они отдаются только
+  /// вместе со своим треком.
+  String? _currentImageTrackUri;
+
   String? _lastImageUri;
+
+  /// Трек, о котором последним сообщил сам плеер. Смена трека считается по
+  /// нему, а не по [_currentTrack]: последний может быть закоммичен
+  /// оптимистично ещё до того, как Spotify подтвердит переключение.
+  String? _playerTrackUri;
   Timer? _pollingTimer;
   Timer? _trackChangeTimer;
   // Защита от наложения REST-запросов: таймер тикает независимо от того,
@@ -97,7 +108,7 @@ class PlaybackProvider extends ChangeNotifier {
     _pendingResolveTimer = null;
 
     if (uri != null) {
-      _currentImageBytes = null;
+      _clearCurrentImageBytes();
       _lastImageUri = null;
       _pendingResolveTimer = Timer(_pendingTrackTimeout, _resolvePendingTrack);
       notifyListeners();
@@ -113,6 +124,7 @@ class PlaybackProvider extends ChangeNotifier {
     if (_disposed || _pendingTrackUri == null) return;
 
     _markPendingTrack(null);
+    notifyListeners();
     if (_isWindows || _isWeb || !_isConnected) return;
 
     try {
@@ -192,7 +204,18 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   DateTime? _positionAnchorAt;
-  Uint8List? get currentImageBytes => _currentImageBytes;
+  Uint8List? get currentImageBytes =>
+      _currentImageTrackUri != null &&
+              _currentImageTrackUri == _currentTrack?['uri']
+          ? _currentImageBytes
+          : null;
+
+  void _clearCurrentImageBytes() {
+    _currentImageBytes = null;
+    _currentImageTrackUri = null;
+  }
+
+  bool get isSwitchingTrack => _isSkipping || _pendingTrackUri != null;
 
   /// Позиция меняется несколько раз в секунду. Она вынесена в отдельный
   /// notifier, чтобы прогресс-бар не перестраивал весь UI, подписанный на
@@ -1090,7 +1113,12 @@ class PlaybackProvider extends ChangeNotifier {
       final trackUri = state.track!.uri;
 
       final imageUriId = state.track!.imageUri.raw;
-      final trackChanged = trackUri != _currentTrack?['uri'];
+
+      // «Плеер действительно переключился» и «на экране уже этот трек» —
+      // разные вопросы: `_currentTrack` мог быть закоммичен оптимистично.
+      final trackChanged = trackUri != _playerTrackUri;
+      _playerTrackUri = trackUri;
+      final bool sameAsShown = trackUri == _currentTrack?['uri'];
       final imageChanged = imageUriId != _lastImageUri;
       final title = state.track!.name;
       final artist = state.track!.artist.name;
@@ -1106,15 +1134,19 @@ class PlaybackProvider extends ChangeNotifier {
           _queueEnrichedUri == trackUri ? null : _findInQueue(trackUri);
       if (fromQueue != null) _queueEnrichedUri = trackUri;
 
-      final bool metadataChanged = trackChanged ||
-          fromQueue != null ||
-          _currentTrack?['title'] != title ||
-          _currentTrack?['artist'] != artist;
+      final bool staleForPending =
+          _pendingTrackUri != null && _pendingTrackUri != trackUri;
+
+      final bool metadataChanged = !staleForPending &&
+          (!sameAsShown ||
+              fromQueue != null ||
+              _currentTrack?['title'] != title ||
+              _currentTrack?['artist'] != artist);
 
       if (metadataChanged) {
-        final previous = trackChanged
-            ? const <String, dynamic>{}
-            : (_currentTrack ?? const <String, dynamic>{});
+        final previous = sameAsShown
+            ? (_currentTrack ?? const <String, dynamic>{})
+            : const <String, dynamic>{};
         final keptIndex = _positionOfCurrentIfStillValid(previous, trackUri);
 
         _currentTrack = {
@@ -1132,23 +1164,27 @@ class PlaybackProvider extends ChangeNotifier {
           wasPlaying != _isPlaying ||
           previousDuration != _durationMs;
 
-      if (imageChanged) {
+      if (imageChanged && !staleForPending) {
         _lastImageUri = imageUriId;
-        _currentImageBytes = null;
+        _clearCurrentImageBytes();
         notifyListeners();
         try {
           final imageBytes = await SpotifySdk.getImage(
             imageUri: state.track!.imageUri,
             dimension: ImageDimension.large,
           );
-          if (_lastImageUri == imageUriId) {
+          if (_lastImageUri == imageUriId &&
+              _currentTrack?['uri'] == trackUri) {
             _currentImageBytes = imageBytes;
+            _currentImageTrackUri = trackUri;
             notifyListeners();
           }
         } catch (e) {
           debugPrint('[Spotify] Ошибка скачивания обложки: $e');
-          _currentImageBytes = null;
-          notifyListeners();
+          if (_lastImageUri == imageUriId) {
+            _clearCurrentImageBytes();
+            notifyListeners();
+          }
         }
       } else if (visualChanged) {
         notifyListeners();
@@ -1216,13 +1252,21 @@ class PlaybackProvider extends ChangeNotifier {
     final uri = track['uri'] as String?;
     if (uri == null) return;
 
-    _markPendingTrack(uri);
     _lastRequestedUri = uri;
     _playlistEnded = false;
 
     _positionMs = positionMs ?? 0;
     _positionAnchorAt = DateTime.now();
     _durationMs = (track['durationMs'] as num?)?.toInt() ?? 0;
+
+    // Трек, его метаданные и обложка публикуются одним снимком — до обращения
+    // к Spotify. Раньше позиция и длительность переключались здесь, а
+    // `_currentTrack` — только после ответа SDK (а это ещё и `Future.delayed`
+    // на загрузку контекста), и экран успевал отрисовать кадр «новая
+    // длительность + обложка прежнего трека».
+    _adoptRequestedTrack(track);
+
+    _markPendingTrack(uri);
 
     if (!fromSession) _sessionMode = false;
 
@@ -1256,7 +1300,6 @@ class PlaybackProvider extends ChangeNotifier {
             }
           }
 
-          _currentTrack = track;
           _isPlaying = true;
 
           if (playlistId != null) {
@@ -1335,7 +1378,6 @@ class PlaybackProvider extends ChangeNotifier {
         _setPlaylistTracks(knownPlaylistTracks);
       }
 
-      _currentTrack = track;
       _isPlaying = true;
 
       if (announceToSession &&
@@ -1357,7 +1399,7 @@ class PlaybackProvider extends ChangeNotifier {
         final reconnected = await connect();
         if (reconnected) {
           await SpotifySdk.play(spotifyUri: uri);
-          _currentTrack = track;
+          _adoptRequestedTrack(track);
           _isPlaying = true;
           notifyListeners();
         }
@@ -1365,6 +1407,14 @@ class PlaybackProvider extends ChangeNotifier {
         debugPrint('[Spotify] Fallback play error: $e2');
       }
     }
+  }
+
+  void _adoptRequestedTrack(Map<String, dynamic> track) {
+    if (_currentTrack?['uri'] == track['uri']) return;
+
+    _currentTrack = Map<String, dynamic>.from(track);
+    _queueEnrichedUri = null;
+    _clearCurrentImageBytes();
   }
 
   Future<void> _ensureRequestedTrackStarted(String uri, {int? positionMs}) async {
@@ -1509,7 +1559,8 @@ class PlaybackProvider extends ChangeNotifier {
         if (track['uri'] == previousUri && previousIndex != null)
           'index': previousIndex,
       };
-      _currentImageBytes = null;
+      _playerTrackUri = track['uri'] as String?;
+      _clearCurrentImageBytes();
 
       if (newImageUrl != null && !_paletteCache.containsKey(newImageUrl)) {
         _preloadPalette(newImageUrl);
@@ -1988,7 +2039,7 @@ class PlaybackProvider extends ChangeNotifier {
 
     if (key == _artworkColorKey || key == _artworkColorPending) return;
 
-    final bytes = _currentImageBytes;
+    final bytes = currentImageBytes;
     final hasSource = bytes != null || (url != null && url.isNotEmpty);
     if (!hasSource) return;
 
@@ -2306,8 +2357,9 @@ class PlaybackProvider extends ChangeNotifier {
     _isPlaying = false;
     _currentTrack = null;
     _isConnected = false;
-    _currentImageBytes = null;
+    _clearCurrentImageBytes();
     _lastImageUri = null;
+    _playerTrackUri = null;
     _currentPlaylistId = null;
     _setPlaylistTracks(null);
     _suppressAutoCorrection = false;

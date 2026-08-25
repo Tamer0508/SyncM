@@ -34,6 +34,24 @@ class ArtworkSource {
       Object.hash(url, bytes == null ? null : identityHashCode(bytes));
 }
 
+@immutable
+class ArtworkSlot {
+  const ArtworkSlot({required this.trackId, required this.source});
+
+  final String trackId;
+  final ArtworkSource source;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ArtworkSlot &&
+          other.trackId == trackId &&
+          other.source == source;
+
+  @override
+  int get hashCode => Object.hash(trackId, source);
+}
+
 class ArtworkPager extends StatefulWidget {
   const ArtworkPager({
     super.key,
@@ -41,7 +59,7 @@ class ArtworkPager extends StatefulWidget {
     required this.current,
     required this.previous,
     required this.next,
-    required this.currentKey,
+    required this.switching,
     required this.onNext,
     required this.onPrevious,
     required this.progress,
@@ -49,14 +67,14 @@ class ArtworkPager extends StatefulWidget {
 
   final double size;
 
-  final ArtworkSource current;
-  final ArtworkSource? previous;
-  final ArtworkSource? next;
+  final ArtworkSlot current;
+  final ArtworkSlot? previous;
+  final ArtworkSlot? next;
 
-  final String currentKey;
+  final bool switching;
 
-  final VoidCallback onNext;
-  final VoidCallback onPrevious;
+  final bool Function() onNext;
+  final bool Function() onPrevious;
 
   final ValueNotifier<double> progress;
 
@@ -81,12 +99,23 @@ class ArtworkPagerState extends State<ArtworkPager>
   // размера, поэтому кадр анимации меняет исключительно transform, а
   // ImageProvider и Image-виджеты остаются теми же объектами.
   double _tileSize = -1;
-  ArtworkSource? _currentSource;
-  ArtworkSource? _previousSource;
-  ArtworkSource? _nextSource;
+  ArtworkSlot? _currentSlot;
+  ArtworkSlot? _previousSlot;
+  ArtworkSlot? _nextSlot;
   Widget? _currentTile;
   Widget? _previousTile;
   Widget? _nextTile;
+
+  Key _currentTileKey = const ValueKey<String>('artwork.slot.1');
+  Key _previousTileKey = const ValueKey<String>('artwork.slot.0');
+  Key _nextTileKey = const ValueKey<String>('artwork.slot.2');
+
+  /// Трек, на который пользователь уже свайпнул и чья плитка стоит в центре,
+  /// пока провайдер не подтвердил смену. Пока значение не `null`, пружина
+  /// удерживается в закоммиченной точке.
+  String? _pendingTrackId;
+
+  bool get _isCommitting => _pendingTrackId != null;
 
   bool _progressFlushScheduled = false;
 
@@ -117,18 +146,28 @@ class ArtworkPagerState extends State<ArtworkPager>
   }
 
   @override
-  void didUpdateWidget(ArtworkPager old) {
-    super.didUpdateWidget(old);
+  void didUpdateWidget(ArtworkPager oldWidget) {
+    super.didUpdateWidget(oldWidget);
 
-    if (widget.currentKey != old.currentKey) {
-      // Трек уже сменился: незавершённый spring не имеет права вызвать
-      // onNext/onPrevious ещё раз.
-      _settleGeneration++;
-      _settleTarget = 0;
-      _controller.stop();
-      _controller.value = 0;
-      _publishProgress();
+    if (_isCommitting) {
+      final confirmed = widget.current.trackId == _pendingTrackId;
+
+      if (confirmed || !widget.switching) _resetToCurrent();
+      return;
     }
+
+    if (widget.current.trackId != oldWidget.current.trackId) {
+      _resetToCurrent();
+    }
+  }
+
+  void _resetToCurrent() {
+    _pendingTrackId = null;
+    _settleGeneration++;
+    _settleTarget = 0;
+    _controller.stop();
+    _controller.value = 0;
+    _publishProgress();
   }
 
   @override
@@ -138,6 +177,8 @@ class ArtworkPagerState extends State<ArtworkPager>
   }
 
   void _onDragStart(DragStartDetails details) {
+    if (_isCommitting) return;
+
     // Новый жест обесценивает предыдущий settle.
     _settleGeneration++;
     _settleTarget = 0;
@@ -145,6 +186,8 @@ class ArtworkPagerState extends State<ArtworkPager>
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
+    if (_isCommitting) return;
+
     var next = _controller.value - details.delta.dx / _width;
 
     if (next > 0 && widget.next == null) next = 0;
@@ -154,6 +197,8 @@ class ArtworkPagerState extends State<ArtworkPager>
   }
 
   void _onDragEnd(DragEndDetails details) {
+    if (_isCommitting) return;
+
     final velocity = details.velocity.pixelsPerSecond.dx;
     final value = _controller.value;
 
@@ -196,22 +241,26 @@ class ArtworkPagerState extends State<ArtworkPager>
     if (!mounted || generation != _settleGeneration || _settleTarget != target) {
       return;
     }
-    if (target == 1) {
-      widget.onNext();
-    } else if (target == -1) {
-      widget.onPrevious();
-    }
-
     if (target == 0) return;
 
-    _settleGeneration++;
-    _settleTarget = 0;
+    final committed = target == 1 ? widget.next : widget.previous;
+    final accepted = committed != null &&
+        (target == 1 ? widget.onNext() : widget.onPrevious());
+
+    if (!accepted || committed.trackId == widget.current.trackId) {
+      _resetToCurrent();
+      return;
+    }
+
+    _pendingTrackId = committed.trackId;
     _controller.stop();
-    _controller.value = 0;
+    _controller.value = target.toDouble();
     _publishProgress();
   }
 
   bool animateTo(int direction) {
+    if (_isCommitting) return true;
+
     if (direction > 0 && widget.next == null) return false;
     if (direction < 0 && widget.previous == null) return false;
     _settleTo(direction);
@@ -222,26 +271,40 @@ class ArtworkPagerState extends State<ArtworkPager>
     final sizeChanged = widget.size != _tileSize;
     if (sizeChanged) _tileSize = widget.size;
 
-    if (sizeChanged || _currentSource != widget.current) {
-      _currentSource = widget.current;
+    if (sizeChanged || _currentSlot != widget.current) {
+      _currentSlot = widget.current;
       _currentTile = _buildTile(widget.current);
     }
 
     final previous = widget.previous;
-    if (sizeChanged || _previousSource != previous) {
-      _previousSource = previous;
+    if (sizeChanged || _previousSlot != previous) {
+      _previousSlot = previous;
       _previousTile = previous == null ? null : _buildTile(previous);
     }
 
     final next = widget.next;
-    if (sizeChanged || _nextSource != next) {
-      _nextSource = next;
+    if (sizeChanged || _nextSlot != next) {
+      _nextSlot = next;
       _nextTile = next == null ? null : _buildTile(next);
     }
+
+    _syncKeys();
   }
 
-  Widget _buildTile(ArtworkSource source) => Center(
-        child: _ArtworkTile(size: widget.size, source: source),
+  void _syncKeys() {
+    final seen = <String>{};
+    _currentTileKey = _tileKey(widget.current.trackId, 1, seen);
+    _nextTileKey = _tileKey(widget.next?.trackId, 2, seen);
+    _previousTileKey = _tileKey(widget.previous?.trackId, 0, seen);
+  }
+
+  static Key _tileKey(String? trackId, int slot, Set<String> seen) =>
+      trackId != null && trackId.isNotEmpty && seen.add(trackId)
+          ? ValueKey<String>('artwork.track.$trackId')
+          : ValueKey<String>('artwork.slot.$slot');
+
+  Widget _buildTile(ArtworkSlot slot) => Center(
+        child: _ArtworkTile(size: widget.size, source: slot.source),
       );
 
   @override
@@ -256,6 +319,7 @@ class ArtworkPagerState extends State<ArtworkPager>
         final next = _nextTile;
 
         return GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onHorizontalDragStart: _onDragStart,
           onHorizontalDragUpdate: _onDragUpdate,
           onHorizontalDragEnd: _onDragEnd,
@@ -269,9 +333,10 @@ class ArtworkPagerState extends State<ArtworkPager>
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (previous != null) _slide(-1 - t, previous),
-                  _slide(-t, current),
-                  if (next != null) _slide(1 - t, next),
+                  if (previous != null)
+                    _slide(-1 - t, previous, _previousTileKey),
+                  _slide(-t, current, _currentTileKey),
+                  if (next != null) _slide(1 - t, next, _nextTileKey),
                 ],
               );
             },
@@ -281,8 +346,9 @@ class ArtworkPagerState extends State<ArtworkPager>
     );
   }
 
-  Widget _slide(double offset, Widget tile) {
+  Widget _slide(double offset, Widget tile, Key key) {
     return FractionalTranslation(
+      key: key,
       translation: Offset(offset, 0),
       child: tile,
     );

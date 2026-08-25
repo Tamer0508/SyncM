@@ -74,6 +74,18 @@ class AppNetworkImage extends StatelessWidget {
     return pixels;
   }
 
+  static ImageProvider providerFor(
+    String url, {
+    required double width,
+    required double height,
+    required double devicePixelRatio,
+  }) =>
+      ResizeImage.resizeIfNeeded(
+        _round((width * devicePixelRatio).round()),
+        _round((height * devicePixelRatio).round()),
+        AppImageCache.provider(url),
+      );
+
   @override
   Widget build(BuildContext context) {
     final ratio = MediaQuery.devicePixelRatioOf(context);

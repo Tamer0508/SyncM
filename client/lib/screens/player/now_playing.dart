@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
@@ -155,21 +154,33 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
   final ValueNotifier<double> _swipeProgress = ValueNotifier(0);
 
+  String? _swipeFromPreviousUrl;
+  String? _swipeFromNextUrl;
+
   final GlobalKey<ArtworkPagerState> _pagerKey = GlobalKey();
 
   final Set<String> _warmedArtwork = {};
 
-  void _warmUpcoming(List<String> urls) {
-    if (!_entered) return;
+  void _warmUpcoming(List<String> urls, double size) {
+    if (!_entered || size <= 0) return;
 
-    final fresh = urls.where((url) => _warmedArtwork.add(url)).toList();
+    final ratio = MediaQuery.devicePixelRatioOf(context);
+
+    final fresh = urls
+        .where((url) => _warmedArtwork.add('$url@${size.round()}@$ratio'))
+        .toList();
     if (fresh.isEmpty) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       for (final url in fresh) {
         precacheImage(
-          CachedNetworkImageProvider(url, cacheManager: AppImageCache.manager),
+          AppNetworkImage.providerFor(
+            url,
+            width: size,
+            height: size,
+            devicePixelRatio: ratio,
+          ),
           context,
           onError: (_, _) {},
         );
@@ -177,10 +188,15 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     });
   }
 
-  ArtworkSource? _neighbourSource(Map<String, dynamic>? track) {
+  ArtworkSlot? _neighbourSlot(Map<String, dynamic>? track) {
+    final trackId = track?['uri'] as String?;
+    if (trackId == null || trackId.isEmpty) return null;
+
     final url = track?['imageUrl'] as String?;
-    if (url == null || url.isEmpty) return null;
-    return ArtworkSource(url: url);
+    return ArtworkSlot(
+      trackId: trackId,
+      source: ArtworkSource(url: url),
+    );
   }
 
   void _adoptNeighbourColor(PlaybackProvider pb, int direction) {
@@ -372,9 +388,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
         final imageBytes = pb.currentImageBytes;
         final imageUrl = (track?['imageUrl'] as String?) ??
             (track == null ? widget.artworkUrl : null);
-        final currentUri = track?['uri'];
+        final currentUri = track?['uri'] as String?;
 
-        _warmUpcoming(pb.neighbourArtworkUrls);
+        final artworkTrackId = currentUri ?? imageUrl ?? '';
 
         // Соседей опрашиваем один раз за перестроение экрана, а не на
         // каждом кадре свайпа.
@@ -461,8 +477,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                         final swipe = _swipeProgress.value;
                         final surface = context.colors.surface;
 
-                        final neighbour = pb.dominantColorForUrl(
-                            swipe > 0 ? nextArtworkUrl : previousArtworkUrl);
+                        if (swipe == 0) {
+                          _swipeFromPreviousUrl = previousArtworkUrl;
+                          _swipeFromNextUrl = nextArtworkUrl;
+                        }
+
+                        final neighbour = pb.dominantColorForUrl(swipe > 0
+                            ? _swipeFromNextUrl
+                            : _swipeFromPreviousUrl);
 
                         final progress = swipe.abs().clamp(0.0, 1.0);
                         final Color base;
@@ -501,6 +523,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                     final artSize = (constraints.maxHeight * 0.42)
                         .clamp(140.0, constraints.maxWidth - 96);
 
+                    _warmUpcoming(pb.neighbourArtworkUrls, artSize);
+
                     return Column(
                       children: [
                         AnimatedBuilder(
@@ -534,23 +558,29 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                                       child: ArtworkPager(
                                         key: _pagerKey,
                                         size: artSize,
-                                        currentKey: currentUri ?? '',
-                                        current: ArtworkSource(
-                                          bytes: imageBytes,
-                                          url: imageUrl as String?,
+                                        current: ArtworkSlot(
+                                          trackId: artworkTrackId,
+                                          source: ArtworkSource(
+                                            bytes: imageBytes,
+                                            url: imageUrl,
+                                          ),
                                         ),
-                                        previous: _neighbourSource(
-                                            pb.previousQueueTrack),
-                                        next: _neighbourSource(
-                                            pb.nextQueueTrack),
+                                        previous:
+                                            _neighbourSlot(previousTrack),
+                                        next: _neighbourSlot(nextTrack),
+                                        switching: pb.isSwitchingTrack,
                                         progress: _swipeProgress,
                                         onNext: () {
+                                          if (pb.isSwitchingTrack) return false;
                                           _adoptNeighbourColor(pb, 1);
                                           pb.goToNext();
+                                          return true;
                                         },
                                         onPrevious: () {
+                                          if (pb.isSwitchingTrack) return false;
                                           _adoptNeighbourColor(pb, -1);
                                           pb.goToPrevious();
+                                          return true;
                                         },
                                       ),
                                     ),
