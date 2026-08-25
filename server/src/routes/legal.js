@@ -119,7 +119,9 @@ ${body}
 }
 
 router.get('/:document', (req, res) => {
-  const meta = DOCUMENTS[req.params.document];
+  const meta = Object.hasOwn(DOCUMENTS, req.params.document)
+    ? DOCUMENTS[req.params.document]
+    : null;
   if (!meta) return res.status(404).send('Документ не найден');
 
   if (cache.has(req.params.document)) {

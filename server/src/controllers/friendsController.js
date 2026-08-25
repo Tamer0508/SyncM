@@ -69,24 +69,19 @@ const searchUsers = asyncHandler(async (req, res) => {
   const users = await getOrSet(`db:search-users:${userId}`, query.toLowerCase(), 120, async () => {
     const found = await prisma.user.findMany({
       where: {
-        ...(publicId
-          ? { publicId }
-          : { username: { contains: query, mode: 'insensitive' } }),
         id: { not: userId },
 
-        ...(publicId
-            ? {}
-            : {
-                OR: [
-                  { isSearchHidden: false },
-                  {
-                    OR: [
-                      { sentRequests: { some: { receiverId: userId, status: 'accepted' } } },
-                      { receivedRequests: { some: { senderId: userId, status: 'accepted' } } },
-                    ],
-                  },
-                ],
-              }),
+        OR: [
+          ...(publicId ? [{ publicId }] : []),
+          {
+            username: { contains: query, mode: 'insensitive' },
+            OR: [
+              { isSearchHidden: false },
+              { sentRequests: { some: { receiverId: userId, status: 'accepted' } } },
+              { receivedRequests: { some: { senderId: userId, status: 'accepted' } } },
+            ],
+          },
+        ],
 
         blocksMade: { none: { blockedId: userId } },
         blocksReceived: { none: { blockerId: userId } },
@@ -144,6 +139,15 @@ const sendRequest = asyncHandler(async (req, res) => {
   if (senderId === receiverId) {
     return res.status(400).json({ error: t(req, 'cannotAddSelf') });
   }
+
+  // Существование получателя проверяем здесь, как это делает blockUser.
+  // Без проверки заявка несуществующему пользователю падала на внешнем ключе,
+  // а у общего обработчика ветки под P2003 нет — клиент получал 500.
+  const receiver = await prisma.user.findUnique({
+    where: { id: receiverId },
+    select: { id: true },
+  });
+  if (!receiver) return res.status(404).json({ error: t(req, 'userNotFound') });
 
   const blocked = await prisma.block.findFirst({
     where: {
@@ -549,17 +553,21 @@ const blockUser = asyncHandler(async (req, res) => {
       update: {},
     });
 
-    // Дружба и заявки в обе стороны.
-    const removed = await tx.friendship.deleteMany({
-      where: {
-        OR: [
-          { senderId: blockerId, receiverId: blockedId },
-          { senderId: blockedId, receiverId: blockerId },
-        ],
-      },
+    const between = {
+      OR: [
+        { senderId: blockerId, receiverId: blockedId },
+        { senderId: blockedId, receiverId: blockerId },
+      ],
+    };
+
+    const acceptedCount = await tx.friendship.count({
+      where: { ...between, status: 'accepted' },
     });
 
-    if (removed.count > 0) {
+    // Дружба и заявки в обе стороны.
+    await tx.friendship.deleteMany({ where: between });
+
+    if (acceptedCount > 0) {
       await tx.user.updateMany({
         where: { id: { in: [blockerId, blockedId] }, friendsCount: { gt: 0 } },
         data: { friendsCount: { decrement: 1 } },

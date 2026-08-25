@@ -18,6 +18,36 @@ import 'google_sign_stub.dart'
 
 const int _googleLoopbackPort = 8181;
 
+const String googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
+
+const String googleServerClientId =
+    '874254630560-14r27kn6ken47fk2g4tffmf8s22co6eh.apps.googleusercontent.com';
+
+Future<void>? _googleInitFuture;
+bool _googleInitDone = false;
+
+Future<void> ensureGoogleSignInInitialized() async {
+  if (_googleInitDone) return;
+
+  final pending = _googleInitFuture ??= GoogleSignIn.instance.initialize(
+    clientId: kIsWeb ? googleClientId : null,
+    serverClientId: kIsWeb ? null : googleServerClientId,
+  );
+
+  try {
+    await pending;
+    _googleInitDone = true;
+  } catch (e) {
+    if (identical(_googleInitFuture, pending)) _googleInitFuture = null;
+
+    if (e.toString().contains('init() has already been called')) {
+      _googleInitDone = true;
+      return;
+    }
+    rethrow;
+  }
+}
+
 class GoogleSignInButton extends StatelessWidget {
   final VoidCallback onSignInSuccess;
 
@@ -90,9 +120,7 @@ class GoogleSignInButton extends StatelessWidget {
 
   Future<void> _handleSignIn(BuildContext context) async {
     try {
-      await GoogleSignIn.instance.initialize(
-        serverClientId: '874254630560-14r27kn6ken47fk2g4tffmf8s22co6eh.apps.googleusercontent.com',
-      );
+      await ensureGoogleSignInInitialized();
 
       final account = await GoogleSignIn.instance.authenticate();
 

@@ -74,7 +74,7 @@ function rateLimitMiddleware(limit, windowSeconds, options = {}) {
       } else {
         const userId = req.userId || req.session?.userId;
 
-        const rawRouteKey = req.route?.path || req.path;
+        const rawRouteKey = `${req.baseUrl || ''}${req.route?.path || req.path || ''}`;
         const routeKey = String(rawRouteKey).replace(/[^a-zA-Z0-9_\-/]/g, '_');
 
         if (userId) {

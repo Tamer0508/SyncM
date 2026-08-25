@@ -90,7 +90,9 @@ const createSession = asyncHandler(async (req, res) => {
   const userId = req.userId;
   if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
-  const { name, friendId } = createSessionSchema.parse(req.body);
+  const { name: rawName, friendId } = createSessionSchema.parse(req.body);
+  // Session.name — NOT NULL, а схема разрешает создание без названия.
+  const name = rawName || t(req, 'untitledSession');
 
   if (userId === friendId) {
     return res.status(400).json({ error: t(req, 'cannotSessionWithSelf') });

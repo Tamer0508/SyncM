@@ -11,6 +11,7 @@ const { withLock } = require('../infrastructure/lock');
 const { addPlaylistSyncJob } = require('../infrastructure/queue');
 const { backfillArtwork } = require('../infrastructure/spotify/artwork');
 const asyncHandler = require('../utils/asyncHandler');
+const { resolveOwnedUploadPath } = require('../utils/uploads');
 const logger = require('../infrastructure/logger');
 
 const getUserId = (req) => req.userId || req.session?.userId || null;
@@ -43,10 +44,11 @@ const updatePlaylistSchema = z
     message: 'Нечего менять',
   });
 
+// LikedTrack.trackName и .artistName — NOT NULL, см. комментарий у logPlaySchema.
 const toggleLikeSchema = z.object({
   spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
-  trackName: z.string().nullable().optional(),
-  artistName: z.string().nullable().optional(),
+  trackName: z.string().nullable().optional().transform((v) => v ?? ''),
+  artistName: z.string().nullable().optional().transform((v) => v ?? ''),
   imageUrl: httpUrlSchema.nullable().optional(),
 });
 
@@ -89,8 +91,8 @@ const duplicateSchema = z.object({
 
 const logPlaySchema = z.object({
   spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
-  trackName: z.string().nullable().optional(),
-  artistName: z.string().nullable().optional(),
+  trackName: z.string().nullable().optional().transform((v) => v ?? ''),
+  artistName: z.string().nullable().optional().transform((v) => v ?? ''),
   imageUrl: httpUrlSchema.nullable().optional(),
 });
 
@@ -188,7 +190,7 @@ const updatePlaylist = asyncHandler(async (req, res) => {
   });
 
   if ('imageUrl' in patch && patch.imageUrl !== previousImage) {
-    await safeDeleteCover(previousImage);
+    await safeDeleteCover(previousImage, null, userId);
   }
 
   await incrementVersion(`db:user-playlists-db:${userId}`);
@@ -237,7 +239,10 @@ const importPlaylist = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
-  const { spotifyPlaylistId, name, description, imageUrl } = importPlaylistSchema.parse(req.body);
+  const { spotifyPlaylistId, name: rawName, description, imageUrl } =
+      importPlaylistSchema.parse(req.body);
+  // Playlist.name — NOT NULL, а схема разрешает импорт без названия.
+  const name = rawName || t(req, 'untitledPlaylist');
 
   const playlist = await withLock(`playlist-import:${userId}:${spotifyPlaylistId}`, 5000, async () => {
     const existing = await prisma.playlist.findFirst({
@@ -332,7 +337,7 @@ const deletePlaylist = asyncHandler(async (req, res) => {
   if (!playlist.isCustom) return res.status(400).json({ error: t(req, 'playlistImported') });
 
   await prisma.playlist.delete({ where: { id: playlistId } });
-  await safeDeleteCover(playlist.imageUrl);
+  await safeDeleteCover(playlist.imageUrl, null, userId);
   await invalidatePlaylistTracks(userId, playlistId);
 
   res.json({ message: 'Плейлист удалён' });
@@ -573,18 +578,16 @@ const coverUpload = multer({
   },
 }).single('cover');
 
-async function safeDeleteCover(coverUrl, currentFilename) {
+async function safeDeleteCover(coverUrl, currentFilename, ownerId) {
   if (!coverUrl) return;
   try {
-    const parsed = new URL(coverUrl);
-    if (!parsed.pathname.startsWith('/uploads/covers/')) return;
-
-    const name = path.basename(parsed.pathname);
-    if (!name || name === currentFilename) return;
-
-    const resolved = path.resolve(COVERS_DIR, name);
-    if (resolved !== path.join(COVERS_DIR, name)) return;
-    if (!resolved.startsWith(COVERS_DIR + path.sep)) return;
+    const resolved = resolveOwnedUploadPath(coverUrl, {
+      dir: COVERS_DIR,
+      pathPrefix: '/uploads/covers/',
+      ownerId,
+      skipFileName: currentFilename,
+    });
+    if (!resolved) return;
 
     await fsp.unlink(resolved);
   } catch (err) {
@@ -630,7 +633,7 @@ const uploadCover = (req, res) => {
         include: { _count: { select: { playlistTracks: true } } },
       });
 
-      await safeDeleteCover(playlist.imageUrl, req.file.filename);
+      await safeDeleteCover(playlist.imageUrl, req.file.filename, userId);
       await incrementVersion(`db:user-playlists-db:${userId}`);
 
       res.json(serializePlaylist(updated));
@@ -657,7 +660,7 @@ const deleteCover = asyncHandler(async (req, res) => {
     include: { _count: { select: { playlistTracks: true } } },
   });
 
-  await safeDeleteCover(playlist.imageUrl);
+  await safeDeleteCover(playlist.imageUrl, null, userId);
   await incrementVersion(`db:user-playlists-db:${userId}`);
 
   res.json(serializePlaylist(updated));

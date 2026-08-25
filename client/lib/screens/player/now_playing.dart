@@ -818,8 +818,21 @@ class _Controls extends StatelessWidget {
   final VoidCallback onShuffle;
   final VoidCallback onRepeat;
 
+  static const double _tightControlsWidth = 340;
+
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => _buildRow(
+        context,
+        playPadding: constraints.maxWidth >= _tightControlsWidth
+            ? AppSpacing.md
+            : AppSpacing.sm,
+      ),
+    );
+  }
+
+  Widget _buildRow(BuildContext context, {required double playPadding}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
@@ -852,7 +865,7 @@ class _Controls extends StatelessWidget {
           child: IconButton(
             onPressed: onToggle,
             iconSize: 44,
-            padding: const EdgeInsets.all(AppSpacing.md),
+            padding: EdgeInsets.all(playPadding),
             tooltip: isPlaying ? L.of(context).playerPause : L.of(context).playerPlay,
             icon: AnimatedSwitcher(
               duration: AppMotion.short,

@@ -201,6 +201,14 @@ class ArtworkPagerState extends State<ArtworkPager>
     } else if (target == -1) {
       widget.onPrevious();
     }
+
+    if (target == 0) return;
+
+    _settleGeneration++;
+    _settleTarget = 0;
+    _controller.stop();
+    _controller.value = 0;
+    _publishProgress();
   }
 
   bool animateTo(int direction) {

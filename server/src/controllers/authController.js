@@ -29,6 +29,7 @@ const { getIo } = require('../socket');
 const logger = require('../infrastructure/logger');
 const asyncHandler = require('../utils/asyncHandler');
 const { generateUniquePublicId } = require('../utils/publicId');
+const { resolveOwnedUploadPath } = require('../utils/uploads');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -1141,7 +1142,7 @@ const uploadAvatar = (req, res) => {
         },
       });
 
-      await safeDeleteOldAvatar(oldUser?.customAvatarUrl, req.file.filename);
+      await safeDeleteOldAvatar(oldUser?.customAvatarUrl, req.file.filename, userId);
 
       await invalidateUserCaches(userId);
 
@@ -1160,15 +1161,16 @@ const uploadAvatar = (req, res) => {
   });
 };
 
-async function safeDeleteOldAvatar(oldAvatarUrl, currentFilename) {
+async function safeDeleteOldAvatar(oldAvatarUrl, currentFilename, ownerId) {
   if (!oldAvatarUrl) return;
   try {
-    const oldName = path.basename(new URL(oldAvatarUrl).pathname);
-    if (!oldName || oldName === currentFilename) return;
-
-    const resolved = path.resolve(AVATARS_DIR, oldName);
-    if (resolved !== path.join(AVATARS_DIR, oldName)) return;
-    if (!resolved.startsWith(AVATARS_DIR + path.sep)) return;
+    const resolved = resolveOwnedUploadPath(oldAvatarUrl, {
+      dir: AVATARS_DIR,
+      pathPrefix: '/uploads/avatars/',
+      ownerId,
+      skipFileName: currentFilename,
+    });
+    if (!resolved) return;
 
     await fsp.unlink(resolved);
   } catch (err) {
@@ -1211,14 +1213,45 @@ const deleteAccount = asyncHandler(async (req, res) => {
 
   if (user.customAvatarUrl) {
     try {
-      const fileName = path.basename(user.customAvatarUrl);
-      const resolved = path.resolve(AVATARS_DIR, fileName);
-      if (resolved.startsWith(AVATARS_DIR)) {
+      // Тот же расчёт, что и при смене аватара: удаление своего аккаунта не
+      // должно уносить с собой чужой файл, на который был подставлен URL.
+      const resolved = resolveOwnedUploadPath(user.customAvatarUrl, {
+        dir: AVATARS_DIR,
+        pathPrefix: '/uploads/avatars/',
+        ownerId: userId,
+      });
+      if (resolved) {
         await fs.promises.unlink(resolved).catch(() => {});
       }
     } catch (err) {
       logger.warn({ err, userId }, 'Не удалось удалить файл аватара');
     }
+  }
+
+  const friendships = await prisma.friendship.findMany({
+    where: {
+      status: 'accepted',
+      OR: [{ senderId: userId }, { receiverId: userId }],
+    },
+    select: { senderId: true, receiverId: true },
+  });
+
+  const formerFriendIds = [
+    ...new Set(
+      friendships
+        .map((f) => (f.senderId === userId ? f.receiverId : f.senderId))
+        .filter((id) => id && id !== userId)
+    ),
+  ];
+
+  if (formerFriendIds.length > 0) {
+    await prisma.user.updateMany({
+      where: { id: { in: formerFriendIds }, friendsCount: { gt: 0 } },
+      data: { friendsCount: { decrement: 1 } },
+    });
+    await Promise.all(
+      formerFriendIds.map((id) => incrementVersion(`db:friends-list:${id}`))
+    );
   }
 
   await prisma.user.delete({ where: { id: userId } });
@@ -1236,7 +1269,9 @@ const deleteAccount = asyncHandler(async (req, res) => {
 
 const getPlayHistory = asyncHandler(async (req, res) => {
   const userId = req.userId;
-  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const rawLimit = Number.parseInt(req.query.limit, 10);
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
 
   const rows = await prisma.playHistory.findMany({
     where: { userId },

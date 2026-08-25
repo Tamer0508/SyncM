@@ -30,11 +30,9 @@ Future<Map<String, String?>?> runOAuthLoopback({
   await stopOAuthLoopback();
 
   final completer = Completer<Map<String, String?>?>();
-  final server = await HttpServer.bind(
-    InternetAddress.loopbackIPv4,
-    port,
-    shared: true,
-  );
+  // Порт занимается монопольно: с shared сюда мог встать посторонний
+  // слушатель и получать часть редиректов вместе с токеном входа.
+  final server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
   _server = server;
 
   StreamSubscription<HttpRequest>? subscription;
@@ -46,9 +44,32 @@ Future<Map<String, String?>?> runOAuthLoopback({
     if (!completer.isCompleted) completer.complete(result);
   }
 
+  String normalizePath(String value) =>
+      value.length > 1 && value.endsWith('/')
+          ? value.substring(0, value.length - 1)
+          : value;
+
+  final expectedPath = normalizePath(path);
+
   subscription = server.listen((request) async {
     final uri = request.requestedUri;
     final response = request.response;
+
+    final token = uri.queryParameters['token'];
+    final cookie = uri.queryParameters['cookie'];
+    final hasCredentials =
+        (token != null && token.isNotEmpty) || (cookie != null && cookie.isNotEmpty);
+
+    if (normalizePath(uri.path) != expectedPath || !hasCredentials) {
+      response.statusCode = HttpStatus.notFound;
+      try {
+        await response.close();
+      } catch (err) {
+        debugPrint('Не удалось ответить на посторонний запрос: $err');
+      }
+      return;
+    }
+
     response.headers.set('Content-Type', 'text/html; charset=utf-8');
     response.write(responseHtml);
     try {
@@ -57,10 +78,7 @@ Future<Map<String, String?>?> runOAuthLoopback({
       debugPrint('Не удалось ответить на OAuth-редирект: $err');
     }
 
-    await finish({
-      'token': uri.queryParameters['token'],
-      'cookie': uri.queryParameters['cookie'],
-    });
+    await finish({'token': token, 'cookie': cookie});
   }, onError: (Object err) {
     debugPrint('Ошибка локального сервера авторизации: $err');
     finish(null);

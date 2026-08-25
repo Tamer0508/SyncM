@@ -70,7 +70,7 @@ async function refreshAccessToken(spotifyUser) {
     logger.info({ spotifyUserId: spotifyUser.id }, 'Refresh token already in progress, waiting');
     await new Promise((resolve) => setTimeout(resolve, 150));
     const fresh = await prisma.spotifyUser.findUnique({ where: { id: spotifyUser.id } });
-    if (fresh?.accessToken) {
+    if (fresh?.accessToken && fresh.accessToken !== spotifyUser.accessToken) {
       try {
         const newToken = await getAccessToken(fresh);
         if (newToken) return newToken;

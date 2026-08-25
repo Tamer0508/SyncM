@@ -28,17 +28,36 @@ Future<void> showAddToPlaylistSheet(
   );
 }
 
-class _AddToPlaylistBody extends StatelessWidget {
+class _AddToPlaylistBody extends StatefulWidget {
   const _AddToPlaylistBody({required this.track});
 
   final Map<String, dynamic> track;
+
+  @override
+  State<_AddToPlaylistBody> createState() => _AddToPlaylistBodyState();
+}
+
+class _AddToPlaylistBodyState extends State<_AddToPlaylistBody> {
+  bool _submitting = false;
+
+  Map<String, dynamic> get track => widget.track;
 
   Future<void> _addTo(
     BuildContext context,
     Map<String, dynamic> playlist,
   ) async {
+    if (_submitting) return;
+    _submitting = true;
+
     final playlists = context.read<PlaylistsProvider>();
     final navigator = Navigator.of(context);
+    final sheetRoute = ModalRoute.of(context);
+    final l = L.of(context);
+    final hostContext = navigator.context;
+
+    void closeSheet() {
+      if (sheetRoute?.isCurrent ?? false) navigator.pop();
+    }
 
     try {
       final result = await playlists.addTracks(playlist.playlistId, [
@@ -51,18 +70,21 @@ class _AddToPlaylistBody extends StatelessWidget {
         }
       ]);
 
-      navigator.pop();
-      if (!context.mounted) return;
+      closeSheet();
 
-      showSuccess(
-        context,
-        result.added > 0
-            ? L.of(context).addedToPlaylist(playlist.playlistName)
-            : L.of(context).alreadyInPlaylist(playlist.playlistName),
-      );
+      if (hostContext.mounted) {
+        showSuccess(
+          hostContext,
+          result.added > 0
+              ? l.addedToPlaylist(playlist.playlistName)
+              : l.alreadyInPlaylist(playlist.playlistName),
+        );
+      }
     } catch (err) {
-      navigator.pop();
-      if (context.mounted) showError(context, err);
+      closeSheet();
+      if (hostContext.mounted) showError(hostContext, err);
+    } finally {
+      if (mounted) _submitting = false;
     }
   }
 

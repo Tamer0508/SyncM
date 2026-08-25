@@ -102,6 +102,15 @@ const MESSAGES = {
     en: '{name} has turned session invitations off',
   },
 
+  untitledPlaylist: {
+    ru: 'Без названия',
+    en: 'Untitled',
+  },
+  untitledSession: {
+    ru: 'Сессия',
+    en: 'Session',
+  },
+
   // Плейлисты и треки
   playlistNotFound: {
     ru: 'Плейлист не найден',

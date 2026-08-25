@@ -41,20 +41,21 @@ Future<void> connectSpotify(BuildContext context) async {
         },
       );
 
-      if (result != null) {
-        final token = result['token'];
-        final cookie = result['cookie'];
-        if (token != null && token.isNotEmpty) {
-          auth.setCookie(token);
-        } else if (cookie != null && cookie.isNotEmpty) {
-          auth.setCookie(cookie);
-        }
-        await auth.fetchMe();
-        if (context.mounted) {
-          showAppNotification(context,
-              message: L.of(context).spotifyLinked,
-              type: NotificationType.success);
-        }
+      final token = result?['token'];
+      final cookie = result?['cookie'];
+      if (token != null && token.isNotEmpty) {
+        auth.setCookie(token);
+      } else if (cookie != null && cookie.isNotEmpty) {
+        auth.setCookie(cookie);
+      } else {
+        return;
+      }
+
+      await auth.fetchMe();
+      if (context.mounted) {
+        showAppNotification(context,
+            message: L.of(context).spotifyLinked,
+            type: NotificationType.success);
       }
     } catch (e) {
       final busy = e.toString().contains('bind') || e.toString().contains('port');
@@ -90,7 +91,12 @@ Future<void> connectSpotify(BuildContext context) async {
     final cookie = result['cookie'] as String?;
     if (token != null && token.isNotEmpty) {
       auth.setCookie(token);
-    } else if (cookie != null && cookie.isNotEmpty) auth.setCookie(cookie);
+    } else if (cookie != null && cookie.isNotEmpty) {
+      auth.setCookie(cookie);
+    } else {
+      return;
+    }
+
     await auth.fetchMe();
     if (context.mounted) {
       showAppNotification(context, message: L.of(context).spotifyLinked, type: NotificationType.success);

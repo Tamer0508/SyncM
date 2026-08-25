@@ -229,6 +229,30 @@ function forgetMembership(sessionId, userId) {
   for (const key of membershipCache.keys()) {
     if (key.startsWith(prefix)) membershipCache.delete(key);
   }
+  forgetSessionRuntime(sessionId);
+}
+
+function forgetSessionRuntime(sessionId) {
+  stopSyncInterval(sessionId);
+
+  const state = sessionStates.get(sessionId);
+  if (state?._readyTimeout) clearTimeout(state._readyTimeout);
+  sessionStates.delete(sessionId);
+  readyClients.delete(sessionId);
+
+  const presence = _presenceDebounce.get(sessionId);
+  if (presence) {
+    clearTimeout(presence);
+    _presenceDebounce.delete(sessionId);
+  }
+
+  const dropPrefix = `${sessionId}:`;
+  for (const [key, timer] of sessionDropTimers) {
+    if (key.startsWith(dropPrefix)) {
+      clearTimeout(timer);
+      sessionDropTimers.delete(key);
+    }
+  }
 }
 
 // Подчистка протухших записей: сами по себе они не удаляются, а карта
@@ -251,9 +275,16 @@ async function isSessionMember(sessionId, userId) {
       where: { sessionId_userId: { sessionId, userId } },
       select: { status: true },
     });
-    const allowed = Boolean(member && member.status === 'accepted');
-    if (allowed) membershipCache.set(key, Date.now() + MEMBERSHIP_TTL_MS);
-    return allowed;
+    if (!member || member.status !== 'accepted') return false;
+
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { isActive: true },
+    });
+    if (!session || !session.isActive) return false;
+
+    membershipCache.set(key, Date.now() + MEMBERSHIP_TTL_MS);
+    return true;
   } catch (err) {
     logger.error({ err, sessionId, userId }, 'isSessionMember error');
     return false;
@@ -366,6 +397,8 @@ const setupSocket = (io) => {
       if (!uid || !(await isSessionMember(sessionId, uid))) {
         return socket.emit('error', { message: 'Нет доступа к сессии' });
       }
+      const alreadyInSession = socket.data.sessionId === sessionId;
+
       socket.join(sessionId);
       logger.info({ sessionId, uid, room: io.sockets.adapter.rooms.get(sessionId)?.size }, 'JOIN');
       socket.data.sessionId = sessionId;
@@ -374,7 +407,9 @@ const setupSocket = (io) => {
         clearTimeout(sessionDropTimers.get(dropKey));
         sessionDropTimers.delete(dropKey);
       }
-      io.to(sessionId).emit('user_joined', { userId: uid });
+      if (!alreadyInSession) {
+        socket.to(sessionId).emit('user_joined', { userId: uid });
+      }
       broadcastSessionPresence(sessionId);
 
       const state = sessionStates.get(sessionId);
@@ -441,6 +476,9 @@ const setupSocket = (io) => {
       const uid = socket.data.userId;
       if (!uid || !(await isSessionMember(sessionId, uid))) return;
 
+      const prepared = sessionStates.get(sessionId);
+      if (!prepared || prepared.trackId !== trackId) return;
+
       const ready = readyClients.get(sessionId) || new Set();
       ready.add(socket.id);
       readyClients.set(sessionId, ready);
@@ -500,7 +538,16 @@ const setupSocket = (io) => {
         io.to(sessionId).emit('session_resume', { positionMs: currentPos });
 
       } else if (action === 'seek') {
-        startFromPosition(io, sessionId, state.trackId, seekPos || 0);
+        const target = seekPos || 0;
+
+        if (state.state === 'paused') {
+          state.positionMs = target;
+          state.serverTime = Date.now();
+          sessionStates.set(sessionId, state);
+          io.to(sessionId).emit('session_pause', { positionMs: target });
+        } else {
+          startFromPosition(io, sessionId, state.trackId, target);
+        }
 
       } else if (action === 'next') {
         const nextTrackId = seekPos; // используем поле как trackId
@@ -607,9 +654,13 @@ const setupSocket = (io) => {
       }
     });
 
-    on('leave_session', ({ sessionId }) => {
+    on('leave_session', async ({ sessionId }) => {
       const uid = socket.data.userId;
-      if (uid) forgetMembership(sessionId, uid);
+      if (!uid || !(await isSessionMember(sessionId, uid))) {
+        return socket.emit('error', { message: 'Нет доступа к сессии' });
+      }
+
+      forgetMembership(sessionId, uid);
       socket.leave(sessionId);
       io.to(sessionId).emit('user_left', { userId: uid });
       socket.data.sessionId = null;

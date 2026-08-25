@@ -47,12 +47,13 @@ module.exports = function idempotencyMiddleware(options = {}) {
       const log = req.log || logger;
 
       try {
-        const fingerprint = requestFingerprint(req);
+        const idempotencyKey = req.headers['idempotency-key'];
 
-        let idempotencyKey = req.headers['idempotency-key'];
         if (!idempotencyKey || typeof idempotencyKey !== 'string') {
-          idempotencyKey = fingerprint;
+          return next();
         }
+
+        const fingerprint = requestFingerprint(req);
 
         const storageKey = `idem:${idempotencyKey}:${fingerprint}`;
         lockKey = `idem-lock:${idempotencyKey}:${fingerprint}`;

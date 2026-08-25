@@ -1220,6 +1220,10 @@ class PlaybackProvider extends ChangeNotifier {
     _lastRequestedUri = uri;
     _playlistEnded = false;
 
+    _positionMs = positionMs ?? 0;
+    _positionAnchorAt = DateTime.now();
+    _durationMs = (track['durationMs'] as num?)?.toInt() ?? 0;
+
     if (!fromSession) _sessionMode = false;
 
     if (!_isConnected && !_isWindows && !_isWeb) {
@@ -1479,7 +1483,15 @@ class PlaybackProvider extends ChangeNotifier {
 
   Future<void> _updateFromPlayerState(dynamic state) async {
     if (state == null) return;
+
+    final String? incomingUri = state['item']?['uri'] as String?;
+    if (_pendingTrackUri != null && incomingUri != null) {
+      if (incomingUri != _pendingTrackUri) return;
+      _markPendingTrack(null);
+    }
+
     final String? previousUri = _currentTrack?['uri'] as String?;
+    final int? previousIndex = _currentTrack?['index'] as int?;
     final int previousPositionMs = _positionMs;
     final int previousDurationMs = _durationMs;
     _isPlaying = state['is_playing'] ?? false;
@@ -1494,6 +1506,8 @@ class PlaybackProvider extends ChangeNotifier {
         'artist': (track['artists'] as List?)?.map((a) => a['name']).join(', ') ?? '',
         'imageUrl': newImageUrl,
         'uri': track['uri'],
+        if (track['uri'] == previousUri && previousIndex != null)
+          'index': previousIndex,
       };
       _currentImageBytes = null;
 
@@ -1503,7 +1517,11 @@ class PlaybackProvider extends ChangeNotifier {
 
       final uri = _currentTrack?['uri'] as String?;
       if (uri != null && uri != previousUri) {
-        _autoAdvanceGuardUri = null;
+        // Сторож снимается только при переходе на действительно новый трек.
+        // Если состояние откатилось на тот, с которого мы уже ушли (Web API
+        // отвечает с задержкой), снятие сторожа заново разрешало автопереход,
+        // и очередь прокручивалась по одному и тому же концу трека.
+        if (uri != _autoAdvanceGuardUri) _autoAdvanceGuardUri = null;
         try {
           await _keepPlaybackInsideQueue(
             uri,
@@ -1780,7 +1798,8 @@ class PlaybackProvider extends ChangeNotifier {
 
     _playlistEnded = false;
     _lastQueuePosition = index;
-    _autoAdvanceGuardUri = null;
+
+    _autoAdvanceGuardUri = _currentTrack?['uri'] as String? ?? _autoAdvanceGuardUri;
 
     final generation = ++_autoCorrectionGeneration;
     _suppressAutoCorrection = true;

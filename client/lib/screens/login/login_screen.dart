@@ -21,10 +21,6 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-const String googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
-Future<void>? _googleInitFuture;
-bool _googleInitDone = false;
-
 class _LoginScreenState extends State<LoginScreen> {
   bool _handledAuth = false;
   StreamSubscription? _googleAuthSubscription;
@@ -61,22 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _initializeGoogleSignIn() async {
-    if (_googleInitDone) return;
-    _googleInitFuture ??= GoogleSignIn.instance.initialize(
-      clientId: kIsWeb ? googleClientId : null,
-    );
-    try {
-      await _googleInitFuture;
-      _googleInitDone = true;
-    } catch (e) {
-      if (e.toString().contains('init() has already been called')) {
-        _googleInitDone = true;
-        return;
-      }
-      rethrow;
-    }
-  }
+  Future<void> _initializeGoogleSignIn() => ensureGoogleSignInInitialized();
 
   Future<void> _onGoogleSignInSuccess(GoogleSignInAccount googleUser) async {
     if (_signingIn) return;
