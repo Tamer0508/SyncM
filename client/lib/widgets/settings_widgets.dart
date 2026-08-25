@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+
+import '../providers/appearance_provider.dart';
 import '../theme.dart';
 import 'screen_chrome.dart';
 
@@ -160,15 +163,55 @@ class SettingsSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SwitchListTile(
-      value: value,
-      onChanged: onChanged,
-      title: Text(title),
-      subtitle: subtitle == null ? null : Text(subtitle!),
-      secondary: icon == null ? null : Icon(icon),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.xs,
+    return RepaintBoundary(
+      child: SwitchListTile(
+        value: value,
+        onChanged: onChanged,
+        title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle!),
+        secondary: icon == null ? null : Icon(icon),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.xs,
+        ),
+      ),
+    );
+  }
+}
+
+class SettingsFlagSwitch extends StatelessWidget {
+  const SettingsFlagSwitch({
+    super.key,
+    required this.flagKey,
+    required this.title,
+    this.subtitle,
+    this.icon,
+    this.defaultValue = false,
+  });
+
+  /// Ключ флага в [StoreKeys].
+  final String flagKey;
+
+  final String title;
+  final String? subtitle;
+  final IconData? icon;
+  final bool defaultValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final appearance = context.read<AppearanceProvider>();
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: appearance.flagListenable(
+        flagKey,
+        defaultValue: defaultValue,
+      ),
+      builder: (context, value, _) => SettingsSwitch(
+        icon: icon,
+        title: title,
+        subtitle: subtitle,
+        value: value,
+        onChanged: (next) => appearance.setFlag(flagKey, next),
       ),
     );
   }

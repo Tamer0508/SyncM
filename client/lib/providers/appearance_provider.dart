@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -80,15 +81,38 @@ class AppearanceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  final Map<String, bool> _flags = {};
+  final Map<String, ValueNotifier<bool>> _flags = {};
 
+  /// Текущее значение флага.
   bool flag(String key, {bool defaultValue = false}) =>
-      _flags[key] ?? LocalStore.readBool(key, defaultValue: defaultValue);
+      _flagOf(key, defaultValue).value;
+
+  ValueListenable<bool> flagListenable(
+    String key, {
+    bool defaultValue = false,
+  }) =>
+      _flagOf(key, defaultValue);
+
+  ValueNotifier<bool> _flagOf(String key, bool defaultValue) =>
+      _flags.putIfAbsent(
+        key,
+        () => ValueNotifier(
+          LocalStore.readBool(key, defaultValue: defaultValue),
+        ),
+      );
 
   Future<void> setFlag(String key, bool value) async {
-    _flags[key] = value;
-    notifyListeners();
+    // defaultValue здесь не важен: значение задаётся явно следующей строкой.
+    _flagOf(key, value).value = value;
     await LocalStore.saveBool(key, value);
+  }
+
+  @override
+  void dispose() {
+    for (final notifier in _flags.values) {
+      notifier.dispose();
+    }
+    super.dispose();
   }
 
   void _restore() {

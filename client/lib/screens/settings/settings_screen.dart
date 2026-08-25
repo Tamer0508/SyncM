@@ -576,7 +576,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
   }
 
   List<Widget> _sessionsSection(BuildContext context) {
-    final appearance = context.watch<AppearanceProvider>();
     final sessions = context.watch<SessionProvider>();
 
     final active = sessions.sessions.where((s) => s.isActive).toList();
@@ -631,26 +630,26 @@ class _SettingsBodyState extends State<_SettingsBody> {
       SettingsGroup(
         title: L.of(context).sessionsDuringGroup,
         children: [
-          SettingsSwitch(
+          SettingsFlagSwitch(
             icon: Icons.open_in_full_rounded,
             title: L.of(context).sessionsAutoOpenPlayer,
             subtitle: L.of(context).sessionsAutoOpenPlayerHint,
-            value: appearance.flag(StoreKeys.autoOpenPlayer, defaultValue: true),
-            onChanged: (v) => appearance.setFlag(StoreKeys.autoOpenPlayer, v),
+            flagKey: StoreKeys.autoOpenPlayer,
+            defaultValue: true,
           ),
-          SettingsSwitch(
+          SettingsFlagSwitch(
             icon: Icons.screen_lock_portrait_outlined,
             title: L.of(context).sessionsKeepScreenOn,
             subtitle: L.of(context).sessionsKeepScreenOnHint,
-            value: appearance.flag(StoreKeys.keepScreenOn, defaultValue: true),
-            onChanged: (v) => appearance.setFlag(StoreKeys.keepScreenOn, v),
+            flagKey: StoreKeys.keepScreenOn,
+            defaultValue: true,
           ),
-          SettingsSwitch(
+          SettingsFlagSwitch(
             icon: Icons.help_outline_rounded,
             title: L.of(context).sessionsConfirmEnd,
             subtitle: L.of(context).sessionsConfirmEndHint,
-            value: appearance.flag(StoreKeys.confirmEndSession, defaultValue: true),
-            onChanged: (v) => appearance.setFlag(StoreKeys.confirmEndSession, v),
+            flagKey: StoreKeys.confirmEndSession,
+            defaultValue: true,
           ),
         ],
       ),
@@ -854,18 +853,16 @@ class _SettingsBodyState extends State<_SettingsBody> {
       );
 
   List<Widget> _dataSection(BuildContext context) {
-    final appearance = context.watch<AppearanceProvider>();
-
     return [
       SettingsGroup(
         title: L.of(context).dataOnThisDevice,
         children: [
-          SettingsSwitch(
+          SettingsFlagSwitch(
             icon: Icons.bolt_outlined,
             title: L.of(context).dataPrefetch,
             subtitle: L.of(context).dataPrefetchHint,
-            value: appearance.flag(StoreKeys.prefetchOnStart, defaultValue: true),
-            onChanged: (v) => appearance.setFlag(StoreKeys.prefetchOnStart, v),
+            flagKey: StoreKeys.prefetchOnStart,
+            defaultValue: true,
           ),
           SettingsAction(
             icon: Icons.cleaning_services_outlined,
