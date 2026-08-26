@@ -1,27 +1,23 @@
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 const _authTokenKey = 'syncm_auth_token';
 
 // Web-версия через localStorage. Сигнатуры async — чтобы совпадали с
 // нативной реализацией (условный импорт требует идентичных сигнатур).
 
-Future<String?> readAuthToken() async {
-  final token = html.window.localStorage[_authTokenKey];
-  if (token == null || token.isEmpty) return null;
-  return token;
-}
+Future<String?> readAuthToken() async => readAuthTokenSync();
 
 Future<void> saveAuthToken(String token) async {
-  html.window.localStorage[_authTokenKey] = token;
+  web.window.localStorage.setItem(_authTokenKey, token);
 }
 
 Future<void> clearAuthToken() async {
-  html.window.localStorage.remove(_authTokenKey);
+  web.window.localStorage.removeItem(_authTokenKey);
 }
+
 /// Синхронное чтение токена — см. комментарий в нативной реализации.
 String? readAuthTokenSync() {
-  final token = html.window.localStorage[_authTokenKey];
+  final token = web.window.localStorage.getItem(_authTokenKey);
   if (token == null || token.isEmpty) return null;
   return token;
 }
