@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import '../../config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
-import '../../widgets/screen_chrome.dart';
+import '../../widgets/settings_widgets.dart';
 import 'legal_document_screen.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {
-  PrivacyPolicyScreen({
+  const PrivacyPolicyScreen({
     super.key,
     this.embedded = false,
     this.onBack,
@@ -59,156 +59,105 @@ class PrivacyPolicyScreen extends StatelessWidget {
     final colors = context.colors;
     final texts = context.texts;
 
-    return ScreenChrome(
+    return SettingsSectionScreen(
+      title: L.of(context).aboutDataPrivacy,
       embedded: embedded,
-      header: ScreenHeader(
-        title: L.of(context).aboutDataPrivacy,
-        onBack: onBack ?? (embedded ? null : () => Navigator.of(context).pop()),
-      ),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          AppSpacing.sm,
-          AppSpacing.md,
-          AppSpacing.xl,
+      onBack: onBack,
+      children: [
+        SettingsGroup(
+          title: L.of(context).privacyDocStoredTitle,
+          footer: L.of(context).privacyDocStoredHint,
+          children: [
+            for (final item in _stored(context))
+              SettingsInfo(
+                icon: item.icon,
+                title: item.title,
+                subtitle: item.detail,
+              ),
+          ],
         ),
-        children: [
-          // Ширину ограничиваем: на широком экране строка в полторы тысячи
-          // точек не читается.
-          Center(
-            child: ConstrainedBox(
-              constraints:
-                  const BoxConstraints(maxWidth: AppSizes.readableWidth),
+
+        SettingsGroup(
+          title: L.of(context).privacyDocNotStoredTitle,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: SettingsMetrics.rowPaddingH,
+                vertical: AppSpacing.md,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    L.of(context).privacyDocStoredTitle,
-                    style: texts.titleMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    L.of(context).privacyDocStoredHint,
-                    style: texts.bodySmall
-                        ?.copyWith(color: colors.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  for (final item in _stored(context)) ...[
-                    _DataRow(
-                      icon: item.icon,
-                      title: item.title,
-                      detail: item.detail,
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                  ],
-                  const SizedBox(height: AppSpacing.lg),
-                  Text(L.of(context).privacyDocNotStoredTitle, style: texts.titleMedium),
-                  const SizedBox(height: AppSpacing.sm),
-                  for (final line in _notStored(context)) ...[
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Icon(Icons.remove_rounded,
-                              size: 14, color: colors.onSurfaceVariant),
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            line,
-                            style: texts.bodyMedium
-                                ?.copyWith(color: colors.onSurfaceVariant),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                  ],
-                  const SizedBox(height: AppSpacing.lg),
-                  Text(L.of(context).privacyDocHowToDeleteTitle, style: texts.titleMedium),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    L.of(context).privacyDocHowToDeleteText,
-                    style: texts.bodyMedium
-                        ?.copyWith(color: colors.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  Text(L.of(context).privacyDocFullTitle, style: texts.titleMedium),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    L.of(context).privacyDocFullHint,
-                    style: texts.bodyMedium
-                        ?.copyWith(color: colors.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  OutlinedButton.icon(
-                    onPressed: onOpenFullText ??
-                        () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => LegalDocumentScreen(
-                                  title: L.of(context).aboutPrivacyPolicy,
-                                  assetPath: Config.privacyPolicyAsset,
-                                  url: Config.privacyPolicyUrl,
-                                ),
-                              ),
+                  for (final line in _notStored(context))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Icon(
+                              Icons.remove_rounded,
+                              size: 14,
+                              color: colors.onSurfaceVariant,
                             ),
-                    icon: const Icon(Icons.article_outlined, size: 18),
-                    label: Text(L.of(context).aboutPrivacyPolicy),
-                  ),
+                          ),
+                          const SizedBox(width: AppSpacing.sm + 4),
+                          Expanded(
+                            child: Text(
+                              line,
+                              style: texts.bodyMedium
+                                  ?.copyWith(color: colors.onSurfaceVariant),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+          ],
+        ),
 
-class _DataRow extends StatelessWidget {
-  const _DataRow({
-    required this.icon,
-    required this.title,
-    required this.detail,
-  });
-
-  final IconData icon;
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final texts = context.texts;
-
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLow,
-        borderRadius: AppRadius.medium,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: colors.onSurfaceVariant),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: texts.titleSmall),
-                const SizedBox(height: 2),
-                Text(
-                  detail,
-                  style: texts.bodySmall
-                      ?.copyWith(color: colors.onSurfaceVariant, height: 1.45),
-                ),
-              ],
+        SettingsGroup(
+          title: L.of(context).privacyDocHowToDeleteTitle,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: SettingsMetrics.rowPaddingH,
+                vertical: AppSpacing.md,
+              ),
+              child: Text(
+                L.of(context).privacyDocHowToDeleteText,
+                style:
+                    texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+
+        SettingsGroup(
+          title: L.of(context).privacyDocFullTitle,
+          footer: L.of(context).privacyDocFullHint,
+          children: [
+            SettingsAction(
+              icon: Icons.article_outlined,
+              title: L.of(context).aboutPrivacyPolicy,
+              chevron: true,
+              onTap: onOpenFullText ??
+                  () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => LegalDocumentScreen(
+                            title: L.of(context).aboutPrivacyPolicy,
+                            assetPath: Config.privacyPolicyAsset,
+                            url: Config.privacyPolicyUrl,
+                          ),
+                        ),
+                      ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

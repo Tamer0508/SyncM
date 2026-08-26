@@ -25,6 +25,7 @@ class ScreenChrome extends StatelessWidget {
     required this.header,
     required this.child,
     this.embedded = false,
+    this.contentMaxWidth,
   });
 
   final ScreenHeader header;
@@ -32,9 +33,18 @@ class ScreenChrome extends StatelessWidget {
 
   final bool embedded;
 
+  final double? contentMaxWidth;
+
   @override
   Widget build(BuildContext context) {
-    final bar = _HeaderBar(header: header);
+    final Widget bar = contentMaxWidth == null
+        ? _HeaderBar(header: header)
+        : Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: contentMaxWidth!),
+              child: _HeaderBar(header: header),
+            ),
+          );
 
     if (embedded) {
       return Column(

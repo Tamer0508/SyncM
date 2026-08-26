@@ -159,7 +159,7 @@ void main() {
 
     Rect rectOf(String text) => tester.getRect(find.text(text));
 
-    final row = tester.getRect(find.byType(SwitchListTile).first);
+    final row = tester.getRect(find.byType(SettingsRow).first);
     final title = rectOf('Не гасить экран');
     final neighbour = rectOf('Спрашивать перед завершением');
     final group = tester.getSize(find.byType(SettingsGroup));
@@ -171,14 +171,14 @@ void main() {
     for (var i = 0; i < 8; i++) {
       await tester.pump(const Duration(milliseconds: 25));
 
-      expect(tester.getRect(find.byType(SwitchListTile).first), row);
+      expect(tester.getRect(find.byType(SettingsRow).first), row);
       expect(rectOf('Не гасить экран'), title);
       expect(rectOf('Спрашивать перед завершением'), neighbour);
       expect(tester.getSize(find.byType(SettingsGroup)), group);
     }
 
     await tester.pumpAndSettle();
-    expect(tester.getRect(find.byType(SwitchListTile).first), row);
+    expect(tester.getRect(find.byType(SettingsRow).first), row);
     expect(tester.getSize(find.byType(SettingsGroup)), group);
   });
 

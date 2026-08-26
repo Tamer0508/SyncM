@@ -1900,6 +1900,15 @@ class LRu extends L {
   String get sessionYouAreHost => 'Вы теперь ведущий сессии';
 
   @override
+  String get settingsGroupApp => 'Приложение';
+
+  @override
+  String get settingsGroupData => 'Данные и приватность';
+
+  @override
+  String get settingsGroupProfile => 'Профиль и доступ';
+
+  @override
   String get settingsTitle => 'Настройки';
 
   @override

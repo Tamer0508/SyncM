@@ -1882,6 +1882,15 @@ class LEn extends L {
   String get sessionYouAreHost => 'You\'re the session host now';
 
   @override
+  String get settingsGroupApp => 'App';
+
+  @override
+  String get settingsGroupData => 'Data & privacy';
+
+  @override
+  String get settingsGroupProfile => 'Profile & access';
+
+  @override
   String get settingsTitle => 'Settings';
 
   @override

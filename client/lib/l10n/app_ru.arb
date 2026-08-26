@@ -933,6 +933,9 @@
   "sessionsWhoCanInvite": "Кто может звать",
   "sessionWaitingForSecond": "Ждём второго",
   "sessionYouAreHost": "Вы теперь ведущий сессии",
+  "settingsGroupApp": "Приложение",
+  "settingsGroupData": "Данные и приватность",
+  "settingsGroupProfile": "Профиль и доступ",
   "settingsTitle": "Настройки",
   "@sizeBytes": {
     "placeholders": {

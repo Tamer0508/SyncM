@@ -36,6 +36,8 @@ import '../../utils/error_utils.dart';
 import '../../utils/file_save.dart';
 import '../../utils/notifications.dart';
 import '../../widgets/confirm_dialog.dart';
+import '../../widgets/pressable.dart';
+import '../../widgets/sync_mark.dart';
 import '../../widgets/tappable_avatar.dart';
 import 'avatar_crop_screen.dart';
 
@@ -60,6 +62,7 @@ class SettingsScreen extends StatelessWidget {
 
     return ScreenChrome(
       embedded: embedded,
+      contentMaxWidth: SettingsMetrics.contentMaxWidth,
       header: ScreenHeader(
         title: L.of(context).settingsTitle,
         onBack: onBack ?? (embedded ? null : () => Navigator.of(context).pop()),
@@ -210,109 +213,181 @@ class _SettingsBodyState extends State<_SettingsBody> {
 
     final childScreen = _openChildScreen;
     if (childScreen != null) {
-      return childScreen(
+      return _swap(
         context,
-        () => setState(() => _openChildScreen = null),
+        const ValueKey('child'),
+        childScreen(context, () => setState(() => _openChildScreen = null)),
       );
     }
 
     if (_openSectionBuilder != null) {
-      return SettingsSectionScreen(
-        embedded: true,
-        title: _openSectionTitle ?? L.of(context).settingsTitle,
-        onBack: () => setState(() {
-          _openSectionTitle = null;
-          _openSectionBuilder = null;
-        }),
-        children: _openSectionBuilder!(context),
+      final title = _openSectionTitle ?? L.of(context).settingsTitle;
+      return _swap(
+        context,
+        ValueKey('section:$title'),
+        SettingsSectionScreen(
+          embedded: true,
+          title: title,
+          onBack: () => setState(() {
+            _openSectionTitle = null;
+            _openSectionBuilder = null;
+          }),
+          children: _openSectionBuilder!(context),
+        ),
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.sm,
-        AppSpacing.md,
-        AppSpacing.xl,
-      ),
-      children: [
-        _AvatarBlock(
-          avatarUrl: user?.effectiveAvatarUrl,
-          displayName: user?.displayName ?? L.of(context).commonUser,
-          isUploading: _isUploading,
-          onEdit: _isUploading ? null : _pickAndUploadAvatar,
-        ),
-        const SizedBox(height: AppSpacing.lg),
-
-        SettingsSectionTile(
-          icon: Icons.person_outline_rounded,
-          title: L.of(context).sectionAccount,
-          summary: '${user?.displayName ?? L.of(context).commonName} • '
-              '${user?.spotifyConnected == true ? L.of(context).spotifyConnectedShort : L.of(context).spotifyNotConnectedShort}',
-          onTap: () => openSection(L.of(context).sectionAccount, _accountSection),
-        ),
-        SettingsSectionTile(
-          icon: Icons.palette_outlined,
-          title: L.of(context).sectionAppearance,
-          summary: themeName(),
-          onTap: () => openSection(L.of(context).sectionAppearance, _appearanceSection),
-        ),
-        SettingsSectionTile(
-          icon: Icons.play_circle_outline_rounded,
-          title: L.of(context).sectionPlayback,
-          summary: L.of(context).summaryPlayback,
-          onTap: () => openSection(L.of(context).sectionPlayback, _playbackSection),
-        ),
-        SettingsSectionTile(
-          icon: Icons.headphones_outlined,
-          title: L.of(context).sectionSessions,
-          summary: L.of(context).summarySessions,
-          onTap: () => openSection(L.of(context).sectionSessions, _sessionsSection),
-        ),
-        SettingsSectionTile(
-          icon: Icons.notifications_none_rounded,
-          title: L.of(context).sectionNotifications,
-          summary: _notificationsSummary(context),
-          onTap: () => openSection(L.of(context).sectionNotifications, _notificationsSection),
-        ),
-        SettingsSectionTile(
-          icon: Icons.lock_outline_rounded,
-          title: L.of(context).sectionPrivacy,
-          summary: _privacySummary(user),
-          onTap: () => openSection(L.of(context).sectionPrivacy, _privacySection),
-        ),
-        SettingsSectionTile(
-          icon: Icons.shield_outlined,
-          title: L.of(context).sectionSecurity,
-          summary: L.of(context).summarySecurity,
-          onTap: () => openSection(L.of(context).sectionSecurity, _securitySection),
-        ),
-        SettingsSectionTile(
-          icon: Icons.storage_outlined,
-          title: L.of(context).sectionData,
-          summary: L.of(context).summaryData,
-          onTap: () => openSection(L.of(context).sectionData, _dataSection),
-        ),
-        SettingsSectionTile(
-          icon: Icons.info_outline_rounded,
-          title: L.of(context).sectionAbout,
-          summary: L.of(context).summaryAbout,
-          onTap: () => openSection(L.of(context).sectionAbout, _aboutSection),
-        ),
-
-        const SizedBox(height: AppSpacing.lg),
-        Center(
-          child: OutlinedButton(
-            onPressed: () => _confirmLogout(context),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: context.colors.error,
-              side: BorderSide(color: context.colors.error.withValues(alpha: 0.4)),
-              minimumSize: const Size(200, 48),
-            ),
-            child: Text(L.of(context).commonSignOut),
+    return _swap(
+      context,
+      const ValueKey('root'),
+      SettingsScrollView(
+        children: [
+          _ProfileCard(
+            avatarUrl: user?.effectiveAvatarUrl,
+            displayName: user?.displayName ?? L.of(context).commonUser,
+            spotifyConnected: user?.spotifyConnected == true,
+            isUploading: _isUploading,
+            onEdit: _isUploading ? null : _pickAndUploadAvatar,
           ),
+          const SizedBox(height: AppSpacing.lg),
+
+          SettingsGroup(
+            title: L.of(context).settingsGroupProfile,
+            dividerIndent: SettingsMetrics.sectionDividerIndent,
+            children: [
+              SettingsSectionTile(
+                icon: Icons.person_outline_rounded,
+                title: L.of(context).sectionAccount,
+                summary: user?.spotifyConnected == true
+                    ? L.of(context).spotifyConnectedShort
+                    : L.of(context).spotifyNotConnectedShort,
+                onTap: () =>
+                    openSection(L.of(context).sectionAccount, _accountSection),
+              ),
+              SettingsSectionTile(
+                icon: Icons.shield_outlined,
+                title: L.of(context).sectionSecurity,
+                summary: L.of(context).summarySecurity,
+                onTap: () =>
+                    openSection(L.of(context).sectionSecurity, _securitySection),
+              ),
+            ],
+          ),
+
+          SettingsGroup(
+            title: L.of(context).settingsGroupApp,
+            dividerIndent: SettingsMetrics.sectionDividerIndent,
+            children: [
+              SettingsSectionTile(
+                icon: Icons.palette_outlined,
+                title: L.of(context).sectionAppearance,
+                summary: themeName(),
+                onTap: () => openSection(
+                    L.of(context).sectionAppearance, _appearanceSection),
+              ),
+              SettingsSectionTile(
+                icon: Icons.play_circle_outline_rounded,
+                title: L.of(context).sectionPlayback,
+                summary: L.of(context).summaryPlayback,
+                onTap: () =>
+                    openSection(L.of(context).sectionPlayback, _playbackSection),
+              ),
+              SettingsSectionTile(
+                icon: Icons.headphones_outlined,
+                title: L.of(context).sectionSessions,
+                summary: L.of(context).summarySessions,
+                onTap: () =>
+                    openSection(L.of(context).sectionSessions, _sessionsSection),
+              ),
+              SettingsSectionTile(
+                icon: Icons.notifications_none_rounded,
+                title: L.of(context).sectionNotifications,
+                summary: _notificationsSummary(context),
+                onTap: () => openSection(
+                    L.of(context).sectionNotifications, _notificationsSection),
+              ),
+            ],
+          ),
+
+          SettingsGroup(
+            title: L.of(context).settingsGroupData,
+            dividerIndent: SettingsMetrics.sectionDividerIndent,
+            children: [
+              SettingsSectionTile(
+                icon: Icons.lock_outline_rounded,
+                title: L.of(context).sectionPrivacy,
+                summary: _privacySummary(user),
+                onTap: () =>
+                    openSection(L.of(context).sectionPrivacy, _privacySection),
+              ),
+              SettingsSectionTile(
+                icon: Icons.storage_outlined,
+                title: L.of(context).sectionData,
+                summary: L.of(context).summaryData,
+                onTap: () =>
+                    openSection(L.of(context).sectionData, _dataSection),
+              ),
+            ],
+          ),
+
+          SettingsGroup(
+            dividerIndent: SettingsMetrics.sectionDividerIndent,
+            children: [
+              SettingsSectionTile(
+                icon: Icons.info_outline_rounded,
+                title: L.of(context).sectionAbout,
+                summary: L.of(context).summaryAbout,
+                onTap: () =>
+                    openSection(L.of(context).sectionAbout, _aboutSection),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: AppSpacing.sm),
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: () => _confirmLogout(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: context.colors.error,
+                side: BorderSide(
+                  color: context.colors.error.withValues(alpha: 0.4),
+                ),
+                minimumSize: const Size(200, AppSizes.buttonHeight),
+              ),
+              icon: const Icon(Icons.logout_rounded, size: 18),
+              label: Text(L.of(context).commonSignOut),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Смена содержимого настроек на широкой раскладке.
+  ///
+  /// Разделы там открываются внутри экрана, а не отдельным маршрутом, —
+  /// значит, штатного перехода между страницами нет, и раздел появлялся
+  /// рывком. Короткое проявление с едва заметным сдвигом даёт то же
+  /// ощущение направления, что и push на телефоне.
+  Widget _swap(BuildContext context, Key key, Widget child) {
+    final keyed = KeyedSubtree(key: key, child: child);
+    if (!context.isWideWindow || context.reduceMotion) return keyed;
+
+    return AnimatedSwitcher(
+      duration: AppMotion.medium,
+      switchInCurve: AppMotion.enter,
+      switchOutCurve: AppMotion.exit,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.015, 0),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
         ),
-      ],
+      ),
+      child: keyed,
     );
   }
 
@@ -351,26 +426,22 @@ class _SettingsBodyState extends State<_SettingsBody> {
             subtitle: (user?.displayName.isNotEmpty ?? false)
                 ? user!.displayName
                 : L.of(context).accountNameUnset,
-            trailing: Icon(Icons.edit_outlined,
-                size: 18, color: context.colors.onSurfaceVariant),
+            trailing: const Icon(Icons.edit_outlined),
             onTap: () => _editName(context),
           ),
           if (user?.email != null && user!.email!.isNotEmpty)
-            SettingsAction(
+            SettingsInfo(
               icon: Icons.alternate_email_rounded,
               title: L.of(context).accountEmail,
               subtitle: user.email!,
-              trailing: Icon(Icons.lock_outline_rounded,
-                  size: 18, color: context.colors.onSurfaceVariant),
-              onTap: _noop,
+              trailing: const Icon(Icons.lock_outline_rounded),
             ),
           if (user?.publicId != null)
             SettingsAction(
               icon: Icons.tag_rounded,
               title: L.of(context).accountPublicId,
               subtitle: _formatPublicId(user!.publicId!),
-              trailing: Icon(Icons.copy_rounded,
-                  size: 18, color: context.colors.onSurfaceVariant),
+              trailing: const Icon(Icons.copy_rounded),
               onTap: () async {
                 await Clipboard.setData(ClipboardData(text: user.publicId!));
                 if (!mounted) return;
@@ -389,44 +460,29 @@ class _SettingsBodyState extends State<_SettingsBody> {
   List<Widget> _appearanceSection(BuildContext context) {
     final appearance = context.watch<AppearanceProvider>();
 
+    // Плитки здесь сами носят заголовок с иконкой — ровно как строки, — и
+    // подпись над карточкой только повторяла бы его.
     return [
       SettingsGroup(
-        title: L.of(context).appearanceTheme,
-        children: [_ThemeSelectorTile()],
+        children: const [_ThemeModePicker(), _AccentPicker()],
       ),
       SettingsGroup(
-        title: L.of(context).appearanceAccent,
-        children: [_AccentPicker(current: appearance.accent)],
-      ),
-      SettingsGroup(
-        title: L.of(context).appearanceTextSize,
-        children: [_TextScaleTile(scale: appearance.textScale)],
-      ),
-      SettingsGroup(
-        title: L.of(context).appearanceLanguage,
-        children: [const _LanguageTile()],
-      ),
-      SettingsGroup(
-        title: L.of(context).appearanceStartTab,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  L.of(context).appearanceStartTabHint,
-                  style: context.texts.bodySmall
-                      ?.copyWith(color: context.colors.onSurfaceVariant),
-                ),
-                const SizedBox(height: AppSpacing.sm + 4),
-                PillSelector(
-                  padding: EdgeInsets.zero,
-                  labels: [L.of(context).tabNow, L.of(context).tabMusic, L.of(context).commonFriends],
-                  selectedIndex: appearance.startTab,
-                  onSelected: context.read<AppearanceProvider>().setStartTab,
-                ),
+          _TextScaleTile(scale: appearance.textScale),
+          const _LanguageTile(),
+          SettingsPanel(
+            icon: Icons.first_page_rounded,
+            title: L.of(context).appearanceStartTab,
+            description: L.of(context).appearanceStartTabHint,
+            child: PillSelector(
+              padding: EdgeInsets.zero,
+              labels: [
+                L.of(context).tabNow,
+                L.of(context).tabMusic,
+                L.of(context).commonFriends,
               ],
+              selectedIndex: appearance.startTab,
+              onSelected: context.read<AppearanceProvider>().setStartTab,
             ),
           ),
         ],
@@ -481,32 +537,36 @@ class _SettingsBodyState extends State<_SettingsBody> {
       SettingsGroup(
         title: L.of(context).playbackConnections,
         children: [
-          SettingsAction(
-            icon: pb.isConnected
-                ? Icons.check_circle_outline_rounded
-                : Icons.error_outline_rounded,
-            title: L.of(context).playbackSpotifyDevice,
-            subtitle: pb.isConnected
-                ? L.of(context).playbackSpotifyConnected
-                : L.of(context).playbackSpotifyDisconnected,
-            trailing: pb.isConnected
-                ? null
-                : Icon(Icons.refresh_rounded,
-                    size: 18, color: context.colors.onSurfaceVariant),
-            onTap: pb.isConnected
-                ? _noop
-                : () async {
-                    final ok = await pb.connect();
-                    if (!mounted) return;
-                    if (ok) {
-                      showSuccess(context, L.of(context).spotifyConnectedShort);
-                    } else {
-                      showError(context, L.of(context).playbackSpotifyConnectFailed,
-                          force: true);
-                    }
-                  },
-          ),
-          SettingsAction(
+          // Подключено — сообщение, не кнопка: нажимать не на что, и подсветка
+          // при наведении обещала бы действие, которого нет.
+          if (pb.isConnected)
+            SettingsInfo(
+              icon: Icons.check_circle_outline_rounded,
+              title: L.of(context).playbackSpotifyDevice,
+              subtitle: L.of(context).playbackSpotifyConnected,
+              trailing: _StatusDot(color: context.roles.spotify),
+            )
+          else
+            SettingsAction(
+              icon: Icons.error_outline_rounded,
+              title: L.of(context).playbackSpotifyDevice,
+              subtitle: L.of(context).playbackSpotifyDisconnected,
+              trailing: const Icon(Icons.refresh_rounded),
+              onTap: () async {
+                final ok = await pb.connect();
+                if (!mounted) return;
+                if (ok) {
+                  showSuccess(context, L.of(context).spotifyConnectedShort);
+                } else {
+                  showError(
+                    context,
+                    L.of(context).playbackSpotifyConnectFailed,
+                    force: true,
+                  );
+                }
+              },
+            ),
+          SettingsInfo(
             icon: socket.isConnected
                 ? Icons.cloud_done_outlined
                 : Icons.cloud_off_outlined,
@@ -514,7 +574,11 @@ class _SettingsBodyState extends State<_SettingsBody> {
             subtitle: socket.isConnected
                 ? L.of(context).playbackServerOnline
                 : L.of(context).playbackServerOffline,
-            onTap: _noop,
+            trailing: _StatusDot(
+              color: socket.isConnected
+                  ? context.roles.online
+                  : context.colors.onSurfaceVariant.withValues(alpha: 0.45),
+            ),
           ),
         ],
       ),
@@ -588,11 +652,10 @@ class _SettingsBodyState extends State<_SettingsBody> {
             : L.of(context).sessionsActiveCount(active.length),
         children: [
           if (active.isEmpty)
-            SettingsAction(
+            SettingsInfo(
               icon: Icons.headphones_outlined,
               title: L.of(context).sessionsNothingPlaying,
               subtitle: L.of(context).sessionsNothingPlayingHint,
-              onTap: _noop,
             )
           else
             for (final session in active)
@@ -622,6 +685,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
               icon: Icons.mark_email_unread_rounded,
               title: L.of(context).invitesWaiting(invites.length),
               subtitle: L.of(context).sessionsOpenList,
+              chevron: true,
               onTap: () => Navigator.of(context).pushNamed('/session/invites'),
             ),
           ],
@@ -662,6 +726,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.block_rounded,
             title: L.of(context).privacyBlocked,
             subtitle: L.of(context).sessionsBlockedHint,
+            chevron: true,
             onTap: () => _openChild(
               context,
               (ctx, onBack) => BlockedUsersScreen(
@@ -750,11 +815,14 @@ class _SettingsBodyState extends State<_SettingsBody> {
       SettingsGroup(
         title: L.of(context).privacyQuickMode,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
+          SettingsPanel(
             child: PillSelector(
               padding: EdgeInsets.zero,
-              labels: [L.of(context).privacyPresetOpen, L.of(context).privacyPresetFriends, L.of(context).privacyPresetHidden],
+              labels: [
+                L.of(context).privacyPresetOpen,
+                L.of(context).privacyPresetFriends,
+                L.of(context).privacyPresetHidden,
+              ],
               // -1, когда сочетание своё: ни одна таблетка не подсвечена.
               selectedIndex: switch (preset) {
                 'open' => 0,
@@ -810,34 +878,30 @@ class _SettingsBodyState extends State<_SettingsBody> {
         children: [_BlockedSummaryTile(onOpen: () => _openBlocked(context))],
       ),
 
+      // Ниже — не настройки, а сведения: переключать здесь нечего, и строки
+      // не притворяются кнопками.
       SettingsGroup(
         title: L.of(context).privacyAlwaysVisible,
         children: [
-          SettingsAction(
+          SettingsInfo(
             icon: Icons.badge_outlined,
             title: L.of(context).privacyNameAndAvatar,
             subtitle: L.of(context).privacyNameAndAvatarHint,
-            trailing: Icon(Icons.lock_outline_rounded,
-                size: 18, color: context.colors.onSurfaceVariant),
-            onTap: _noop,
+            trailing: const Icon(Icons.lock_outline_rounded),
           ),
-          SettingsAction(
+          SettingsInfo(
             icon: Icons.headphones_outlined,
             title: L.of(context).privacySessionParticipation,
             subtitle: L.of(context).privacySessionParticipationHint,
-            trailing: Icon(Icons.lock_outline_rounded,
-                size: 18, color: context.colors.onSurfaceVariant),
-            onTap: _noop,
+            trailing: const Icon(Icons.lock_outline_rounded),
           ),
-          SettingsAction(
+          SettingsInfo(
             icon: Icons.history_rounded,
             title: L.of(context).privacyHistory,
             // Не ограничение, а наоборот — гарантия. Стоит здесь же, потому
             // что человек ищет ответ на тот же вопрос: «а это видно?»
             subtitle: L.of(context).privacyHistoryHint,
-            trailing: Icon(Icons.visibility_off_outlined,
-                size: 18, color: context.colors.onSurfaceVariant),
-            onTap: _noop,
+            trailing: const Icon(Icons.visibility_off_outlined),
           ),
         ],
       ),
@@ -885,6 +949,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.history_rounded,
             title: L.of(context).privacyHistory,
             subtitle: L.of(context).dataHistoryHint,
+            chevron: true,
             onTap: widget.onOpenHistory ??
                 () => _openChild(
                       context,
@@ -899,6 +964,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.shield_outlined,
             title: L.of(context).dataWhatIsStored,
             subtitle: L.of(context).dataWhatIsStoredHint,
+            chevron: true,
             onTap: () => _openChild(
               context,
               (ctx, onBack) => PrivacyPolicyScreen(
@@ -980,6 +1046,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.devices_rounded,
             title: L.of(context).securityDevices,
             subtitle: L.of(context).securityDevicesHint,
+            chevron: true,
             onTap: () => _openChild(
               context,
               (ctx, onBack) => DevicesScreen(
@@ -988,27 +1055,20 @@ class _SettingsBodyState extends State<_SettingsBody> {
               ),
             ),
           ),
-          SettingsAction(
+          SettingsInfo(
             icon: Icons.vpn_key_outlined,
             title: L.of(context).securitySignInMethod,
             subtitle: _signInSummary(context),
-            trailing: Icon(Icons.lock_outline_rounded,
-                size: 18, color: context.colors.onSurfaceVariant),
-            onTap: _noop,
+            trailing: const Icon(Icons.lock_outline_rounded),
           ),
         ],
       ),
 
-      // Опасная зона отделена и заголовком, и цветом: сюда не должна
+      // Опасная зона отделена и заголовком, и рамкой: сюда не должна
       // соскользнуть рука, листающая обычные настройки.
-      Padding(
-        padding: const EdgeInsets.only(left: AppSpacing.sm, bottom: AppSpacing.sm),
-        child: Text(
-          L.of(context).securityDangerZone,
-          style: context.texts.labelLarge?.copyWith(color: context.colors.error),
-        ),
-      ),
       SettingsGroup(
+        title: L.of(context).securityDangerZone,
+        tone: SettingsTone.danger,
         children: [
           SettingsAction(
             icon: Icons.logout_rounded,
@@ -1099,16 +1159,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
 
   List<Widget> _aboutSection(BuildContext context) {
     return [
-      SettingsGroup(
-        children: [
-          SettingsAction(
-            icon: Icons.graphic_eq_rounded,
-            title: 'SyncM',
-            subtitle: L.of(context).aboutVersion(Config.appVersion),
-            onTap: _noop,
-          ),
-        ],
-      ),
+      const _AboutHeader(),
+      const SizedBox(height: AppSpacing.lg),
       SettingsGroup(
         title: L.of(context).aboutLegalGroup,
         children: [
@@ -1116,6 +1168,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.shield_outlined,
             title: L.of(context).aboutDataPrivacy,
             subtitle: L.of(context).aboutDataPrivacyHint,
+            chevron: true,
             onTap: () => _openChild(
               context,
               (ctx, onBack) => PrivacyPolicyScreen(
@@ -1146,6 +1199,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             icon: Icons.gavel_rounded,
             title: L.of(context).aboutTerms,
             subtitle: L.of(context).aboutTermsHint,
+            chevron: true,
             onTap: () => _openChild(
               context,
               (ctx, onBack) => LegalDocumentScreen(
@@ -1170,8 +1224,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
     final sign = offset > 0 ? '+' : '';
     return L.of(context).clockSummary('$sign$offset', socket.rttMs);
   }
-
-  static void _noop() {}
 
   static String _formatPublicId(String id) =>
       id.length == 8 ? '${id.substring(0, 4)} ${id.substring(4)}' : id;
@@ -1338,13 +1390,8 @@ class _ExportDataTileState extends State<_ExportDataTile> {
       icon: Icons.download_outlined,
       title: L.of(context).dataExport,
       subtitle: L.of(context).dataExportHint,
-      trailing: _busy
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : null,
+      enabled: !_busy,
+      trailing: _busy ? const _RowSpinner() : null,
       onTap: _export,
     );
   }
@@ -1364,25 +1411,16 @@ class _LanguageTile extends StatelessWidget {
     final locale = context.watch<LocaleProvider>();
     final index = _codes.indexOf(locale.language);
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            L.of(context).appearanceLanguageHint,
-            style: context.texts.bodySmall
-                ?.copyWith(color: context.colors.onSurfaceVariant),
-          ),
-          const SizedBox(height: AppSpacing.sm + 4),
-          PillSelector(
-            padding: EdgeInsets.zero,
-            labels: [L.of(context).commonSystem, 'Русский', 'English'],
-            selectedIndex: index < 0 ? 0 : index,
-            onSelected: (i) =>
-                context.read<LocaleProvider>().setLanguage(_codes[i]),
-          ),
-        ],
+    return SettingsPanel(
+      icon: Icons.translate_rounded,
+      title: L.of(context).appearanceLanguage,
+      description: L.of(context).appearanceLanguageHint,
+      child: PillSelector(
+        padding: EdgeInsets.zero,
+        labels: [L.of(context).commonSystem, 'Русский', 'English'],
+        selectedIndex: index < 0 ? 0 : index,
+        onSelected: (i) =>
+            context.read<LocaleProvider>().setLanguage(_codes[i]),
       ),
     );
   }
@@ -1425,29 +1463,22 @@ class _InviteScopeTileState extends State<_InviteScopeTile> {
     final settings = context.watch<SettingsProvider>();
     final index = _scopes.indexOf(settings.inviteScope);
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            settings.inviteScope == 'nobody'
-                ? L.of(context).inviteScopeNobodyHint
-                : L.of(context).inviteScopeFriendsHint,
-            style: context.texts.bodySmall
-                ?.copyWith(color: context.colors.onSurfaceVariant),
-          ),
-          const SizedBox(height: AppSpacing.sm + 4),
-          PillSelector(
-            padding: EdgeInsets.zero,
-            labels: [L.of(context).commonFriends, L.of(context).commonNobody],
-            selectedIndex: index < 0 ? 0 : index,
-            onSelected: _saving ? (_) {} : _select,
-          ),
-        ],
+    // Заголовок несёт группа — плитке остаётся пояснение к текущему выбору.
+    return SettingsPanel(
+      icon: Icons.mark_email_unread_outlined,
+      description: settings.inviteScope == 'nobody'
+          ? L.of(context).inviteScopeNobodyHint
+          : L.of(context).inviteScopeFriendsHint,
+      child: PillSelector(
+        padding: EdgeInsets.zero,
+        labels: [L.of(context).commonFriends, L.of(context).commonNobody],
+        selectedIndex: index < 0 ? 0 : index,
+        onSelected: _saving ? _ignore : _select,
       ),
     );
   }
+
+  static void _ignore(int _) {}
 }
 
 /// Кэш обложек: сколько занято и очистка.
@@ -1521,18 +1552,92 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
       icon: Icons.image_outlined,
       title: L.of(context).dataImageCache,
       subtitle: _subtitle,
-      trailing: _clearing
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : null,
-      onTap: _clearing ? _noopVoid : _clear,
+      enabled: !_clearing,
+      trailing: _clearing ? const _RowSpinner() : null,
+      onTap: _clear,
     );
   }
+}
 
-  static void _noopVoid() {}
+/// Индикатор занятости в строке настройки: размер под 20-точечную иконку,
+/// чтобы строка не подпрыгивала, пока идёт работа.
+class _RowSpinner extends StatelessWidget {
+  const _RowSpinner();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 18,
+      height: 18,
+      child: CircularProgressIndicator(strokeWidth: 2),
+    );
+  }
+}
+
+/// Точка состояния: зелёная — связь есть, серая — нет.
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 8,
+      height: 8,
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xs + 2),
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
+}
+
+/// Шапка страницы «О приложении».
+///
+/// Раньше версия была обычной строкой списка и терялась среди ссылок.
+/// Знак, название и версия — то, зачем сюда заходят, — стоят отдельно.
+class _AboutHeader extends StatelessWidget {
+  const _AboutHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final texts = context.texts;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xl,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: AppRadius.large,
+      ),
+      child: Column(
+        children: [
+          // Фирменный знак приложения в состоянии покоя: он же встречает на
+          // главном экране, и здесь не анимируется.
+          const SyncMark(size: 84),
+          const SizedBox(height: AppSpacing.lg),
+          Text('SyncM', style: texts.headlineSmall),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            L.of(context).aboutVersion(Config.appVersion),
+            style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 340),
+            child: Text(
+              L.of(context).loginTagline,
+              textAlign: TextAlign.center,
+              style: texts.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SpotifyTile extends StatefulWidget {
@@ -1633,16 +1738,13 @@ class _SpotifyTileState extends State<_SpotifyTile> {
       icon: warning ? Icons.link_off_rounded : Icons.music_note_rounded,
       title: 'Spotify',
       subtitle: _subtitle,
+      enabled: _state != _SpotifyLink.checking,
       trailing: _state == _SpotifyLink.checking
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+          ? const _RowSpinner()
           : Text(
               _actionLabel,
-              style: context.texts.labelMedium?.copyWith(
-                color: warning ? colors.error : colors.onSurfaceVariant,
+              style: context.texts.labelLarge?.copyWith(
+                color: warning ? colors.error : context.roles.mine,
               ),
             ),
       onTap: _act,
@@ -1650,111 +1752,329 @@ class _SpotifyTileState extends State<_SpotifyTile> {
   }
 }
 
-class _AvatarBlock extends StatelessWidget {
-  const _AvatarBlock({
+/// Шапка настроек: кто вошёл и чем это подтверждено.
+///
+/// Раньше аватар с именем стояли по центру колонкой и занимали треть первого
+/// экрана — до первой настройки приходилось прокручивать. Горизонтальная
+/// карточка говорит то же самое втрое ниже и одинаково хорошо ложится и на
+/// телефон, и на широкое окно.
+class _ProfileCard extends StatelessWidget {
+  const _ProfileCard({
     required this.avatarUrl,
     required this.displayName,
+    required this.spotifyConnected,
     required this.isUploading,
     required this.onEdit,
   });
 
   final String? avatarUrl;
   final String displayName;
+  final bool spotifyConnected;
   final bool isUploading;
   final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final texts = context.texts;
+    final roles = context.roles;
 
-    return Column(
-      children: [
-        Stack(
-          children: [
-            // Нажатие на сам аватар разворачивает его на весь экран, а
-            // изменить фотографию можно кнопкой в углу. Раньше нажатие в
-            // любое место сразу открывало выбор файла, и посмотреть свою
-            // аватарку целиком было невозможно.
-            TappableAvatar(
-              imageUrl: avatarUrl,
-              radius: 60,
-              showRing: true,
-              title: displayName,
-              heroTag: 'settings-avatar',
-            ),
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: Material(
-                color: colors.primary,
-                shape: CircleBorder(
-                  side: BorderSide(color: colors.surface, width: 3),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: onEdit,
-                  child: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: isUploading
-                        ? Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: AppRadius.large,
+      ),
+      child: Row(
+        children: [
+          Stack(
+            children: [
+              // Нажатие на сам аватар разворачивает его на весь экран, а
+              // изменить фотографию можно кнопкой в углу. Раньше нажатие в
+              // любое место сразу открывало выбор файла, и посмотреть свою
+              // аватарку целиком было невозможно.
+              TappableAvatar(
+                imageUrl: avatarUrl,
+                radius: 34,
+                showRing: true,
+                title: displayName,
+                heroTag: 'settings-avatar',
+              ),
+              Positioned(
+                bottom: -2,
+                right: -2,
+                child: Material(
+                  color: colors.primary,
+                  shape: CircleBorder(
+                    side: BorderSide(color: colors.surfaceContainerLow, width: 2.5),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: onEdit,
+                    child: SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: isUploading
+                          ? Padding(
+                              padding: const EdgeInsets.all(7),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colors.onPrimary,
+                              ),
+                            )
+                          : Icon(
+                              Icons.photo_camera_rounded,
                               color: colors.onPrimary,
+                              size: 15,
                             ),
-                          )
-                        : Icon(Icons.photo_camera_rounded, color: colors.onPrimary, size: 20),
+                    ),
                   ),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  displayName,
+                  style: texts.titleLarge,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: AppSpacing.xs + 2),
+                Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: spotifyConnected
+                            ? roles.spotify
+                            : colors.onSurfaceVariant.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Flexible(
+                      child: Text(
+                        spotifyConnected
+                            ? L.of(context).spotifyConnectedShort
+                            : L.of(context).spotifyNotConnectedShort,
+                        style: texts.bodySmall
+                            ?.copyWith(color: colors.onSurfaceVariant),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.md),
-        Text(displayName, style: context.texts.headlineSmall),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _ThemeSelectorTile extends StatelessWidget {
-  _ThemeSelectorTile();
+/// Выбор темы: три образца вместо трёх слов.
+///
+/// Кнопки «Система / Светлая / Тёмная» ничего не показывали — приходилось
+/// переключать и смотреть, что стало с приложением. Образец рисует ту же
+/// картинку, что человек увидит: фон, карточку, текст и акцент.
+class _ThemeModePicker extends StatelessWidget {
+  const _ThemeModePicker();
+
+  static const _modes = [ThemeMode.system, ThemeMode.light, ThemeMode.dark];
+
+  String _label(BuildContext context, ThemeMode mode) => switch (mode) {
+        ThemeMode.light => L.of(context).themeLight,
+        ThemeMode.dark => L.of(context).themeDark,
+        ThemeMode.system => L.of(context).commonSystem,
+      };
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeProvider>();
+    final accent = context.watch<AppearanceProvider>().accent;
 
-    return Padding(
-      padding: EdgeInsets.all(AppSpacing.md),
-      child: SegmentedButton<ThemeMode>(
-        segments: [
-          ButtonSegment(
-            value: ThemeMode.system,
-            label: Text(L.of(context).commonSystem),
-            icon: Icon(Icons.settings_brightness_rounded),
-          ),
-          ButtonSegment(
-            value: ThemeMode.light,
-            label: Text(L.of(context).themeLight),
-            icon: Icon(Icons.light_mode_rounded),
-          ),
-          ButtonSegment(
-            value: ThemeMode.dark,
-            label: Text(L.of(context).themeDark),
-            icon: Icon(Icons.dark_mode_rounded),
-          ),
+    return SettingsPanel(
+      icon: Icons.contrast_rounded,
+      title: L.of(context).appearanceTheme,
+      description: _label(context, theme.themeMode),
+      child: Row(
+        children: [
+          for (final mode in _modes) ...[
+            if (mode != _modes.first) const SizedBox(width: AppSpacing.sm + 4),
+            Expanded(
+              child: _ThemeModeCard(
+                mode: mode,
+                accent: accent,
+                label: _label(context, mode),
+                selected: theme.themeMode == mode,
+                onTap: () => context.read<ThemeProvider>().setThemeMode(mode),
+              ),
+            ),
+          ],
         ],
-        selected: {theme.themeMode},
-        onSelectionChanged: (selected) => theme.setThemeMode(selected.first),
-        showSelectedIcon: false,
-        style: SegmentedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
-          visualDensity: VisualDensity.comfortable,
+      ),
+    );
+  }
+}
+
+class _ThemeModeCard extends StatelessWidget {
+  const _ThemeModeCard({
+    required this.mode,
+    required this.accent,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final ThemeMode mode;
+  final AccentColor accent;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final border = selected
+        ? context.roles.mine
+        : colors.outlineVariant.withValues(alpha: 0.8);
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: Pressable(
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: AppRadius.medium,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: AppMotion.short,
+              curve: AppMotion.enter,
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                borderRadius: AppRadius.medium,
+                border: Border.all(
+                  color: border,
+                  width: selected ? 2 : 1,
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AspectRatio(
+                    aspectRatio: 1.25,
+                    child: ClipRRect(
+                      borderRadius: AppRadius.small,
+                      child: _preview(),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.texts.labelMedium?.copyWith(
+                            color: selected
+                                ? colors.onSurface
+                                : colors.onSurfaceVariant,
+                            fontWeight:
+                                selected ? FontWeight.w600 : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      if (selected) ...[
+                        const SizedBox(width: AppSpacing.xs),
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 14,
+                          color: context.roles.mine,
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
+
+  Widget _preview() {
+    return switch (mode) {
+      ThemeMode.light => _half(Brightness.light),
+      ThemeMode.dark => _half(Brightness.dark),
+      // «Система» — половина светлая, половина тёмная: приложение возьмёт ту,
+      // что стоит в устройстве.
+      ThemeMode.system => Row(
+          children: [
+            Expanded(child: _half(Brightness.light)),
+            Expanded(child: _half(Brightness.dark)),
+          ],
+        ),
+    };
+  }
+
+  /// Половинка образца в заданной яркости.
+  ///
+  /// Цвета берутся из той же палитры, которую применит приложение, — образец
+  /// не может разойтись с результатом нажатия.
+  Widget _half(Brightness brightness) {
+    final scheme = AppTheme.previewScheme(brightness, accent);
+    final ink = scheme.onSurface;
+
+    return ColoredBox(
+      color: scheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _bar(scheme.primary, 22, 5),
+            const SizedBox(height: 5),
+            _bar(ink.withValues(alpha: 0.85), 34, 4),
+            const SizedBox(height: 4),
+            _bar(ink.withValues(alpha: 0.35), 26, 4),
+            const SizedBox(height: 6),
+            Container(
+              height: 12,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bar(Color color, double width, double height) => Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(height / 2),
+        ),
+      );
 }
 
 
@@ -1763,42 +2083,21 @@ class _AudioLatencyTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     final texts = context.texts;
     final l = L.of(context);
     final pb = context.watch<PlaybackProvider>();
     final latency = pb.audioLatencyMs;
 
-    // Собственные отступы обязательны: плитка лежит внутри карточки со
-    // скруглёнными углами и обрезкой содержимого. Без них иконка упиралась в
-    // край и срезалась закруглением — раньше плитка стояла прямо на фоне
-    // экрана и жила на отступах списка.
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.sm,
+    return SettingsPanel(
+      icon: Icons.headphones_rounded,
+      title: L.of(context).latencyTitle,
+      trailing: Text(
+        l.latencyMilliseconds(latency),
+        style: texts.labelLarge?.copyWith(color: context.roles.mine),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.headphones_rounded, color: colors.primary),
-              const SizedBox(width: AppSpacing.sm + 4),
-              Expanded(
-                child: Text(L.of(context).latencyTitle, style: texts.bodyLarge),
-              ),
-              Text(
-                l.latencyMilliseconds(latency),
-                style: texts.titleMedium?.copyWith(
-                  color: colors.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
           Slider(
             value: latency.toDouble().clamp(0, 1000),
             max: 1000,
@@ -1840,18 +2139,19 @@ class _AudioLatencyTile extends StatelessWidget {
 }
 
 class _AccentPicker extends StatelessWidget {
-  const _AccentPicker({required this.current});
-
-  final AccentColor current;
+  const _AccentPicker();
 
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
+    final current = context.watch<AppearanceProvider>().accent;
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
+    return SettingsPanel(
+      icon: Icons.palette_outlined,
+      title: L.of(context).appearanceAccent,
+      description: _AccentDot.nameOf(context, current),
       child: Wrap(
-        spacing: AppSpacing.md,
+        spacing: AppSpacing.sm + 4,
         runSpacing: AppSpacing.sm,
         children: [
           for (final accent in AccentColor.values)
@@ -1884,7 +2184,7 @@ class _AccentDot extends StatelessWidget {
   ///
   /// В самом перечислении подпись остаётся русской и служит запасной: цвета
   /// заданы в теме, а тема о языке ничего не знает.
-  String _name(BuildContext context) {
+  static String nameOf(BuildContext context, AccentColor accent) {
     final l = L.of(context);
     return switch (accent) {
       AccentColor.olive => l.accentOlive,
@@ -1897,7 +2197,8 @@ class _AccentDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = _name(context);
+    final name = nameOf(context, accent);
+    final colors = context.colors;
 
     return Semantics(
       // Название в озвучке: программам чтения с экрана цвет недоступен, и
@@ -1907,24 +2208,46 @@ class _AccentDot extends StatelessWidget {
       button: true,
       child: Tooltip(
         message: name,
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color,
-              border: Border.all(
-                color: selected ? context.colors.onSurface : Colors.transparent,
-                width: 2.5,
+        child: Pressable(
+          child: Material(
+            color: Colors.transparent,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              customBorder: const CircleBorder(),
+              // Цель нажатия — все 48 точек, а кружок внутри меньше:
+              // плотный ряд крупных пятен читался как светофор.
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: AppMotion.short,
+                    curve: AppMotion.enter,
+                    width: selected ? 36 : 30,
+                    height: selected ? 36 : 30,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color,
+                      border: Border.all(
+                        color: selected
+                            ? colors.onSurface
+                            : colors.outlineVariant.withValues(alpha: 0.6),
+                        width: selected ? 2.5 : 1,
+                      ),
+                    ),
+                    child: selected
+                        ? Icon(
+                            Icons.check_rounded,
+                            size: 17,
+                            color: context.roles.onMine,
+                          )
+                        : null,
+                  ),
+                ),
               ),
             ),
-            child: selected
-                ? Icon(Icons.check_rounded,
-                    size: 20, color: context.roles.onMine)
-                : null,
           ),
         ),
       ),
@@ -1943,12 +2266,12 @@ class _TextScaleTile extends StatelessWidget {
     final texts = context.texts;
     final colors = context.colors;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.md,
-        AppSpacing.sm,
+    return SettingsPanel(
+      icon: Icons.format_size_rounded,
+      title: L.of(context).appearanceTextSize,
+      trailing: Text(
+        '${(scale * 100).round()}%',
+        style: texts.labelLarge?.copyWith(color: context.roles.mine),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1963,19 +2286,43 @@ class _TextScaleTile extends StatelessWidget {
               color: colors.surfaceContainerHigh,
               borderRadius: AppRadius.medium,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  L.of(context).previewTrackName,
-                  style: texts.titleSmall?.copyWith(fontSize: 14 * scale),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  L.of(context).previewArtistName,
-                  style: texts.bodySmall?.copyWith(
-                    fontSize: 12 * scale,
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest,
+                    borderRadius: AppRadius.small,
+                  ),
+                  child: Icon(
+                    Icons.music_note_rounded,
+                    size: 18,
                     color: colors.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm + 4),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        L.of(context).previewTrackName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: texts.titleSmall?.copyWith(fontSize: 14 * scale),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        L.of(context).previewArtistName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: texts.bodySmall?.copyWith(
+                          fontSize: 12 * scale,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1984,7 +2331,11 @@ class _TextScaleTile extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
-              const Icon(Icons.text_fields_rounded, size: 16),
+              Icon(
+                Icons.text_fields_rounded,
+                size: 15,
+                color: colors.onSurfaceVariant,
+              ),
               Expanded(
                 child: Slider(
                   value: scale,
@@ -1997,7 +2348,11 @@ class _TextScaleTile extends StatelessWidget {
                       context.read<AppearanceProvider>().setTextScale(v),
                 ),
               ),
-              const Icon(Icons.text_fields_rounded, size: 24),
+              Icon(
+                Icons.text_fields_rounded,
+                size: 22,
+                color: colors.onSurfaceVariant,
+              ),
             ],
           ),
         ],

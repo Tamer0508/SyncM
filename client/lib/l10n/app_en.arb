@@ -933,6 +933,9 @@
   "sessionsWhoCanInvite": "Who can invite you",
   "sessionWaitingForSecond": "Waiting for the other person",
   "sessionYouAreHost": "You're the session host now",
+  "settingsGroupApp": "App",
+  "settingsGroupData": "Data & privacy",
+  "settingsGroupProfile": "Profile & access",
   "settingsTitle": "Settings",
   "@sizeBytes": {
     "placeholders": {

@@ -608,6 +608,14 @@ class AppTheme {
     );
   }
 
+  static ColorScheme previewScheme(Brightness brightness, AccentColor accent) =>
+      _previewSchemes.putIfAbsent(
+        (brightness, accent),
+        () => _schemeFor(accent.forBrightness(brightness), brightness),
+      );
+
+  static final Map<(Brightness, AccentColor), ColorScheme> _previewSchemes = {};
+
   static ColorScheme get _lightScheme => _schemeFor(_olive, Brightness.light);
 
   static ColorScheme get _darkScheme => _schemeFor(_lime, Brightness.dark);

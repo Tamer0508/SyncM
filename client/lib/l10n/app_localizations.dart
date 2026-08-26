@@ -3331,6 +3331,24 @@ abstract class L {
   /// **'Вы теперь ведущий сессии'**
   String get sessionYouAreHost;
 
+  /// No description provided for @settingsGroupApp.
+  ///
+  /// In ru, this message translates to:
+  /// **'Приложение'**
+  String get settingsGroupApp;
+
+  /// No description provided for @settingsGroupData.
+  ///
+  /// In ru, this message translates to:
+  /// **'Данные и приватность'**
+  String get settingsGroupData;
+
+  /// No description provided for @settingsGroupProfile.
+  ///
+  /// In ru, this message translates to:
+  /// **'Профиль и доступ'**
+  String get settingsGroupProfile;
+
   /// No description provided for @settingsTitle.
   ///
   /// In ru, this message translates to:
