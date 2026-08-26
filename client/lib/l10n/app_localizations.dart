@@ -1399,6 +1399,18 @@ abstract class L {
   /// **'Соберите первый — и его можно будет включить в сессии.'**
   String get homeNoOwnPlaylistsHint;
 
+  /// No description provided for @homeNoSpotifyPlaylists.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет доступных плейлистов'**
+  String get homeNoSpotifyPlaylists;
+
+  /// No description provided for @homeNoSpotifyPlaylistsHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'В Spotify не нашлось плейлистов, которые SyncM может открыть.'**
+  String get homeNoSpotifyPlaylistsHint;
+
   /// No description provided for @homeNothingPlaying.
   ///
   /// In ru, this message translates to:
@@ -3402,6 +3414,24 @@ abstract class L {
   /// In ru, this message translates to:
   /// **'Отключить Spotify?'**
   String get spotifyDisconnectTitle;
+
+  /// No description provided for @spotifyLikedEmpty.
+  ///
+  /// In ru, this message translates to:
+  /// **'Здесь появятся треки, которые вы сохраните в Spotify.'**
+  String get spotifyLikedEmpty;
+
+  /// No description provided for @spotifyLikedSubtitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранённые в Spotify'**
+  String get spotifyLikedSubtitle;
+
+  /// No description provided for @spotifyLikedTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Любимые треки'**
+  String get spotifyLikedTitle;
 
   /// No description provided for @spotifyLinkBusy.
   ///

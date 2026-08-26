@@ -38,6 +38,11 @@ import '../../providers/theme_provider.dart';
 import '../../providers/friends_provider.dart';
 import '../friends/friends_screen.dart';
 
+/// Ключ центральной панели, когда в ней открыты любимые треки Spotify.
+///
+/// Своего id у них нет, а панель различает содержимое по нему.
+const String _savedTracksKey = 'spotify:saved-tracks';
+
 // ---------- HomeScreen ----------
 
 class HomeScreen extends StatefulWidget {
@@ -338,6 +343,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // только что мерцали заглушки.
     final showSkeleton = loading && playlists.isEmpty;
 
+    final showLiked = !isCustom && !provider.spotifyUnavailable;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -350,6 +357,24 @@ class _HomeScreenState extends State<HomeScreen> {
               0,
             ),
             child: _CreatePlaylistTile(onTap: _createCustomPlaylist),
+          ),
+        if (showLiked)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.sm,
+              AppSpacing.sm,
+              AppSpacing.sm,
+              0,
+            ),
+            child: PlaylistCard(
+              dense: true,
+              name: L.of(context).spotifyLikedTitle,
+              description: provider.savedTracksCount == null
+                  ? L.of(context).spotifyLikedSubtitle
+                  : L.of(context).trackCount(provider.savedTracksCount!),
+              placeholderIcon: Icons.favorite_rounded,
+              onTap: _openSpotifySavedTracks,
+            ),
           ),
         Expanded(
           child: showSkeleton
@@ -368,6 +393,14 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: Icons.playlist_add_rounded,
         title: L.of(context).homeNoOwnPlaylists,
         message: L.of(context).homeNoOwnPlaylistsHint,
+      );
+    }
+
+    if (!context.read<PlaylistsProvider>().spotifyUnavailable) {
+      return EmptyState(
+        icon: Icons.queue_music_rounded,
+        title: L.of(context).homeNoSpotifyPlaylists,
+        message: L.of(context).homeNoSpotifyPlaylistsHint,
       );
     }
 
@@ -450,6 +483,27 @@ class _HomeScreenState extends State<HomeScreen> {
           imageUrl: playlist.playlistImageUrl,
           isCustom: isCustom,
         ),
+      ),
+    );
+  }
+
+  void _openSpotifySavedTracks() {
+    final title = L.of(context).spotifyLikedTitle;
+
+    if (context.isWideWindow) {
+      setState(() {
+        _selectedPlaylist = {
+          'id': _savedTracksKey,
+          'name': title,
+          'isSpotifySaved': true,
+        };
+      });
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlaylistTracksScreen.spotifySaved(playlistName: title),
       ),
     );
   }
@@ -839,21 +893,32 @@ class _HomeScreenState extends State<HomeScreen> {
                                           _activeSession = session;
                                         }))
                                 : _selectedPlaylist != null
-                                    ? PlaylistTracksScreen(
-                                        key: ValueKey(
-                                            _selectedPlaylist!['id']),
-                                        playlistId:
-                                            _selectedPlaylist!['id'] ?? '',
-                                        playlistName:
-                                            _selectedPlaylist!['name'] ?? '',
-                                        imageUrl:
-                                            _selectedPlaylist!['imageUrl'],
-                                        isCustom:
-                                            _selectedPlaylist!['isCustom'] ??
+                                    ? (_selectedPlaylist!['isSpotifySaved'] ==
+                                            true
+                                        ? PlaylistTracksScreen.spotifySaved(
+                                            key: const ValueKey(
+                                                _savedTracksKey),
+                                            playlistName:
+                                                _selectedPlaylist!['name'] ??
+                                                    '',
+                                            embedded: true)
+                                        : PlaylistTracksScreen(
+                                            key: ValueKey(
+                                                _selectedPlaylist!['id']),
+                                            playlistId:
+                                                _selectedPlaylist!['id'] ?? '',
+                                            playlistName:
+                                                _selectedPlaylist!['name'] ??
+                                                    '',
+                                            imageUrl:
+                                                _selectedPlaylist!['imageUrl'],
+                                            isCustom: _selectedPlaylist![
+                                                    'isCustom'] ??
                                                 false,
-                                        embedded: true,
-                                        onDeleted: () => setState(
-                                            () => _selectedPlaylist = null))
+                                            embedded: true,
+                                            onDeleted: () => setState(
+                                                () =>
+                                                    _selectedPlaylist = null)))
                                     : Center(
                                         child: ConstrainedBox(
                                             constraints: BoxConstraints(

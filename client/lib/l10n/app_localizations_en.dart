@@ -761,6 +761,13 @@ class LEn extends L {
       'Put one together and you\'ll be able to play it in a session.';
 
   @override
+  String get homeNoSpotifyPlaylists => 'No playlists available';
+
+  @override
+  String get homeNoSpotifyPlaylistsHint =>
+      'Spotify has no playlists SyncM can open.';
+
+  @override
   String get homeNothingPlaying => 'Nothing is playing';
 
   @override
@@ -1924,6 +1931,16 @@ class LEn extends L {
 
   @override
   String get spotifyDisconnectTitle => 'Disconnect Spotify?';
+
+  @override
+  String get spotifyLikedEmpty =>
+      'Tracks you save in Spotify will show up here.';
+
+  @override
+  String get spotifyLikedSubtitle => 'Saved in Spotify';
+
+  @override
+  String get spotifyLikedTitle => 'Liked tracks';
 
   @override
   String get spotifyLinkBusy =>

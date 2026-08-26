@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' show Random;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -25,11 +25,19 @@ import '../player/now_playing.dart';
 /// Действия над отдельным треком внутри плейлиста.
 enum _TrackAction { addToPlaylist, removeFromPlaylist }
 
+enum TrackListSource {
+  custom,
+
+  spotifyPlaylist,
+
+  spotifySaved,
+}
+
 class PlaylistTracksScreen extends StatefulWidget {
   final String playlistId;
   final String playlistName;
   final String? imageUrl;
-  final bool isCustom;
+  final TrackListSource source;
   final bool embedded;
 
   /// Вызывается, когда плейлист удалили изнутри его же экрана.
@@ -43,10 +51,26 @@ class PlaylistTracksScreen extends StatefulWidget {
     required this.playlistId,
     required this.playlistName,
     this.imageUrl,
-    this.isCustom = false,
+    bool isCustom = false,
     this.embedded = false,
     this.onDeleted,
-  });
+  }) : source =
+            isCustom ? TrackListSource.custom : TrackListSource.spotifyPlaylist;
+
+  const PlaylistTracksScreen.spotifySaved({
+    super.key,
+    required this.playlistName,
+    this.embedded = false,
+  })  : source = TrackListSource.spotifySaved,
+        playlistId = '',
+        imageUrl = null,
+        onDeleted = null;
+
+  bool get isCustom => source == TrackListSource.custom;
+
+  bool get isSpotifyPlaylist => source == TrackListSource.spotifyPlaylist;
+
+  bool get isSpotifySaved => source == TrackListSource.spotifySaved;
 
   @override
   State<PlaylistTracksScreen> createState() => _PlaylistTracksScreenState();
@@ -73,6 +97,14 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   /// возврата в список: аргументы конструктора — снимок на момент открытия и
   /// про изменения не знают.
   Map<String, dynamic> get _playlist {
+    if (widget.isSpotifySaved) {
+      return {
+        'name': widget.playlistName,
+        'description': L.of(context).spotifyLikedSubtitle,
+        'trackCount': _tracks.length,
+      };
+    }
+
     final live = context.watch<PlaylistsProvider>().byId(widget.playlistId);
     return live ??
         {
@@ -94,11 +126,13 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       final likedRequest = api.getLikedTracks();
       likedRequest.ignore();
 
-      final tracks = await playlists.tracksOf(
-        widget.playlistId,
-        isCustom: widget.isCustom,
-        refresh: refresh,
-      );
+      final tracks = widget.isSpotifySaved
+          ? await playlists.savedTracks(refresh: refresh)
+          : await playlists.tracksOf(
+              widget.playlistId,
+              isCustom: widget.isCustom,
+              refresh: refresh,
+            );
 
       if (tracks == null) {
         // Доступ закрыт — показываем объяснение, а не ошибку.
@@ -172,12 +206,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       }
     }
 
-    // Очередь передаём и для собственного плейлиста.
-    //
-    // playlistId — это контекст Spotify, и у плейлиста SyncM его нет: свой
-    // список нельзя отдать чужому сервису как ссылку. Но очередь провайдер
-    // умеет держать и списком, поэтому «следующий трек» внутри своего
-    // плейлиста теперь работает так же, как в чужом.
     await pb.playTrack(
       {
         'title': track['name'],
@@ -187,7 +215,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         'index': index,
         'contextIndex': track['contextIndex'],
       },
-      playlistId: widget.isCustom ? null : widget.playlistId,
+      playlistId: widget.isSpotifyPlaylist ? widget.playlistId : null,
       knownPlaylistTracks: queue ?? _tracks,
     );
 
@@ -213,17 +241,11 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     await _onTrackTap(_tracks.first, 0);
   }
 
-  /// Перемешать.
-  ///
-  /// Для плейлиста Spotify включаем перемешивание у него самого — очередь
-  /// строит он. Для своего перемешиваем список здесь и отдаём как очередь:
-  /// флаг shuffle в Spotify к нашему списку отношения не имеет и просто
-  /// ничего бы не сделал.
   Future<void> _shuffle() async {
     if (_tracks.isEmpty) return;
     final random = Random();
 
-    if (!widget.isCustom) {
+    if (widget.isSpotifyPlaylist) {
       await context.read<PlaybackProvider>().setShuffle(true);
       if (!mounted) return;
       final index = random.nextInt(_tracks.length);
@@ -360,10 +382,15 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         else if (_unavailable)
           SliverFillRemaining(
             hasScrollBody: false,
-            child: _Notice(
-              icon: Icons.lock_outline_rounded,
-              message: L.of(context).playlistForeign,
-            ),
+            child: widget.isSpotifySaved
+                ? _Notice(
+                    icon: Icons.link_off_rounded,
+                    message: L.of(context).homeSpotifyUnavailableHint,
+                  )
+                : _Notice(
+                    icon: Icons.lock_outline_rounded,
+                    message: L.of(context).playlistForeign,
+                  ),
           )
         else if (_error != null)
           SliverFillRemaining(
@@ -423,13 +450,14 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         overflow: TextOverflow.ellipsis,
       ),
       actions: [
-        PlaylistActionsButton(
-          playlist: playlist,
-          includeOpen: false,
-          onDeleted: _onPlaylistDeleted,
-          onTracksChanged: () => _loadTracks(refresh: true),
-          iconColor: theme.colorScheme.onSurface,
-        ),
+        if (!widget.isSpotifySaved)
+          PlaylistActionsButton(
+            playlist: playlist,
+            includeOpen: false,
+            onDeleted: _onPlaylistDeleted,
+            onTracksChanged: () => _loadTracks(refresh: true),
+            iconColor: theme.colorScheme.onSurface,
+          ),
       ],
       flexibleSpace: FlexibleSpaceBar(
         stretchModes: const [StretchMode.zoomBackground],
@@ -445,6 +473,17 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                     ColoredBox(color: theme.colorScheme.primaryContainer),
                 errorWidget: (_, _, _) =>
                     ColoredBox(color: theme.colorScheme.primaryContainer),
+              )
+            else if (widget.isSpotifySaved)
+              ColoredBox(
+                color: theme.colorScheme.primaryContainer,
+                child: Center(
+                  child: Icon(
+                    Icons.favorite_rounded,
+                    size: 72,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
               )
             else
               ColoredBox(color: theme.colorScheme.primaryContainer),
@@ -503,19 +542,31 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
             const SizedBox(height: AppSpacing.xs),
           Row(
             children: [
-              FilledButton.icon(
-                onPressed: hasTracks ? _playAll : null,
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: Text(L.of(context).playlistPlay),
+              Flexible(
+                child: FilledButton.icon(
+                  onPressed: hasTracks ? _playAll : null,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: Text(
+                    L.of(context).playlistPlay,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              OutlinedButton.icon(
-                onPressed: hasTracks ? _shuffle : null,
-                icon: const Icon(Icons.shuffle_rounded),
-                label: Text(L.of(context).playerShuffle),
+              Flexible(
+                child: OutlinedButton.icon(
+                  onPressed: hasTracks ? _shuffle : null,
+                  icon: const Icon(Icons.shuffle_rounded),
+                  label: Text(
+                    L.of(context).playerShuffle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
               const Spacer(),
-              if (widget.embedded)
+              if (widget.embedded && !widget.isSpotifySaved)
                 PlaylistActionsButton(
                   playlist: playlist,
                   includeOpen: false,
@@ -565,17 +616,27 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.music_off_rounded, size: 40, color: colors.onSurfaceVariant),
+            Icon(
+              widget.isSpotifySaved
+                  ? Icons.favorite_border_rounded
+                  : Icons.music_off_rounded,
+              size: 40,
+              color: colors.onSurfaceVariant,
+            ),
             const SizedBox(height: AppSpacing.sm + 4),
             Text(
-              L.of(context).playlistEmptyTitle,
+              widget.isSpotifySaved
+                  ? L.of(context).spotifyLikedTitle
+                  : L.of(context).playlistEmptyTitle,
               style: context.texts.titleSmall,
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               widget.isCustom
                   ? L.of(context).playlistEmptyMessage
-                  : L.of(context).playlistEmptyShort,
+                  : widget.isSpotifySaved
+                      ? L.of(context).spotifyLikedEmpty
+                      : L.of(context).playlistEmptyShort,
               textAlign: TextAlign.center,
               style: context.texts.bodyMedium?.copyWith(
                 color: colors.onSurfaceVariant,

@@ -13,6 +13,7 @@ class PlaylistCard extends StatelessWidget {
     this.width = 150,
     this.dense = false,
     this.trailing,
+    this.placeholderIcon = Icons.queue_music_rounded,
   });
 
   final bool dense;
@@ -24,6 +25,8 @@ class PlaylistCard extends StatelessWidget {
   final double width;
 
   final Widget? trailing;
+
+  final IconData placeholderIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -49,9 +52,10 @@ class PlaylistCard extends StatelessWidget {
                         url: imageUrl!,
                         width: width,
                         height: width,
-                        placeholder: _Placeholder(colors: colors),
+                        placeholder:
+                            _Placeholder(colors: colors, icon: placeholderIcon),
                       )
-                    : _Placeholder(colors: colors),
+                    : _Placeholder(colors: colors, icon: placeholderIcon),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -117,9 +121,10 @@ class PlaylistCard extends StatelessWidget {
                           url: imageUrl!,
                           width: 52,
                           height: 52,
-                          placeholder: _Placeholder(colors: colors),
+                          placeholder: _Placeholder(
+                              colors: colors, icon: placeholderIcon),
                         )
-                      : _Placeholder(colors: colors),
+                      : _Placeholder(colors: colors, icon: placeholderIcon),
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -157,16 +162,17 @@ class PlaylistCard extends StatelessWidget {
 }
 
 class _Placeholder extends StatelessWidget {
-  const _Placeholder({required this.colors});
+  const _Placeholder({required this.colors, required this.icon});
 
   final ColorScheme colors;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
       color: colors.primaryContainer,
       child: Center(
-        child: Icon(Icons.queue_music_rounded, size: 36, color: colors.onPrimaryContainer),
+        child: Icon(icon, size: 36, color: colors.onPrimaryContainer),
       ),
     );
   }

@@ -768,6 +768,13 @@ class LRu extends L {
       'Соберите первый — и его можно будет включить в сессии.';
 
   @override
+  String get homeNoSpotifyPlaylists => 'Нет доступных плейлистов';
+
+  @override
+  String get homeNoSpotifyPlaylistsHint =>
+      'В Spotify не нашлось плейлистов, которые SyncM может открыть.';
+
+  @override
   String get homeNothingPlaying => 'Ничего не играет';
 
   @override
@@ -1942,6 +1949,16 @@ class LRu extends L {
 
   @override
   String get spotifyDisconnectTitle => 'Отключить Spotify?';
+
+  @override
+  String get spotifyLikedEmpty =>
+      'Здесь появятся треки, которые вы сохраните в Spotify.';
+
+  @override
+  String get spotifyLikedSubtitle => 'Сохранённые в Spotify';
+
+  @override
+  String get spotifyLikedTitle => 'Любимые треки';
 
   @override
   String get spotifyLinkBusy =>

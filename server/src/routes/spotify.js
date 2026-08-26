@@ -17,14 +17,34 @@ const {
   SpotifyNotConnectedError,
 } = require('../infrastructure/spotify/auth');
 const { collectAllPages, withPaging, DEFAULT_PAGE_SIZE } = require('../infrastructure/spotify/paging');
+const { isPlaylistUsableForCurrentUser } = require('../infrastructure/spotify/playlists');
 
 const getUserId = (req) => req.userId || req.session?.userId || null;
 
-const extractTrack = (item) => item.item || item.track || null;
+const extractTrack = (item) => item?.item || item?.track || null;
+
+const mapTrack = (track) => ({
+  id: track.id,
+  name: track.name,
+  artist: track.artists?.map((a) => a.name).join(', ') ?? '',
+  imageUrl: track.album?.images?.[0]?.url || null,
+  uri: track.uri,
+  durationMs: track.duration_ms,
+  album: track.album?.name ?? '',
+});
+
+const isPlayableTrack = (track) =>
+  Boolean(track) &&
+  typeof track.id === 'string' &&
+  track.id.length > 0 &&
+  typeof track.uri === 'string' &&
+  track.uri.startsWith('spotify:track:') &&
+  track.is_local !== true;
 
 const CACHE_TTL = {
   userPlaylists: 600,
   playlistTracks: 1800,
+  savedTracks: 300,
   status: 300,
   devices: 120,
   tokenInfo: 600,
@@ -101,7 +121,7 @@ router.get('/playlists', rateLimitMiddleware(30, 60), asyncHandler(async (req, r
   if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   try {
-    const playlists = await getOrSet(`spotify:user-playlists:${userId}`, 'list', CACHE_TTL.userPlaylists, async () => {
+    const playlists = await getOrSet(`spotify:user-playlists:${userId}`, 'list:v2', CACHE_TTL.userPlaylists, async () => {
       const spotifyUser = await requireSpotifyUser(userId);
 
       const all = await collectAllPages(
@@ -113,17 +133,22 @@ router.get('/playlists', rateLimitMiddleware(30, 60), asyncHandler(async (req, r
         { maxItems: 500 }
       );
 
-      return all.map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        imageUrl: p.images?.[0]?.url || null,
-        // tracks.total -> items.total (февральская миграция 2026). Без этого
-        // в списке у всех плейлистов показывалось «0 треков».
-        trackCount: p.items?.total ?? p.tracks?.total ?? 0,
-        owner: p.owner?.display_name,
-        isPublic: p.public,
-      }));
+      return all
+        .filter((p) =>
+          isPlaylistUsableForCurrentUser(p, {
+            currentSpotifyId: spotifyUser.spotifyId,
+            capability: 'read',
+          })
+        )
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          imageUrl: p.images?.[0]?.url || null,
+          trackCount: p.items?.total ?? p.tracks?.total ?? 0,
+          owner: p.owner?.display_name,
+          isPublic: p.public,
+        }));
     });
 
     res.json(playlists);
@@ -164,22 +189,42 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
 
       return collected
         .map((item, contextIndex) => ({ track: extractTrack(item), contextIndex }))
-        .filter(({ track }) => track !== null && track.id)
-        .map(({ track, contextIndex }) => ({
-          id: track.id,
-          name: track.name,
-          artist: track.artists?.map((a) => a.name).join(', ') ?? '',
-          imageUrl: track.album?.images?.[0]?.url || null,
-          uri: track.uri,
-          durationMs: track.duration_ms,
-          album: track.album?.name ?? '',
-          contextIndex,
-        }));
+        .filter(({ track }) => isPlayableTrack(track))
+        .map(({ track, contextIndex }) => ({ ...mapTrack(track), contextIndex }));
     });
 
     res.json(tracks);
   } catch (error) {
     return handleSpotifyError(req, res, error, { userId, playlistId, route: '/playlists/:id/tracks' });
+  }
+}));
+
+router.get('/saved-tracks', rateLimitMiddleware(30, 60), asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
+
+  try {
+    const tracks = await getOrSet(`spotify:saved-tracks:${userId}`, 'list', CACHE_TTL.savedTracks, async () => {
+      const spotifyUser = await requireSpotifyUser(userId);
+
+      const collected = await collectAllPages(
+        (offset, limit) =>
+          spotifyGet(
+            spotifyUser,
+            withPaging('https://api.spotify.com/v1/me/tracks', offset, limit)
+          ),
+        { maxItems: 1000 }
+      );
+
+      return collected
+        .map((item) => extractTrack(item))
+        .filter((track) => isPlayableTrack(track))
+        .map(mapTrack);
+    });
+
+    res.json(tracks);
+  } catch (error) {
+    return handleSpotifyError(req, res, error, { userId, route: '/saved-tracks' });
   }
 }));
 
@@ -202,16 +247,8 @@ router.get('/search', rateLimitMiddleware(40, 60), asyncHandler(async (req, res)
     );
 
     const tracks = (data?.tracks?.items ?? [])
-      .filter((track) => track && track.id)
-      .map((track) => ({
-        id: track.id,
-        name: track.name,
-        artist: track.artists?.map((a) => a.name).join(', ') ?? '',
-        imageUrl: track.album?.images?.[0]?.url || null,
-        uri: track.uri,
-        durationMs: track.duration_ms,
-        album: track.album?.name ?? '',
-      }));
+      .filter((track) => isPlayableTrack(track))
+      .map(mapTrack);
 
     res.json(tracks);
   } catch (error) {
@@ -536,6 +573,7 @@ router.post('/disconnect', rateLimitMiddleware(10, 60), asyncHandler(async (req,
       incrementVersion(`spotify:status:${userId}`),
       incrementVersion(`spotify:token-info:${userId}`),
       incrementVersion(`spotify:user-playlists:${userId}`),
+      incrementVersion(`spotify:saved-tracks:${userId}`),
       incrementVersion(`spotify:devices:${userId}`),
       incrementVersion(`db:user-playlists-db:${userId}`),
       incrementVersion(`db:user-profile:${userId}`),

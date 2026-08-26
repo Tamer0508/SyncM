@@ -19,6 +19,9 @@ class PlaylistsProvider with ChangeNotifier {
   List<Map<String, dynamic>> _custom = const [];
   List<Map<String, dynamic>> _spotify = const [];
 
+  List<Map<String, dynamic>> _savedTracks = const [];
+  bool _savedTracksLoaded = false;
+
   bool _loadingCustom = false;
   bool _loadingSpotify = false;
   bool _spotifyUnavailable = false;
@@ -31,6 +34,8 @@ class PlaylistsProvider with ChangeNotifier {
   bool get loadingSpotify => _loadingSpotify;
 
   bool get spotifyUnavailable => _spotifyUnavailable;
+
+  int? get savedTracksCount => _savedTracksLoaded ? _savedTracks.length : null;
 
   void _restoreFromCache() {
     _custom = LocalStore.readList(StoreKeys.customPlaylists);
@@ -199,6 +204,24 @@ class PlaylistsProvider with ChangeNotifier {
   Future<void> reorderTracks(String playlistId, List<String> trackUris) =>
       api.reorderPlaylistTracks(playlistId, trackUris);
 
+  Future<List<Map<String, dynamic>>?> savedTracks({bool refresh = false}) async {
+    try {
+      final list = _normalize(await api.getSpotifySavedTracks(refresh: refresh));
+      _savedTracks = list;
+      _savedTracksLoaded = true;
+      notifyListeners();
+      return list;
+    } on ApiException catch (err) {
+      if (err.statusCode == 409) {
+        _savedTracks = const [];
+        _savedTracksLoaded = false;
+        notifyListeners();
+        return null;
+      }
+      rethrow;
+    }
+  }
+
   Future<List<Map<String, dynamic>>?> tracksOf(
     String playlistId, {
     required bool isCustom,
@@ -220,6 +243,8 @@ class PlaylistsProvider with ChangeNotifier {
   void reset() {
     _custom = const [];
     _spotify = const [];
+    _savedTracks = const [];
+    _savedTracksLoaded = false;
     _spotifyUnavailable = false;
     notifyListeners();
   }
