@@ -6,12 +6,19 @@ import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import com.example.syncm.media.MediaSessionChannel
+import com.example.syncm.media.MediaSessionController
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channel = "syncm/system"
+
+    // Мост к системной media-карточке. Живёт ровно столько же, сколько
+    // Flutter-движок: команды карточки исполняет Dart, и без движка её
+    // показывать нельзя.
+    private var mediaSessionChannel: MediaSessionChannel? = null
 
     // Портретная блокировка объявлена в AndroidManifest и действует с самого
     // старта процесса. Планшетам и раскладным экранам она не нужна: у SyncM
@@ -45,6 +52,35 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        mediaSessionChannel =
+            MediaSessionChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        handleOpenIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOpenIntent(intent)
+    }
+
+    // Нажатие на media-карточку должно открывать Now Playing в SyncM, а не
+    // Spotify. Экран открывает существующая навигация приложения — здесь
+    // только доставляется сам факт нажатия.
+    private fun handleOpenIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(MediaSessionController.EXTRA_OPEN_NOW_PLAYING, false) != true) {
+            return
+        }
+        // Флаг одноразовый: иначе Now Playing открывался бы снова при каждом
+        // возврате в приложение по тому же intent-у.
+        intent.removeExtra(MediaSessionController.EXTRA_OPEN_NOW_PLAYING)
+        mediaSessionChannel?.requestOpenNowPlaying()
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        mediaSessionChannel?.dispose()
+        mediaSessionChannel = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     // Пытается открыть вендор-специфичный экран автозапуска (MIUI, Huawei,

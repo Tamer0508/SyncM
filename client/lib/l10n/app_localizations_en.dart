@@ -908,6 +908,13 @@ class LEn extends L {
   String get loginTitle => 'Sign in';
 
   @override
+  String get mediaChannelDescription =>
+      'Card with the current track in the shade and on the lock screen.';
+
+  @override
+  String get mediaChannelName => 'Playback';
+
+  @override
   String minutesAgoShort(int count) {
     return '$count min ago';
   }

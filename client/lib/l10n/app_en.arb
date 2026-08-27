@@ -497,6 +497,8 @@
   "loginSubtitle": "Music for friends",
   "loginTagline": "Listen to the same music at the same time, wherever you are.",
   "loginTitle": "Sign in",
+  "mediaChannelDescription": "Card with the current track in the shade and on the lock screen.",
+  "mediaChannelName": "Playback",
   "@minutesAgoShort": {
     "placeholders": {
       "count": {

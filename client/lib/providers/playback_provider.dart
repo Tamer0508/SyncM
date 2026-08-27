@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/sync_phase.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
+import '../services/media_session_bridge.dart';
 import '../services/session_foreground_service.dart';
 import '../utils/artwork_color_store.dart';
 import '../utils/image_cache.dart';
@@ -21,6 +22,12 @@ typedef SessionTracksCallback = void Function(Map<String, dynamic> data);
 typedef SessionPlaybackCallback = void Function(Map<String, dynamic> track);
 
 class PlaybackProvider extends ChangeNotifier {
+  /// Системная media-карточка Android только читает это состояние и зовёт эти
+  /// же публичные методы — собственного плеера и очереди у неё нет.
+  PlaybackProvider() {
+    MediaSessionBridge.instance.attach(this);
+  }
+
   ApiService? _apiService;
   ApiService? get apiService => _apiService;
   bool get _isWindows => defaultTargetPlatform == TargetPlatform.windows;
@@ -1122,6 +1129,7 @@ class PlaybackProvider extends ChangeNotifier {
       final imageChanged = imageUriId != _lastImageUri;
       final title = state.track!.name;
       final artist = state.track!.artist.name;
+      final album = state.track!.album.name;
 
       if (trackChanged) {
         _releaseSkipLock(notify: false);
@@ -1141,7 +1149,8 @@ class PlaybackProvider extends ChangeNotifier {
           (!sameAsShown ||
               fromQueue != null ||
               _currentTrack?['title'] != title ||
-              _currentTrack?['artist'] != artist);
+              _currentTrack?['artist'] != artist ||
+              _currentTrack?['album'] != album);
 
       if (metadataChanged) {
         final previous = sameAsShown
@@ -1155,6 +1164,7 @@ class PlaybackProvider extends ChangeNotifier {
           if (keptIndex != null) 'index': keptIndex,
           'title': title,
           'artist': artist,
+          'album': album,
           'uri': trackUri,
         };
       }
@@ -1266,13 +1276,19 @@ class PlaybackProvider extends ChangeNotifier {
     // длительность + обложка прежнего трека».
     _adoptRequestedTrack(track);
 
+    _isPlaying = true;
+
     _markPendingTrack(uri);
 
     if (!fromSession) _sessionMode = false;
 
     if (!_isConnected && !_isWindows && !_isWeb) {
       final connected = await connect();
-      if (!connected) return;
+      if (!connected) {
+        _applyPlayingLocally(false);
+        _markPendingTrack(null);
+        return;
+      }
     }
 
     try {
@@ -1327,6 +1343,7 @@ class PlaybackProvider extends ChangeNotifier {
           _startPolling();
         } catch (e) {
           debugPrint('[Web/Windows] Play error: $e');
+          _applyPlayingLocally(false);
         }
         return;
       }
@@ -1402,9 +1419,12 @@ class PlaybackProvider extends ChangeNotifier {
           _adoptRequestedTrack(track);
           _isPlaying = true;
           notifyListeners();
+        } else {
+          _applyPlayingLocally(false);
         }
       } catch (e2) {
         debugPrint('[Spotify] Fallback play error: $e2');
+        _applyPlayingLocally(false);
       }
     }
   }
@@ -1464,11 +1484,14 @@ class PlaybackProvider extends ChangeNotifier {
   }
 
   Future<void> togglePlay() async {
-    final now = DateTime.now();
-    if (_lastToggle != null && now.difference(_lastToggle!) < const Duration(milliseconds: 500)) return;
-    _lastToggle = now;
-
     if (_sessionMode && _currentSessionId != null) {
+      final now = DateTime.now();
+      if (_lastToggle != null &&
+          now.difference(_lastToggle!) < const Duration(milliseconds: 500)) {
+        return;
+      }
+      _lastToggle = now;
+
       if (_isPlaying) {
         debugPrint('[Socket] Пауза → session_command');
         _isPlaying = false;
@@ -1509,25 +1532,57 @@ class PlaybackProvider extends ChangeNotifier {
       return;
     }
 
+    await _setPlaying(!_isPlaying);
+  }
+
+  Future<void> _setPlaying(bool target) async {
+    _applyPlayingLocally(target);
+    await _sendPlaybackIntent(target);
+  }
+
+  void _applyPlayingLocally(bool target) {
+    if (_isPlaying == target) return;
+    _positionMs = positionMs;
+    _positionAnchorAt = DateTime.now();
+    _isPlaying = target;
+    notifyListeners();
+  }
+
+  bool? _playbackIntent;
+  bool _playbackCommandRunning = false;
+
+  Future<void> _sendPlaybackIntent(bool target) async {
+    _playbackIntent = target;
+    if (_playbackCommandRunning) return;
+    _playbackCommandRunning = true;
+
     try {
-      if (_isPlaying) {
-        if (_isWindows || _isWeb) {
-          await _apiService?.pausePlayback();
-        } else {
-          await SpotifySdk.pause();
+      while (!_disposed) {
+        final intent = _playbackIntent;
+        if (intent == null) break;
+        _playbackIntent = null;
+
+        try {
+          if (_isWindows || _isWeb) {
+            if (intent) {
+              await _apiService?.resumePlayback();
+            } else {
+              await _apiService?.pausePlayback();
+            }
+          } else {
+            if (intent) {
+              await SpotifySdk.resume();
+            } else {
+              await SpotifySdk.pause();
+            }
+          }
+        } catch (e) {
+          debugPrint('[Solo Play/Pause] Ошибка: $e');
+          if (_playbackIntent == null) _applyPlayingLocally(!intent);
         }
-        _isPlaying = false;
-      } else {
-        if (_isWindows || _isWeb) {
-          await _apiService?.resumePlayback();
-        } else {
-          await SpotifySdk.resume();
-        }
-        _isPlaying = true;
       }
-      notifyListeners();
-    } catch (e) {
-      debugPrint('[Solo Play/Pause] Ошибка: $e');
+    } finally {
+      _playbackCommandRunning = false;
     }
   }
 
@@ -2494,6 +2549,8 @@ class PlaybackProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+
+    MediaSessionBridge.instance.detach(this);
 
     _pollingTimer?.cancel();
     _trackChangeTimer?.cancel();

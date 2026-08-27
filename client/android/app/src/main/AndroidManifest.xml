@@ -57,6 +57,20 @@
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="mediaPlayback"
             android:exported="false" />
+
+        <!-- Собственная media-карточка SyncM: держит уведомление с
+             MediaSession, отражающей состояние Spotify. Звук воспроизводит
+             по-прежнему Spotify. -->
+        <service
+            android:name=".media.SyncMMediaService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+
+        <!-- Кнопки этого уведомления. Системные media controls ходят прямо в
+             MediaSession и сюда не обращаются. -->
+        <receiver
+            android:name=".media.MediaActionReceiver"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -1639,6 +1639,18 @@ abstract class L {
   /// **'Вход'**
   String get loginTitle;
 
+  /// No description provided for @mediaChannelDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Карточка текущего трека в шторке и на экране блокировки.'**
+  String get mediaChannelDescription;
+
+  /// No description provided for @mediaChannelName.
+  ///
+  /// In ru, this message translates to:
+  /// **'Воспроизведение'**
+  String get mediaChannelName;
+
   /// No description provided for @minutesAgoShort.
   ///
   /// In ru, this message translates to:

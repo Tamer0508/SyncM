@@ -497,6 +497,8 @@
   "loginSubtitle": "Музыка для друзей",
   "loginTagline": "Слушайте одну музыку одновременно — где бы вы ни были.",
   "loginTitle": "Вход",
+  "mediaChannelDescription": "Карточка текущего трека в шторке и на экране блокировки.",
+  "mediaChannelName": "Воспроизведение",
   "@minutesAgoShort": {
     "placeholders": {
       "count": {

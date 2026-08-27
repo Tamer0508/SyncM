@@ -42,6 +42,13 @@ flutter {
 dependencies {
     implementation(project(":spotify-app-remote"))
 
+    // MediaSessionCompat + NotificationCompat.MediaStyle для системной
+    // media-карточки SyncM. Media3 здесь не подходит: его MediaSession
+    // требует реализацию Player, а кнопки NEXT/PREVIOUS у SimpleBasePlayer
+    // появляются только при плейлисте — пришлось бы завести вторую очередь
+    // треков рядом с существующей.
+    implementation("androidx.media:media:1.7.0")
+
     // spotify-app-remote AAR подключён как голый файл, без транзитивных зависимостей.
     // Его типы размечены Jackson/JSR-305 аннотациями, которых нет в classpath, и ART
     // на каждой десериализации PlayerState сыпет "Unable to resolve ... annotation class".

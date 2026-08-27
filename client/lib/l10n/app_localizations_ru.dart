@@ -916,6 +916,13 @@ class LRu extends L {
   String get loginTitle => 'Вход';
 
   @override
+  String get mediaChannelDescription =>
+      'Карточка текущего трека в шторке и на экране блокировки.';
+
+  @override
+  String get mediaChannelName => 'Воспроизведение';
+
+  @override
   String minutesAgoShort(int count) {
     return '$count мин. назад';
   }
