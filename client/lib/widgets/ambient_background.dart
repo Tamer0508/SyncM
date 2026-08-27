@@ -47,22 +47,28 @@ class _AmbientBackgroundState extends State<AmbientBackground>
         ColoredBox(color: colors.surface),
 
         RepaintBoundary(
-          child: AnimatedBuilder(
-            animation: _controller,
-            builder: (context, _) {
-              return ImageFiltered(
-                imageFilter: ui.ImageFilter.blur(sigmaX: 90, sigmaY: 90),
-                child: CustomPaint(
-                  painter: _AmbientPainter(
-                    progress: _controller.value,
-                    primary: colors.primary,
-                    secondary: colors.tertiary,
-                    accent: colors.secondary,
-                    opacity: (isDark ? 0.22 : 0.30) * widget.intensity,
+          child: ClipRect(
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, _) {
+                return ImageFiltered(
+                  imageFilter: ui.ImageFilter.blur(
+                    sigmaX: 90,
+                    sigmaY: 90,
+                    tileMode: ui.TileMode.decal,
                   ),
-                ),
-              );
-            },
+                  child: CustomPaint(
+                    painter: _AmbientPainter(
+                      progress: _controller.value,
+                      primary: colors.primary,
+                      secondary: colors.tertiary,
+                      accent: colors.secondary,
+                      opacity: (isDark ? 0.22 : 0.30) * widget.intensity,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ),
 

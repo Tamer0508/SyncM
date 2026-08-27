@@ -2,7 +2,9 @@ package com.example.syncm
 
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -10,6 +12,25 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channel = "syncm/system"
+
+    // Портретная блокировка объявлена в AndroidManifest и действует с самого
+    // старта процесса. Планшетам и раскладным экранам она не нужна: у SyncM
+    // для широкого окна есть своя раскладка (боковой рельс, панель Now
+    // Playing), и запирать их в portrait — значит выбросить её.
+    //
+    // Android 16 (targetSdk 36) сам игнорирует screenOrientation на больших
+    // экранах; здесь то же самое делается явно и для более старых версий,
+    // чтобы поведение не зависело от версии системы.
+    //
+    // smallestScreenWidthDp — характеристика устройства, а не текущей
+    // ориентации, поэтому одной проверки при старте достаточно: ни
+    // слушателей, ни таймеров, ни повторных вызовов.
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (resources.configuration.smallestScreenWidthDp >= LARGE_SCREEN_DP) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -92,5 +113,11 @@ class MainActivity : FlutterActivity() {
             startActivity(intent)
         } catch (_: Exception) {
         }
+    }
+
+    private companion object {
+        // Тот же порог, что и у AppLayout.railMinSpace в theme.dart: начиная с
+        // этой ширины интерфейс переключается на широкую раскладку.
+        const val LARGE_SCREEN_DP = 600
     }
 }
