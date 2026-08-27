@@ -148,14 +148,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       confirmLabel: L.of(context).friendBlock,
     );
 
-    if (!confirmed || !mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     final targetId = _displayId;
     if (targetId == null) return;
 
     try {
       final ok = await context.read<AuthProvider>().api.blockUser(targetId);
-      if (!mounted) return;
+      if (!context.mounted) return;
 
       if (ok) {
         context.read<FriendsProvider>().fetchFriends(refresh: true).ignore();
@@ -169,7 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         showError(context, L.of(context).friendsBlockFailed, force: true);
       }
     } catch (err) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       showError(context, err);
     }
   }

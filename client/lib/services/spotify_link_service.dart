@@ -75,6 +75,9 @@ Future<void> connectSpotify(BuildContext context) async {
   final state =
       await api.createSpotifyLinkIntent(returnTo: 'myapp://callback');
   final authUrl = '${api.baseUrl}/auth/login?state=$state';
+  // Экран мог закрыться, пока сервер выдавал state: открывать WebView
+  // поверх исчезнувшего экрана нельзя.
+  if (!context.mounted) return;
   final result = await Navigator.of(context).push<Map<String, dynamic>>(
     MaterialPageRoute(builder: (_) => buildSpotifyWebView(authUrl)),
   );

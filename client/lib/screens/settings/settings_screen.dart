@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
@@ -444,7 +445,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
               trailing: const Icon(Icons.copy_rounded),
               onTap: () async {
                 await Clipboard.setData(ClipboardData(text: user.publicId!));
-                if (!mounted) return;
+                if (!context.mounted) return;
                 showSuccess(context, L.of(context).accountPublicIdCopied);
               },
             ),
@@ -554,7 +555,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
               trailing: const Icon(Icons.refresh_rounded),
               onTap: () async {
                 final ok = await pb.connect();
-                if (!mounted) return;
+                if (!context.mounted) return;
                 if (ok) {
                   showSuccess(context, L.of(context).spotifyConnectedShort);
                 } else {
@@ -753,14 +754,14 @@ class _SettingsBodyState extends State<_SettingsBody> {
       confirmLabel: L.of(context).commonFinish,
     );
 
-    if (!confirmed || !mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     try {
       await context.read<SessionProvider>().endSession(sessionId);
-      if (!mounted) return;
+      if (!context.mounted) return;
       showSuccess(context, L.of(context).sessionsEnded);
     } catch (err) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       showError(context, err);
     }
   }
@@ -934,7 +935,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
             subtitle: _localCacheSummary(),
             onTap: () async {
               await LocalStore.clearAll();
-              if (!mounted) return;
+              if (!mounted || !context.mounted) return;
               setState(() {});
               showSuccess(context, L.of(context).dataSavedListsCleared);
             },
@@ -997,7 +998,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
       try {
         await context.read<SettingsProvider>().setNotification(key, value);
       } catch (err) {
-        if (!mounted) return;
+        if (!context.mounted) return;
         showError(context, err);
       }
     }
@@ -1112,20 +1113,21 @@ class _SettingsBodyState extends State<_SettingsBody> {
       confirmLabel: L.of(context).securitySignOutEverywhereConfirm,
     );
 
-    if (!confirmed || !mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     try {
       await context.read<PlaybackProvider>().stopAndClear();
-      if (!mounted) return;
+      if (!context.mounted) return;
 
       context.read<PlaylistsProvider>().reset();
 
       await context.read<AuthProvider>().logoutEverywhere();
-      if (!mounted) return;
+      if (!context.mounted) return;
 
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+      unawaited(
+          Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false));
     } catch (err) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       showError(context, err);
     }
   }
@@ -1237,14 +1239,14 @@ class _SettingsBodyState extends State<_SettingsBody> {
       builder: (ctx) => _NameDialog(initialName: current),
     );
 
-    if (result == null || !mounted || result == current) return;
+    if (result == null || !context.mounted || result == current) return;
 
     try {
       await auth.updateProfile(username: result);
-      if (!mounted) return;
+      if (!context.mounted) return;
       showSuccess(context, L.of(context).nameUpdated);
     } catch (err) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       showError(context, err);
     }
   }
@@ -1258,26 +1260,27 @@ class _SettingsBodyState extends State<_SettingsBody> {
       confirmLabel: L.of(context).commonDelete,
     );
 
-    if (!confirmed || !mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     try {
       // Останавливаем воспроизведение до удаления: проигрыватель переживает
       // смену пользователя, и после выхода панель осталась бы играть.
       await context.read<PlaybackProvider>().stopAndClear();
-      if (!mounted) return;
+      if (!context.mounted) return;
 
       final auth = context.read<AuthProvider>();
       await auth.api.deleteAccount();
-      if (!mounted) return;
+      if (!context.mounted) return;
 
       // Локальное состояние чистим вручную: обычный logout обращается к
       // серверу, а пользователя там уже нет — запрос вернул бы 401.
       await auth.forgetLocalSession();
-      if (!mounted) return;
+      if (!context.mounted) return;
 
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+      unawaited(
+          Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false));
     } catch (err) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       showError(context, err);
     }
   }
@@ -1291,20 +1294,20 @@ class _SettingsBodyState extends State<_SettingsBody> {
       confirmLabel: L.of(context).commonSignOut,
     );
 
-    if (!confirmed || !mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     // Останавливаем воспроизведение до выхода: проигрыватель переживает
     // смену аккаунта, и без этого следующий вошедший видел бы панель с
     // чужим треком.
     await context.read<PlaybackProvider>().stopAndClear();
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     context.read<PlaylistsProvider>().reset();
 
     await context.read<AuthProvider>().logout();
-    if (!mounted) return;
+    if (!context.mounted) return;
 
-    Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+    unawaited(Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false));
   }
 
   Future<void> _updatePrivacy(Map<String, bool> patch) async {

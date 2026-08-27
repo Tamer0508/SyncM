@@ -35,7 +35,7 @@ List<HomeDestination> homeDestinations(BuildContext context) => [
     ];
 
 class HomeBottomNav extends StatelessWidget {
-  HomeBottomNav({
+  const HomeBottomNav({
     super.key,
     required this.currentIndex,
     required this.onSelected,

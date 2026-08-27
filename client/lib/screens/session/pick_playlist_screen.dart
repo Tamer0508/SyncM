@@ -359,7 +359,7 @@ class _PlaylistTile extends StatelessWidget {
 }
 
 class _EmptyView extends StatelessWidget {
-  _EmptyView({
+  const _EmptyView({
     required this.icon,
     required this.title,
     required this.subtitle,

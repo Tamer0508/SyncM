@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -66,10 +66,11 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
         // та же сессия выглядела по-разному в зависимости от пути входа.
         if (context.isWideWindow) {
           context.read<SessionProvider>().requestOpenSession(session);
-          Navigator.of(context).maybePop();
+          unawaited(Navigator.of(context).maybePop());
           return;
         }
-        Navigator.of(context).pushReplacementNamed('/session', arguments: session);
+        unawaited(Navigator.of(context)
+            .pushReplacementNamed('/session', arguments: session));
       } else {
         showSuccess(context, L.of(context).invitesAccepted);
       }

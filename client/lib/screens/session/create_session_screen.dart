@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../providers/session_provider.dart';
 import 'package:flutter/services.dart';
@@ -113,10 +114,11 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
       } else {
         if (context.isWideWindow) {
           context.read<SessionProvider>().requestOpenSession(session);
-          Navigator.of(context).maybePop();
+          unawaited(Navigator.of(context).maybePop());
           return;
         }
-        Navigator.of(context).pushReplacementNamed('/session', arguments: session);
+        unawaited(Navigator.of(context)
+            .pushReplacementNamed('/session', arguments: session));
       }
     } catch (err) {
       if (!mounted) return;

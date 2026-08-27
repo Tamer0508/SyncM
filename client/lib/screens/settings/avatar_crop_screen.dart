@@ -49,10 +49,13 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
 
   Future<void> _apply() async {
     setState(() => _processing = true);
+    // Текст ошибки берём до асинхронной работы: после await экрана может уже
+    // не быть, а L.of(context) читает наследуемый виджет.
+    final noImageDataMessage = L.of(context).cropNoImageData;
     try {
       final cropped = await _controller.croppedBitmap();
       final byteData = await cropped.toByteData(format: ImageByteFormat.png);
-      if (byteData == null) throw StateError(L.of(context).cropNoImageData);
+      if (byteData == null) throw StateError(noImageDataMessage);
 
       final raw = byteData.buffer.asUint8List();
       final resized = _resize(raw, AvatarCropScreen.outputSize);

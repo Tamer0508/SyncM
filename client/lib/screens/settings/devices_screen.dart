@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -122,7 +123,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
       if (!mounted) return;
     }
 
-    Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+    unawaited(Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false));
   }
 
   String _name(Map<String, dynamic> device) {

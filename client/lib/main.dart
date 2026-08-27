@@ -37,7 +37,7 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -261,7 +261,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
-      builder: (_, auth, __) {
+      builder: (_, auth, _) {
         if (auth.loading && !auth.isLoggedIn) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),

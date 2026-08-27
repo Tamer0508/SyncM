@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -97,8 +98,6 @@ void main() {
     await server.close(force: true);
   });
 
-  int playCommands() => calls.where((c) => c == 'POST /spotify/play').length;
-
   List<String> playedUris() =>
       playBodies.map((b) => '${b['uri'] ?? b['spotifyUri'] ?? ''}').toList();
 
@@ -128,7 +127,7 @@ void main() {
       );
 
       // Трек доиграл почти до конца (пришло состояние плеера).
-      pb.seekTo(195000);
+      unawaited(pb.seekTo(195000));
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       // Пользователь тапнул другой трек в том же плейлисте.

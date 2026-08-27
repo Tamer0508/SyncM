@@ -47,7 +47,6 @@ class SessionScreen extends StatefulWidget {
 class _SessionScreenState extends State<SessionScreen> {
   Map<String, dynamic>? _session;
   bool _initialized = false;
-  bool _refreshing = false;
   PlaybackProvider? _playback;
   Set<String> _onlineUserIds = {};
 
@@ -251,7 +250,9 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   Future<void> _refreshSession() async {
-    setState(() => _refreshing = true);
+    // Индикатора загрузки на этом экране нет, поэтому и состояния «идёт
+    // обновление» тоже: прежние setState вокруг него перестраивали экран,
+    // ничего на нём не меняя.
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
       final sessions = await api.getMySessions();
@@ -261,10 +262,7 @@ class _SessionScreenState extends State<SessionScreen> {
         setState(() => _session = Map<String, dynamic>.from(updated));
         _syncSessionQueue();
       }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _refreshing = false);
-    }
+    } catch (_) {}
   }
 
   Future<void> _endSession() async {
@@ -327,7 +325,8 @@ class _SessionScreenState extends State<SessionScreen> {
           return;
         }
 
-        Navigator.of(context).pushNamed('/session/results', arguments: args);
+        unawaited(Navigator.of(context)
+            .pushNamed('/session/results', arguments: args));
       }
     } catch (e) {
       if (mounted) {

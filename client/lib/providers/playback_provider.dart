@@ -1233,7 +1233,7 @@ class PlaybackProvider extends ChangeNotifier {
         if (dur > 0 && _lastActivePositionMs >= dur - 1200) {
           debugPrint('[SyncM] Трек завершился. Переключаем...');
           _isAdvancingQueue = true;
-          _advanceSessionQueue();
+          unawaited(_advanceSessionQueue());
         }
       }
 
@@ -1667,7 +1667,7 @@ class PlaybackProvider extends ChangeNotifier {
         if (newUri != null && newUri != oldUri) {
           timer.cancel();
           _releaseSkipLock();
-          _updateFromPlayerState(state);
+          await _updateFromPlayerState(state);
         }
       } catch (e) {
         debugPrint('[Poll] error: $e');
@@ -2185,7 +2185,9 @@ class PlaybackProvider extends ChangeNotifier {
       debugPrint('[SyncM] Палитра обложки не рассчиталась: $err');
       return null;
     } finally {
-      _palettePending.remove(key);
+      // Значение в карте — уже запущенный Future; здесь снимается
+      // только пометка «расчёт идёт», ждать нечего.
+      unawaited(_palettePending.remove(key));
     }
   }
 

@@ -133,7 +133,7 @@ class TappableAvatar extends StatelessWidget {
         barrierColor: Colors.black.withValues(alpha: 0.86),
         transitionDuration: AppMotion.medium,
         reverseTransitionDuration: AppMotion.short,
-        pageBuilder: (_, animation, __) => _AvatarViewer(
+        pageBuilder: (_, animation, _) => _AvatarViewer(
           imageUrl: imageUrl!,
           heroTag: tag,
           title: title,
@@ -236,12 +236,12 @@ class _AvatarViewerState extends State<_AvatarViewer> {
                               cacheManager: AppImageCache.manager,
                               imageUrl: widget.imageUrl,
                               fit: BoxFit.contain,
-                              placeholder: (_, __) => const SizedBox(
+                              placeholder: (_, _) => const SizedBox(
                                 width: 64,
                                 height: 64,
                                 child: Center(child: CircularProgressIndicator()),
                               ),
-                              errorWidget: (_, __, ___) => const Icon(
+                              errorWidget: (_, _, _) => const Icon(
                                 Icons.broken_image_rounded,
                                 size: 64,
                                 color: Colors.white54,

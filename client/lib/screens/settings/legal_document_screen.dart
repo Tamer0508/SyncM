@@ -113,7 +113,7 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
               tooltip: L.of(context).legalCopyText,
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: _text!));
-                if (!mounted) return;
+                if (!context.mounted) return;
                 showSuccess(context, L.of(context).legalTextCopied);
               },
             ),

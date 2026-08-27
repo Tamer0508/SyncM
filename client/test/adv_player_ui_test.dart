@@ -19,15 +19,11 @@ class _StubPlayback extends PlaybackProvider {
   _StubPlayback({
     Map<String, dynamic>? track,
     int duration = 200000,
-    this.next,
-    this.previous,
   })  : _track = track,
         _duration = duration;
 
   Map<String, dynamic>? _track;
   final int _duration;
-  final Map<String, dynamic>? next;
-  final Map<String, dynamic>? previous;
 
   int nextCalls = 0;
   int previousCalls = 0;
@@ -44,11 +40,13 @@ class _StubPlayback extends PlaybackProvider {
   @override
   Uint8List? get currentImageBytes => null;
 
+  // Очередь у заглушки пустая: соседей читают и Now Playing, и мини-плеер,
+  // но ни один тест их не задаёт.
   @override
-  Map<String, dynamic>? get nextQueueTrack => next;
+  Map<String, dynamic>? get nextQueueTrack => null;
 
   @override
-  Map<String, dynamic>? get previousQueueTrack => previous;
+  Map<String, dynamic>? get previousQueueTrack => null;
 
   @override
   List<String> get neighbourArtworkUrls => const [];

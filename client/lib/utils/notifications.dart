@@ -236,7 +236,6 @@ class _StackedItem extends StatelessWidget {
 
 class _NotificationCard extends StatefulWidget {
   const _NotificationCard({
-    super.key,
     required this.data,
     required this.onDismiss,
   });
