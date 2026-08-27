@@ -50,6 +50,11 @@ object MediaSessionController {
     private const val TAG = "SyncMMediaSession"
 
     const val CHANNEL_ID = "syncm_media"
+
+    // Короткоживущая отладочная сборка успела создать канал с этим id и
+    // повышенным importance. Затея не сработала, а канал в настройках
+    // остался бы — убираем его.
+    private const val ABANDONED_CHANNEL_ID = "syncm_media_playback"
     const val NOTIFICATION_ID = 0x5C41
 
     const val EXTRA_OPEN_NOW_PLAYING = "com.example.syncm.OPEN_NOW_PLAYING"
@@ -567,6 +572,14 @@ object MediaSessionController {
         if (channelReady) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
+            try {
+                manager.deleteNotificationChannel(ABANDONED_CHANNEL_ID)
+            } catch (_: Exception) {
+            }
+            // LOW — как принято для media-уведомлений. Поднимать importance
+            // ради того, чтобы обойти Spotify в шторке, проверено на
+            // устройстве и бессмысленно: медиа-панель выбирает сессию не по
+            // ранжированию уведомлений, а по владельцу аудиопотока.
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 channelName,
@@ -576,6 +589,7 @@ object MediaSessionController {
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 enableVibration(false)
+                enableLights(false)
                 setSound(null, null)
             }
             manager.createNotificationChannel(channel)
