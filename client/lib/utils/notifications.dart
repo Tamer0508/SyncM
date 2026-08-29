@@ -85,7 +85,6 @@ class _NotificationHost {
 
     _visible.removeWhere((d) => d.key == key);
 
-    // Освободилось место — показываем следующее из очереди.
     if (_pending.isNotEmpty && _visible.length < _maxVisible) {
       final next = _pending.removeFirst();
       _visible.insert(0, next);
@@ -114,13 +113,10 @@ class _NotificationStack extends StatefulWidget {
 class _NotificationStackState extends State<_NotificationStack> {
   bool _expanded = false;
 
-  /// На сколько точек выглядывает каждая следующая карточка в стопке.
   static const _peek = 12.0;
 
-  /// Расстояние между карточками в разъехавшемся виде.
   static const _gap = 8.0;
 
-  /// Насколько уменьшается каждая карточка вглубь стопки.
   static const _scaleStep = 0.05;
 
   @override
@@ -149,7 +145,6 @@ class _NotificationStackState extends State<_NotificationStack> {
         onEnter: (_) => setState(() => _expanded = true),
         onExit: (_) => setState(() => _expanded = false),
         child: GestureDetector(
-          // На телефоне мыши нет — разворачиваем нажатием по стопке.
           onTap: items.length > 1 ? () => setState(() => _expanded = !_expanded) : null,
           child: SizedBox(
             width: maxWidth,

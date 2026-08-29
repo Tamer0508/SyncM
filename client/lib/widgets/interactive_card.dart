@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Карточка, слегка «проседающая» под нажатием.
 class InteractiveCard extends StatefulWidget {
   const InteractiveCard({
     super.key,

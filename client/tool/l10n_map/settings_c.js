@@ -1,11 +1,3 @@
-// Строки с подстановками и множественным числом.
-//
-// Такие ключи нельзя завести тройкой «ключ / ru / en»: у них есть описание
-// параметров, а у числовых — ещё и формы слова. Поэтому отдельный файл,
-// который дописывает их в ARB как есть.
-//
-//   node tool/l10n_map/settings_c.js
-
 const fs = require('fs');
 const path = require('path');
 
@@ -151,8 +143,6 @@ for (const locale of ['ru', 'en']) {
 
   for (const [key, value] of Object.entries(entries)) {
     arb[key] = value[locale];
-    // Описание параметров нужно только в шаблонном файле, но лишним не будет:
-    // при следующей генерации оно просто совпадёт.
     if (value.placeholders) {
       arb[`@${key}`] = { placeholders: value.placeholders };
     }

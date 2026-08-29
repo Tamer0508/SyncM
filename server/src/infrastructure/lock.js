@@ -20,7 +20,7 @@ function getRedlock() {
       retryCount: 3,
       retryDelay: 200,
       retryJitter: 200,
-      automaticExtensionThreshold: 500, // ms до истечения для продления
+      automaticExtensionThreshold: 500,
     });
 
     redlock.on('error', (err) => {

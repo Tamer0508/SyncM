@@ -8,7 +8,6 @@ for (let i = 0; i < lines.length; i++) {
     new Function(prefix);
   } catch (e) {
     console.error('Syntax error near line', i+1, e.toString());
-    // print context
     const start = Math.max(0, i-5);
     const end = Math.min(lines.length, i+5);
     for (let j = start; j < end; j++) {

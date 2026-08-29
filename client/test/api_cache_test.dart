@@ -5,8 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:syncm/services/api_service.dart';
 
 void main() {
-  // flutter_test по умолчанию подменяет HttpClient заглушкой — снимаем её,
-  // иначе до локального сервера запросы не дойдут.
   setUpAll(() => HttpOverrides.global = null);
 
   late HttpServer server;
@@ -79,7 +77,6 @@ void main() {
     for (var i = 0; i < 5; i++) {
       final data = await api.getMySessions(  );
       expect(data, hasLength(1));
-      // TTL сессий — 3 секунды, поэтому ждём, чтобы каждый раз шла сеть.
       await Future<void>.delayed(const Duration(milliseconds: 3100));
     }
 

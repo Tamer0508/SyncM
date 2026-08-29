@@ -1,21 +1,10 @@
 'use strict';
 
-// Враждебные тесты реалтайм-слоя сессий (server/src/socket.js).
-//
-// БД и Redis недоступны, поэтому prisma/logger/authTokens подменяются в
-// require.cache ДО загрузки socket.js, а socket.io заменён минимальной
-// подделкой: она повторяет ровно тот контракт, которым пользуется socket.js
-// (rooms/adapter, io.to().emit, socket.to().emit, join/leave/emit/on).
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-// ─────────────────────────── подделка Prisma ───────────────────────────────
-
 const db = {
-  // `${sessionId}:${userId}` -> { status }
   members: new Map(),
-  // sessionId -> { hostId, isActive }
   sessions: new Map(),
   ratings: [],
 };
@@ -56,7 +45,6 @@ const fakePrisma = {
     },
   },
   user: {
-    // isOnlineHidden: true — чтобы не уходить в ветку рассылки друзьям.
     async findUnique() { return { id: 'u', isOnlineHidden: true }; },
     async update() {},
   },
@@ -84,8 +72,6 @@ stub('../src/infrastructure/authTokens', { resolveAuthToken: async (token) => to
 
 const socketModule = require('../src/socket');
 const { setupSocket, closeSocket, forgetMembership } = socketModule;
-
-// ─────────────────────── подделка socket.io ────────────────────────────────
 
 function createHarness() {
   const rooms = new Map();
@@ -136,7 +122,6 @@ async function connect(h, opts) {
       if (r) r.delete(opts.id);
     },
     disconnect() { socket.disconnected = true; },
-    // Вызвать обработчик так, как это сделал бы socket.io.
     async fire(event, payload) {
       const fn = handlers.get(event);
       assert.ok(fn, 'обработчик "' + event + '" не зарегистрирован');
@@ -160,20 +145,16 @@ function reset() {
 
 test.afterEach(async () => { await closeSocket(); });
 
-// ═══════════════════════════════ S-001 ═════════════════════════════════════
-
 test('S-001: leave_session не проверяет членство — чужак вещает user_left в любую комнату', async () => {
   reset();
   const sid = 's001';
   db.sessions.set(sid, { hostId: 'host', isActive: true });
   db.members.set(sid + ':host', { status: 'accepted' });
-  // 'stranger' членом сессии НЕ является.
 
   const h = createHarness();
   setupSocket(h.io);
   const stranger = await connect(h, { id: 'sock-stranger', userId: 'stranger' });
 
-  // Контроль: join_session чужака сервер корректно отвергает.
   await stranger.fire('join_session', { sessionId: sid });
   assert.deepEqual(
     stranger.selfEmits.map((e) => e.event),
@@ -182,7 +163,6 @@ test('S-001: leave_session не проверяет членство — чужа
   );
   assert.equal(emitsTo(h, sid, 'user_joined').length, 0);
 
-  // Атака: тот же чужак шлёт leave_session с чужим sessionId.
   h.roomEmits.length = 0;
   await stranger.fire('leave_session', { sessionId: sid });
 
@@ -193,20 +173,16 @@ test('S-001: leave_session не проверяет членство — чужа
   );
 });
 
-// ═══════════════════════════════ S-002 ═════════════════════════════════════
-
 test('S-002: завершённая сессия остаётся полностью управляемой по сокету', async () => {
   reset();
   const sid = 's002';
-  // Сессия завершена: endSession выставляет isActive=false и зовёт
-  // forgetMembership — статусы участников при этом НЕ меняются.
   db.sessions.set(sid, { hostId: 'host', isActive: false });
   db.members.set(sid + ':host', { status: 'accepted' });
   db.members.set(sid + ':guest', { status: 'accepted' });
 
   const h = createHarness();
   setupSocket(h.io);
-  forgetMembership(sid); // ровно то, что делает sessionController.endSession
+  forgetMembership(sid);
 
   const guest = await connect(h, { id: 'sock-guest', userId: 'guest' });
 
@@ -220,8 +196,6 @@ test('S-002: завершённая сессия остаётся полност
   await guest.fire('rate_track', { sessionId: sid, trackId: 'trk', rating: 1 });
   assert.equal(db.ratings.length, 0, 'оценка трека в завершённой сессии не должна сохраняться');
 });
-
-// ═══════════════════════════════ S-003 ═════════════════════════════════════
 
 test('S-003: после завершения сессии сервер вечно вещает session_sync/session_reseek', async (t) => {
   reset();
@@ -241,8 +215,6 @@ test('S-003: после завершения сессии сервер вечн�
 
   assert.equal(emitsTo(h, sid, 'session_start').length, 1, 'предусловие: трек стартовал');
 
-  // Сессию завершает хост: контроллер помечает isActive=false, чистит кэш
-  // членства и рассылает session_ended. Больше ничего.
   db.sessions.get(sid).isActive = false;
   forgetMembership(sid);
 
@@ -257,8 +229,6 @@ test('S-003: после завершения сессии сервер вечн�
     'завершённая сессия продолжает вещать: session_sync=' + sync + ', session_reseek=' + reseek,
   );
 });
-
-// ═══════════════════════════════ S-004 ═════════════════════════════════════
 
 test('S-004: seek на паузе принудительно возобновляет воспроизведение у всех', async (t) => {
   reset();
@@ -281,7 +251,6 @@ test('S-004: seek на паузе принудительно возобновл�
   h.roomEmits.length = 0;
   host.selfEmits.length = 0;
 
-  // Перетаскивание ползунка на паузе.
   await host.fire('session_command', { sessionId: sid, action: 'seek', positionMs: 30000 });
 
   assert.equal(
@@ -295,8 +264,6 @@ test('S-004: seek на паузе принудительно возобновл�
   assert.ok(state, 'resync обязан вернуть состояние');
   assert.equal(state.payload.state, 'paused', 'после перемотки сессия обязана остаться на паузе');
 });
-
-// ═══════════════════════════════ S-005 ═════════════════════════════════════
 
 test('S-005: client_ready без session_prepare создаёт фантомное состояние сессии', async (t) => {
   reset();
@@ -314,7 +281,6 @@ test('S-005: client_ready без session_prepare создаёт фантомно
   await a.fire('join_session', { sessionId: sid });
   await b.fire('join_session', { sessionId: sid });
 
-  // Опоздавший client_ready от предыдущего трека — состояния сессии нет.
   await a.fire('client_ready', { sessionId: sid, trackId: 'stale-track' });
 
   b.selfEmits.length = 0;
@@ -328,8 +294,6 @@ test('S-005: client_ready без session_prepare создаёт фантомно
       JSON.stringify(state && state.payload),
   );
 });
-
-// ═══════════════════════════════ S-006 ═════════════════════════════════════
 
 test('S-006: join_session эхом возвращает user_joined самому вошедшему и повторяет его на каждом реконнекте', async () => {
   reset();
@@ -350,7 +314,6 @@ test('S-006: join_session эхом возвращает user_joined самому
     'user_joined — ретрансляция: её шлют через socket.to (всем, кроме отправителя), как play/pause/seek рядом',
   );
 
-  // Реконнект: сокет уже в комнате и снова шлёт join_session.
   h.roomEmits.length = 0;
   await a.fire('join_session', { sessionId: sid });
   assert.equal(
@@ -359,11 +322,6 @@ test('S-006: join_session эхом возвращает user_joined самому
     'повторный вход уже присутствующего участника не должен заново поднимать всех на перезагрузку сессии',
   );
 });
-
-// ═══════════════════════ REGRESSION после исправлений ══════════════════════
-//
-// Проверяем не только что дыры закрыты, но и что штатные сценарии сессии
-// продолжают работать: хост, участник, вход, выход, реконнект, смена трека.
 
 test('REG: полный сценарий хост + участник работает', async () => {
   reset();
@@ -382,35 +340,29 @@ test('REG: полный сценарий хост + участник работ�
   assert.equal(host.selfEmits.filter((e) => e.event === 'error').length, 0,
       'участник обязан входить в живую сессию');
 
-  // Участник входит — хост об этом узнаёт.
   h.roomEmits.length = 0;
   await guest.fire('join_session', { sessionId: sid });
   assert.equal(emitsTo(h, sid, 'user_joined').length, 1,
       'о приходе второго участника комнату надо уведомить');
 
-  // Подготовка и старт трека.
   await host.fire('session_prepare', { sessionId: sid, trackId: 'trk', durationMs: 300000 });
   await host.fire('client_ready', { sessionId: sid, trackId: 'trk' });
   await guest.fire('client_ready', { sessionId: sid, trackId: 'trk' });
   assert.equal(emitsTo(h, sid, 'session_start').length, 1, 'трек обязан стартовать');
 
-  // Пауза и продолжение.
   await host.fire('session_command', { sessionId: sid, action: 'pause' });
   assert.equal(emitsTo(h, sid, 'session_pause').length, 1);
   await host.fire('session_command', { sessionId: sid, action: 'resume' });
   assert.equal(emitsTo(h, sid, 'session_resume').length, 1, 'снятие с паузы должно работать');
 
-  // Перемотка во время игры по-прежнему перезапускает всех с новой позиции.
   h.roomEmits.length = 0;
   await host.fire('session_command', { sessionId: sid, action: 'seek', positionMs: 42000 });
   assert.ok(emitsTo(h, sid, 'session_start').length > 0,
       'перемотка при игре обязана синхронно перезапустить трек у всех');
 
-  // Оценка трека участником сохраняется.
   await guest.fire('rate_track', { sessionId: sid, trackId: 'trk', rating: 1 });
   assert.equal(db.ratings.length, 1, 'оценка в живой сессии обязана сохраняться');
 
-  // Штатный выход участника.
   h.roomEmits.length = 0;
   await guest.fire('leave_session', { sessionId: sid });
   assert.equal(emitsTo(h, sid, 'user_left').length, 1,
@@ -431,7 +383,6 @@ test('REG: реконнект участника снова уведомляет
   const first = await connect(h, { id: 'sock-r2a', userId: 'guest' });
   await first.fire('join_session', { sessionId: sid });
 
-  // Обрыв связи и новое соединение — это НОВЫЙ сокет.
   h.roomEmits.length = 0;
   const second = await connect(h, { id: 'sock-r2b', userId: 'guest' });
   await second.fire('join_session', { sessionId: sid });
@@ -488,7 +439,6 @@ test('REG: чужак не может ничего в живой сессии', 
   await host.fire('session_prepare', { sessionId: sid, trackId: 'trk', durationMs: 300000 });
   await host.fire('client_ready', { sessionId: sid, trackId: 'trk' });
 
-  // Приглашённый, но не принявший приглашение — тоже не участник.
   const pending = await connect(h, { id: 'sock-r4p', userId: 'pending' });
   h.roomEmits.length = 0;
 

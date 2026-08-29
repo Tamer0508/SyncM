@@ -27,10 +27,6 @@ Map<String, dynamic> _track(String id) => {
       'durationMs': 200000,
     };
 
-/// Первый цвет градиента фона.
-///
-/// Остальные стопы и `base` — линейные функции от него, поэтому одного
-/// достаточно, чтобы судить о всей перекраске.
 Color backgroundColor(WidgetTester tester) {
   for (final box in tester.widgetList<DecoratedBox>(find.byType(DecoratedBox))) {
     final decoration = box.decoration;
@@ -44,7 +40,6 @@ Color backgroundColor(WidgetTester tester) {
   fail('градиент фона Now Playing не найден');
 }
 
-/// Собирает цвет фона на каждом кадре заданного промежутка.
 Future<List<Color>> sampleBackground(
   WidgetTester tester, {
   int frames = 60,
@@ -57,10 +52,6 @@ Future<List<Color>> sampleBackground(
   return samples;
 }
 
-/// Насколько цвет продвинулся по отрезку [from] -> [to].
-///
-/// `null`, если он вообще не лежит на этом отрезке — а значит, в фон попал
-/// цвет, которого в переходе быть не должно (заглушка, чужой трек).
 double? _progressAlong(Color from, Color to, Color sample) {
   double? found;
 
@@ -71,8 +62,6 @@ double? _progressAlong(Color from, Color to, Color sample) {
   ]) {
     final span = channel[1] - channel[0];
     if (span.abs() < 0.02) {
-      // Канал почти не меняется — судить по нему нельзя, но выпадать из
-      // отрезка он тоже не имеет права.
       if ((channel[2] - channel[0]).abs() > 0.04) return null;
       continue;
     }
@@ -86,10 +75,6 @@ double? _progressAlong(Color from, Color to, Color sample) {
   return found ?? 0;
 }
 
-/// Переход должен идти строго из [from] в [to] и только вперёд.
-///
-/// Ловит и вспышку (откат назад по отрезку), и подстановку постороннего
-/// цвета (выход за отрезок).
 void expectSmoothTransition(
   List<Color> samples, {
   required Color from,
@@ -118,7 +103,6 @@ void expectSmoothTransition(
   expect(previous, greaterThan(0.95), reason: 'переход не дошёл до конца');
 }
 
-/// После того как фон ушёл от [color], возвращаться к нему нельзя.
 void expectNeverReturnsTo(List<Color> samples, Color color) {
   var left = false;
 
@@ -139,7 +123,6 @@ class _ColorPlayback extends PlaybackProvider {
 
   final Map<String, PaletteGenerator> _palettes = {};
 
-  /// Расчёты, которые тест завершает вручную.
   final Map<String, Completer<PaletteGenerator?>> pending = {};
 
   @override
@@ -147,8 +130,6 @@ class _ColorPlayback extends PlaybackProvider {
 
   String? next;
 
-  /// Сосед появляется в очереди — дерево обязано перестроиться, иначе пейджер
-  /// так и останется без следующей плитки.
   void queueNext(String id) {
     next = id;
     notifyListeners();
@@ -211,12 +192,10 @@ class _ColorPlayback extends PlaybackProvider {
         .future;
   }
 
-  /// Цвет обложки известен заранее — как для трека, чью палитру уже посчитали.
   void knowColor(String id, Color color) {
     _palettes['https://example.com/$id.png'] = _palette(color);
   }
 
-  /// Завершает отложенный расчёт палитры.
   void resolveColor(String id, Color color) {
     final key = 'https://example.com/$id.png';
     final palette = _palette(color);
@@ -294,12 +273,9 @@ void main() {
 
       final from = backgroundColor(tester);
 
-      // Цвет трека B ещё не посчитан.
       pb.switchTo('b');
       final waiting = await sampleBackground(tester, frames: 30);
 
-      // Пока цвета нет, фон держит прежний — но не мигает и не уходит в
-      // постороннний цвет.
       for (var i = 0; i < waiting.length; i++) {
         expect(waiting[i], from, reason: 'кадр $i: фон дёрнулся до расчёта');
       }
@@ -318,7 +294,6 @@ void main() {
 
       final from = backgroundColor(tester);
 
-      // B — медленный, C успевает стать текущим раньше, чем B посчитается.
       pb.switchTo('b');
       await tester.pump(const Duration(milliseconds: 32));
 
@@ -329,7 +304,6 @@ void main() {
       final settled = backgroundColor(tester);
       expect(settled, isNot(from));
 
-      // Расчёт B возвращается последним — фон обязан его проигнорировать.
       pb.resolveColor('b', gray);
       final samples = await sampleBackground(tester);
 
@@ -388,8 +362,6 @@ void main() {
 
       pb.switchTo('b');
 
-      // Первый же кадр после смены трека обязан быть либо прежним цветом,
-      // либо началом перехода — но не заглушкой.
       await tester.pump();
       expect(_progressAlong(from, gray, backgroundColor(tester)), isNotNull,
           reason: 'первый кадр после смены трека вне перехода');
@@ -401,7 +373,7 @@ void main() {
     testWidgets('C-007: свайп на трек с несчитанным цветом не мигает',
         (tester) async {
       final pb = await _openOn(tester, 'a', orange);
-      pb.queueNext('b'); // цвет B ещё неизвестен
+      pb.queueNext('b');
       await tester.pumpAndSettle();
 
       final from = backgroundColor(tester);
@@ -414,8 +386,6 @@ void main() {
       pb.switchTo('b');
       final afterCommit = await sampleBackground(tester, frames: 20);
 
-      // Пока цвет B неизвестен, фон держит прежний: гасить его в surface и
-      // возвращать обратно — это и была вспышка.
       for (final sample in [...duringSwipe, ...afterCommit]) {
         expect(sample, from, reason: 'фон дёрнулся до расчёта цвета соседа');
       }
@@ -441,15 +411,12 @@ void main() {
       await swipeArtwork(tester);
       await tester.pumpAndSettle();
 
-      // Двухфазный переход через surface остался на месте: свайп доводит фон
-      // до цвета соседа.
       final committed = backgroundColor(tester);
       expect(committed, isNot(from));
 
       pb.switchTo('b');
       final samples = await sampleBackground(tester, frames: 30);
 
-      // Подтверждение трека ничего не перекрашивает: цвет уже принадлежит B.
       for (var i = 0; i < samples.length; i++) {
         expect(samples[i], committed,
             reason: 'кадр $i: подтверждение трека перекрасило фон заново');

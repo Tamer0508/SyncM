@@ -80,8 +80,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
         AppSpacing.sm,
         AppSpacing.xs,
       ),
-      // Цвет обложки приходит отдельным notifier'ом: его готовность
-      // перестраивает только мини-плеер, а не всех слушателей провайдера.
       child: ValueListenableBuilder<Color?>(
         valueListenable: pb.artworkColorNotifier,
         builder: (context, artworkColor, _) {
@@ -219,8 +217,6 @@ class _MiniPlayerBody extends StatelessWidget {
                   _PlayButton(
                     isPlaying: pb.isPlaying,
                     onPressed: pb.togglePlay,
-                    // Кнопка берёт цвета от подложки: на цветной она белая с
-                    // тёмной иконкой, на обычной — акцентная.
                     background: onBackground,
                     foreground: background,
                   ),
@@ -337,8 +333,6 @@ class _MiniProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     final pb = context.read<PlaybackProvider>();
 
-    // Свой таймер больше не нужен: позицию тикает один общий механизм в
-    // провайдере, здесь перестраивается только сама полоска.
     return ValueListenableBuilder<int>(
       valueListenable: pb.positionNotifier,
       builder: (context, positionMs, _) {

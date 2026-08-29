@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/services.dart'
     show MethodCall, MethodChannel, MissingPluginException;
 
-/// Команда, пришедшая из системной media-карточки.
 class MediaSessionCommand {
   const MediaSessionCommand(this.action, this.value);
 

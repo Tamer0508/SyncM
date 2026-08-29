@@ -1,11 +1,5 @@
 'use strict';
 
-// Regression-покрытие к BUG #001 / #002.
-//
-// Проверяет обе стороны исправления:
-//   1) чужой файл удалить нельзя, с какого бы домена ни пришёл URL;
-//   2) свой прежний файл по-прежнему подчищается — уборка не сломана.
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -113,7 +107,6 @@ test('без владельца не удаляется ничего', () => {
 });
 
 test('признак владения смотрит на полный идентификатор, а не на префикс', () => {
-  // 'owner-user' — префикс 'owner-user-id', но это другой пользователь.
   assert.equal(isOwnedUploadName(ownFile, 'owner-user'), false);
   assert.equal(isOwnedUploadName(ownFile, OWNER), true);
 });

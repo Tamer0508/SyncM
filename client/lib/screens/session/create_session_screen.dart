@@ -43,11 +43,6 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
   Friend? _selectedFriend;
   bool _creating = false;
 
-  /// Показывать ошибку названия только после первой попытки ввода.
-  ///
-  /// Раньше «Название не может быть пустым» появлялось сразу при открытии
-  /// экрана — форма встречала пользователя ошибкой ещё до того, как он
-  /// что-либо сделал.
   bool _nameTouched = false;
 
   @override
@@ -219,7 +214,6 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
                     friend: friend,
                     selected: _selectedFriend?.id == friend.id,
                     onTap: () => setState(() {
-                      // Повторное нажатие снимает выбор.
                       _selectedFriend =
                           _selectedFriend?.id == friend.id ? null : friend;
                     }),
@@ -242,9 +236,6 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
           ),
         ),
 
-        // Подсказка о том, чего не хватает, вместо постоянного текста ошибки
-        // под списком друзей. Она появляется, только когда название уже
-        // введено — иначе сбивала бы с толку на пустой форме.
         if (_nameValid && _selectedFriend == null) ...[
           const SizedBox(height: AppSpacing.sm),
           Text(
@@ -300,8 +291,6 @@ class _NoFriendsHint extends StatelessWidget {
             style: texts.bodySmall?.copyWith(color: colors.onSurfaceVariant),
           ),
           const SizedBox(height: AppSpacing.md),
-          // Раньше здесь было просто «Нет друзей» без выхода из ситуации:
-          // пользователь упирался в тупик и должен был сам догадаться, куда идти.
           FilledButton.tonalIcon(
             onPressed: onFindFriends,
             icon: const Icon(Icons.person_add_rounded),

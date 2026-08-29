@@ -15,13 +15,6 @@ import 'screens/session/session_invites_screen.dart';
 
 Route<dynamic> generateRoute(RouteSettings settings) {
   switch (settings.name) {
-    // Корневой маршрут — тот же шлюз, что и стартовый экран приложения.
-    //
-    // Раньше здесь стоял LoginScreen напрямую, и после выхода из аккаунта
-    // (`pushNamedAndRemoveUntil('/')`) шлюз из дерева пропадал: вход больше
-    // некому было заметить, поэтому экранам логина приходилось самим звать
-    // `pushReplacementNamed('/home')`. Две системы навигации показывали два
-    // независимых HomeScreen одновременно.
     case '/':
       return MaterialPageRoute(builder: (_) => const AuthGate());
     case '/home':
@@ -70,7 +63,6 @@ Route<dynamic> generateRoute(RouteSettings settings) {
           );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Slide transition from bottom
           const begin = Offset(0.0, 1.0);
           const end = Offset.zero;
           const curve = Curves.easeInOut;

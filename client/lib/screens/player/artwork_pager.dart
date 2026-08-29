@@ -16,8 +16,6 @@ class ArtworkSource {
 
   bool get isEmpty => bytes == null && (url == null || url!.isEmpty);
 
-  /// Длина Uint8List не уникальна (две разные обложки легко совпадают по
-  /// размеру), поэтому идентичностью байтов служит сам объект буфера.
   Object get identity => url ?? bytes ?? _emptyIdentity;
 
   static const Object _emptyIdentity = 'artwork:empty';
@@ -90,14 +88,8 @@ class ArtworkPagerState extends State<ArtworkPager>
 
   int _settleTarget = 0;
 
-  /// Каждый новый жест/settle получает свой номер. Completion-callback старой
-  /// (остановленной) анимации обязан его проверить: whenCompleteOrCancel
-  /// срабатывает и при stop(), иначе отменённый spring переключит трек.
   int _settleGeneration = 0;
 
-  // Готовые плитки обложек. Пересобираются только при смене источника или
-  // размера, поэтому кадр анимации меняет исключительно transform, а
-  // ImageProvider и Image-виджеты остаются теми же объектами.
   double _tileSize = -1;
   ArtworkSlot? _currentSlot;
   ArtworkSlot? _previousSlot;
@@ -110,9 +102,6 @@ class ArtworkPagerState extends State<ArtworkPager>
   Key _previousTileKey = const ValueKey<String>('artwork.slot.0');
   Key _nextTileKey = const ValueKey<String>('artwork.slot.2');
 
-  /// Трек, на который пользователь уже свайпнул и чья плитка стоит в центре,
-  /// пока провайдер не подтвердил смену. Пока значение не `null`, пружина
-  /// удерживается в закоммиченной точке.
   String? _pendingTrackId;
 
   bool get _isCommitting => _pendingTrackId != null;
@@ -179,7 +168,6 @@ class ArtworkPagerState extends State<ArtworkPager>
   void _onDragStart(DragStartDetails details) {
     if (_isCommitting) return;
 
-    // Новый жест обесценивает предыдущий settle.
     _settleGeneration++;
     _settleTarget = 0;
     _controller.stop();
@@ -328,8 +316,6 @@ class ArtworkPagerState extends State<ArtworkPager>
             builder: (context, _) {
               final t = _controller.value;
 
-              // Дети между кадрами — те же самые объекты, поэтому Flutter не
-              // перестраивает поддеревья обложек: меняется только сдвиг.
               return Stack(
                 fit: StackFit.expand,
                 children: [
@@ -386,8 +372,6 @@ class _ArtworkTile extends StatelessWidget {
       );
     }
 
-    // Обложка живёт в собственном слое: при свайпе меняется только его
-    // положение, готовый растр не перерисовывается заново каждый кадр.
     return RepaintBoundary(
       child: ClipRRect(
         borderRadius: AppRadius.large,

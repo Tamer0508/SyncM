@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
 
-/// Animated equalizer bars that respond to playback state
-/// Shows 3 bars that animate when music is playing
 class AnimatedEqualizer extends StatefulWidget {
   final bool isPlaying;
   final Color color;
@@ -94,7 +92,6 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
       );
     }
 
-    // Adjust bar spacing and sizing for small sizes
     final isSmall = widget.size <= 16;
     final barWidth = isSmall ? widget.size * 0.08 : widget.size * 0.12;
     final barSpacing = isSmall ? widget.size * 0.06 : widget.size * 0.08;
@@ -109,8 +106,6 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
           return AnimatedBuilder(
             animation: _barControllers[index],
             builder: (context, child) {
-              // reverse:true уже даёт движение вверх-вниз, поэтому значение
-              // контроллера отображается на высоту напрямую.
               final height = _minBarHeight +
                   _barControllers[index].value * (_maxBarHeight - _minBarHeight);
 

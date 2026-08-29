@@ -18,16 +18,11 @@ class PrefetchService {
   bool _inProgress = false;
   DateTime? _lastRun;
 
-  /// Не чаще раза в полминуты: прогрев может дёрнуться и при входе, и при
-  /// возврате приложения из фона, а гонять одни и те же запросы подряд
-  /// незачем — они лишь съедают лимит частоты на сервере.
   static const _minInterval = Duration(seconds: 30);
 
   static const _avatarLimit = 16;
   static const _avatarConcurrency = 3;
 
-  /// Запускает прогрев. Не бросает исключений: это фоновая работа, и её сбой
-  /// не должен ничего ломать — экраны в любом случае загрузят своё сами.
   Future<void> warmUp({
     required FriendsProvider friends,
     required SessionProvider sessions,
@@ -46,7 +41,6 @@ class PrefetchService {
         _safe(() => sessions.fetchInvites()),
       ]);
 
-      // P1.
       await Future.wait([
         _safe(() => friends.fetchFriends(refresh: true)),
         _safe(() => friends.fetchIncomingRequests(refresh: true)),

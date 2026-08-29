@@ -49,8 +49,6 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
 
   Future<void> _apply() async {
     setState(() => _processing = true);
-    // Текст ошибки берём до асинхронной работы: после await экрана может уже
-    // не быть, а L.of(context) читает наследуемый виджет.
     final noImageDataMessage = L.of(context).cropNoImageData;
     try {
       final cropped = await _controller.croppedBitmap();
@@ -120,8 +118,6 @@ class _AvatarCropScreenState extends State<AvatarCropScreen> {
                 gridCornerSize: 28,
                 gridThinWidth: 1,
                 gridThickWidth: 4,
-                // Затемнение вне рамки: без него трудно понять, что именно
-                // попадёт в кадр.
                 scrimColor: Colors.black.withValues(alpha: 0.55),
                 alwaysShowThirdLines: true,
                 minimumImageSize: 64,

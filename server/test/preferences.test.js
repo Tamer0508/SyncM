@@ -24,7 +24,6 @@ test('withDefaults сохраняет то, что человек менял', (
   });
 
   assert.strictEqual(prefs.notifications.sessionInvites, false);
-  // Остальные настройки не должны пропасть из-за того, что запись их не знала.
   assert.strictEqual(prefs.notifications.friendRequests, true);
   assert.strictEqual(prefs.appearance.accent, 'plum');
   assert.strictEqual(prefs.appearance.compact, false);
@@ -44,9 +43,7 @@ test('mergePreferences не стирает группу, которой нет �
   });
 
   assert.strictEqual(merged.appearance.accent, 'indigo');
-  // Компактность лежала в той же группе и меняться была не должна.
   assert.strictEqual(merged.appearance.compact, true);
-  // Уведомления не упоминались вовсе.
   assert.strictEqual(merged.notifications.sessionInvites, false);
   assert.strictEqual(merged.updatedAt, 2);
 });
@@ -64,7 +61,6 @@ test('схема отвергает неизвестные поля и знач�
   assert.throws(() => preferencesSchema.parse({ somethingElse: true }));
   assert.throws(() => preferencesSchema.parse({ notifications: { unknown: true } }));
 
-  // А корректное частичное изменение проходит.
   const parsed = preferencesSchema.parse({
     notifications: { friendRequests: false },
     updatedAt: 10,

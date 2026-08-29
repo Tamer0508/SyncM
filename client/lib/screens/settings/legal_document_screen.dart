@@ -67,7 +67,6 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
         ..setJavaScriptMode(JavaScriptMode.disabled)
         ..setNavigationDelegate(NavigationDelegate(
           onWebResourceError: (_) {
-            // Страница не открылась — показываем копию из ресурсов.
             if (!mounted) return;
             setState(() => _webView = null);
             _loadAsset();
@@ -172,8 +171,6 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
     final widgets = <Widget>[];
 
     for (final rawLine in source.split('\n')) {
-      // Markdown отмечает перенос строки двумя пробелами в конце — на экране
-      // они не нужны.
       final line = rawLine.trimRight();
 
       if (line.isEmpty) {
@@ -248,7 +245,6 @@ class _LegalDocumentScreenState extends State<LegalDocumentScreen> {
     );
   }
 
-  /// Абзац с поддержкой **жирного**.
   Widget _paragraph(BuildContext context, String source) {
     final base = context.texts.bodyMedium?.copyWith(
       color: context.colors.onSurfaceVariant,

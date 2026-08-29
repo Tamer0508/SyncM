@@ -3,10 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _authTokenKey = 'syncm_auth_token';
 
-// Нативная реализация (Android/iOS/Windows/macOS/Linux) через
-// shared_preferences. Раньше это была пустая заглушка — из-за чего токен на
-// телефоне не сохранялся и пользователь выходил из аккаунта при перезапуске.
-
 Future<String?> readAuthToken() async {
   try {
     final prefs = await SharedPreferences.getInstance();

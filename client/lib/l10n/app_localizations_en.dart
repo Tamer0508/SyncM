@@ -118,14 +118,14 @@ class LEn extends L {
 
   @override
   String get addTracksForeignPlaylist =>
-      'Spotify doesn\'t share this playlist\'s contents — only your own and collaborative ones are available.';
+      'Spotify doesn\'t share this playlist\'s contents. Only your own and collaborative ones are available.';
 
   @override
   String get addTracksFromPlaylist => 'From a playlist';
 
   @override
   String get addTracksNoOtherPlaylists =>
-      'There are no other playlists yet — nowhere to take tracks from.';
+      'There are no other playlists yet, so there\'s nowhere to take tracks from.';
 
   @override
   String get addTracksNothingFound => 'Nothing found. Try a different search.';
@@ -170,7 +170,7 @@ class LEn extends L {
   String get appearanceCompact => 'Compact mode';
 
   @override
-  String get appearanceCompactHint => 'Tighter lists — more fits on screen';
+  String get appearanceCompactHint => 'Tighter lists, so more fits on screen';
 
   @override
   String get appearanceDensityGroup => 'Density and motion';
@@ -187,7 +187,7 @@ class LEn extends L {
 
   @override
   String get appearanceReduceMotionHint =>
-      'Transitions without movement — if motion distracts or makes you queasy';
+      'Transitions without movement, for when motion distracts or makes you queasy';
 
   @override
   String get appearanceReset => 'Reset appearance';
@@ -481,7 +481,7 @@ class LEn extends L {
 
   @override
   String get devicesEmptyMessage =>
-      'The list is empty — the server connection seems to be lost. Try opening this screen again.';
+      'The list is empty. It looks like the server connection was lost. Try opening this screen again.';
 
   @override
   String get devicesEmptyTitle => 'No active sessions';
@@ -751,7 +751,7 @@ class LEn extends L {
 
   @override
   String get homeListenTogetherHint =>
-      'Invite a friend — the music plays for both of you at once, wherever you are.';
+      'Invite a friend, and the music plays for both of you at once, wherever you are.';
 
   @override
   String get homeNoOwnPlaylists => 'No playlists of your own yet';
@@ -825,7 +825,7 @@ class LEn extends L {
 
   @override
   String get invitesEmptyMessage =>
-      'When a friend invites you it shows up here. You don\'t have to wait — start a session yourself.';
+      'When a friend invites you it shows up here. You don\'t have to wait: start a session yourself.';
 
   @override
   String get invitesEmptyTitle => 'No invitations yet';
@@ -927,7 +927,7 @@ class LEn extends L {
 
   @override
   String get nameDialogHint =>
-      'Friends see this name — in lists, in sessions and in invitations.';
+      'Friends see this name in lists, in sessions and in invitations.';
 
   @override
   String get nameDialogTitle => 'What\'s your name?';
@@ -989,7 +989,7 @@ class LEn extends L {
 
   @override
   String get notificationsHint =>
-      'These settings apply to all your devices. Requests and invitations still arrive — only the card on top of the screen goes away.';
+      'These settings apply to all your devices. Requests and invitations still arrive. Only the card on top of the screen goes away.';
 
   @override
   String get notificationsOffInvites => 'invitations';
@@ -1080,7 +1080,7 @@ class LEn extends L {
   String get playbackClockSyncStarted => 'Re-syncing the clock';
 
   @override
-  String get playbackClockUnknown => 'Not measured yet — tap to refresh';
+  String get playbackClockUnknown => 'Not measured yet. Tap to refresh';
 
   @override
   String get playbackConnections => 'Connections';
@@ -1103,10 +1103,10 @@ class LEn extends L {
   String get playbackServerOffline => 'No connection. Check your internet';
 
   @override
-  String get playbackServerOnline => 'Online — session events arrive instantly';
+  String get playbackServerOnline => 'Online: session events arrive instantly';
 
   @override
-  String get playbackSpotifyConnected => 'Connected — you can start playing';
+  String get playbackSpotifyConnected => 'Connected: you can start playing';
 
   @override
   String get playbackSpotifyConnectFailed => 'Could not connect to Spotify';
@@ -1254,7 +1254,7 @@ class LEn extends L {
 
   @override
   String get playlistForeign =>
-      'Spotify doesn\'t share other people\'s playlists — only your own and collaborative ones are available.';
+      'Spotify doesn\'t share other people\'s playlists. Only your own and collaborative ones are available.';
 
   @override
   String get playlistLinkCopied => 'Playlist link copied to the clipboard';
@@ -1352,7 +1352,7 @@ class LEn extends L {
 
   @override
   String get privacyDocHowToDeleteText =>
-      'Listening history is cleared in the Data section. The same place deletes the whole account — profile, friends, sessions and the Spotify connection. This cannot be undone.';
+      'Listening history is cleared in the Data section. The same place deletes the whole account: profile, friends, sessions and the Spotify connection. This cannot be undone.';
 
   @override
   String get privacyDocHowToDeleteTitle => 'How to delete it';
@@ -1363,11 +1363,11 @@ class LEn extends L {
 
   @override
   String get privacyDocNoPassword =>
-      'Your Spotify password — authorisation happens on Spotify\'s side.';
+      'Your Spotify password: authorisation happens on Spotify\'s side.';
 
   @override
   String get privacyDocNoPayments =>
-      'Payment details — the app is free and takes no payments.';
+      'Payment details: the app is free and takes no payments.';
 
   @override
   String get privacyDocNotStoredTitle => 'What is not stored';
@@ -1378,7 +1378,7 @@ class LEn extends L {
 
   @override
   String get privacyDocSessionsText =>
-      'The names of shared listening sessions, who took part, which tracks were added and how they were rated — so the matches can be shown at the end.';
+      'The names of shared listening sessions, who took part, which tracks were added and how they were rated, so the matches can be shown at the end.';
 
   @override
   String get privacyDocSpotify => 'Spotify connection';
@@ -1430,7 +1430,7 @@ class LEn extends L {
   String get privacyHistory => 'Listening history';
 
   @override
-  String get privacyHistoryHint => 'Visible only to you — not even to friends';
+  String get privacyHistoryHint => 'Visible only to you, not even to friends';
 
   @override
   String get privacyNameAndAvatar => 'Name and avatar';
@@ -1447,7 +1447,7 @@ class LEn extends L {
 
   @override
   String get privacyPresetFriendsSummary =>
-      'Friends only — you won\'t show up in search';
+      'Friends only: you won\'t show up in search';
 
   @override
   String get privacyPresetHidden => 'Hidden';
@@ -1645,7 +1645,7 @@ class LEn extends L {
 
   @override
   String get resultsNoMatchesHint =>
-      'Your tastes differed this time. Try another session — a different selection may go better.';
+      'Your tastes differed this time. Try another session. A different selection may go better.';
 
   @override
   String get resultsTitle => 'Session results';
@@ -1819,7 +1819,7 @@ class LEn extends L {
 
   @override
   String get sessionQueueEmptyHint =>
-      'Add tracks from your playlists — everyone in the session will hear them.';
+      'Add tracks from your playlists, and everyone in the session will hear them.';
 
   @override
   String get sessionsActive => 'Active sessions';
@@ -1967,7 +1967,7 @@ class LEn extends L {
 
   @override
   String get spotifyNeedsReauth =>
-      'Access was revoked or expired — connect again';
+      'Access was revoked or expired. Connect again';
 
   @override
   String get spotifyNotConnected => 'Not connected';

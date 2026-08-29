@@ -183,8 +183,6 @@ void main() {
     });
 
     expect(playback.calls, 1);
-    // Ключевое: контекста нет. С ним Spotify после последнего любимого трека
-    // ушёл бы в автоплей, а «дальше» перестало бы держаться списка.
     expect(playback.lastPlaylistId, isNull);
     expect(playback.lastQueue, hasLength(4));
   });

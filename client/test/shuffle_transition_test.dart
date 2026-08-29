@@ -8,12 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncm/providers/playback_provider.dart';
 import 'package:syncm/services/api_service.dart';
 
-/// Один свайп — одно переключение трека.
-///
-/// Тесты гоняют windows-ветку провайдера: там всё воспроизведение идёт через
-/// ApiService, поэтому команды к плееру видно как обычные HTTP-запросы и их
-/// можно пересчитать. Нативная ветка (SpotifySdk) в тестах недоступна, но
-/// правило одно и то же — команда воспроизведения на одно действие.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -32,8 +26,6 @@ void main() {
   );
 
   setUpAll(() {
-    // Плагины в тестовой среде отсутствуют: провайдер по пути к плееру
-    // трогает кэш изображений (path_provider) и настройки задержки.
     SharedPreferences.setMockInitialValues({});
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -50,8 +42,6 @@ void main() {
     server.listen((request) async {
       calls.add('${request.method} ${request.uri.path}');
 
-      // Плеер сообщает трек из того же плейлиста: автокоррекция «трек не из
-      // плейлиста» в такой ситуации срабатывать не должна.
       final body = request.uri.path == '/spotify/player'
           ? jsonEncode({
               'is_playing': true,
@@ -111,7 +101,6 @@ void main() {
     final pb = await playingFromPlaylist();
 
     await pb.skipNext();
-    // Даём фону шанс прислать второе переключение, если оно есть.
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
     expect(
@@ -126,8 +115,6 @@ void main() {
   test('трек меняется ровно один раз', () async {
     final pb = await playingFromPlaylist();
 
-    // Стартовый трек в список не попадает — считаем только переключения
-    // после свайпа.
     final seen = <String>[pb.currentTrack?['uri'] as String? ?? ''];
     void listener() {
       final uri = pb.currentTrack?['uri'] as String?;
@@ -176,21 +163,6 @@ void main() {
   });
 }
 
-/// Сторожевой тест на архитектурный инвариант.
-///
-/// Баг двойного переключения был не в логике выбора трека, а в том, что
-/// случайный выбор рассылал команды плееру сам: сначала перезапускал контекст
-/// плейлиста, а через полсекунды прыгал на нужный индекс. Две команды — два
-/// переключения на экране.
-///
-/// Windows-ветку выше проверить запросами можно, нативную (SpotifySdk) — нет:
-/// это статические вызовы плагина. Поэтому инвариант закреплён по исходнику:
-/// команды воспроизведения отдаёт только playTrack, у которого есть и защита
-/// от лишнего перезапуска контекста, и подавление промежуточных событий SDK.
-///
-/// Выбор случайного трека перестал быть отдельной веткой: он часть общего
-/// разбора следующего трека, и запуск идёт через _playQueueIndex — теперь
-/// инвариант закреплён на нём.
 void _guardInvariant() {
   test('переход по очереди не отдаёт команды плееру сам', () {
     final source =
@@ -205,8 +177,6 @@ void _guardInvariant() {
     final end = rest.indexOf('\n  Future<');
     final full = end == -1 ? rest : rest.substring(0, end);
 
-    // Комментарии выбрасываем: в них эти вызовы упоминаются как раз затем,
-    // чтобы объяснить, почему их здесь быть не должно.
     final body = full
         .split('\n')
         .where((line) => !line.trimLeft().startsWith('//'))

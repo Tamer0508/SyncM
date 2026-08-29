@@ -205,7 +205,6 @@ class _AvatarViewerState extends State<_AvatarViewer> {
   @override
   Widget build(BuildContext context) {
     final texts = context.texts;
-    // Чем дальше утянули вниз, тем прозрачнее фон — видно, что жест работает.
     final dragProgress = (_dragOffset.abs() / 300).clamp(0.0, 1.0);
 
     return Scaffold(

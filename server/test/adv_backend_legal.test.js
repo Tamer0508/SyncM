@@ -1,8 +1,5 @@
 'use strict';
 
-// Атака на GET /legal/:document — поиск по объектному литералу без
-// Object.hasOwn подтягивает свойства прототипа Object.
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');

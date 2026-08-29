@@ -59,8 +59,6 @@ router.post('/logout-all',          requireAuth, rateLimitMiddleware(5, 60, { fa
 router.get('/history',    requireAuth, rateLimitMiddleware(15, 60), getPlayHistory);
 router.delete('/history', requireAuth, rateLimitMiddleware(5, 60), idempotency, clearPlayHistory);
 
-// Выгрузка тяжёлая и нужна редко: два запроса в час хватит любому, а
-// перебирать её нет смысла — данные те же.
 router.get('/export', requireAuth, rateLimitMiddleware(2, 3600, { failOpen: false }), exportUserData);
 
 router.delete('/account', requireAuth, rateLimitMiddleware(3, 3600, { failOpen: false }), deleteAccount);

@@ -9,8 +9,6 @@ Map<String, dynamic> history(String title, String artist, {String? uri, String? 
       if (image != null) 'imageUrl': image,
     };
 
-/// Любимые приходят с теми же полями, но кое-где в приложении трек лежит
-/// под именами name/artist/uri — сводка обязана понимать оба вида.
 Map<String, dynamic> liked(String title, String artist, {String? uri}) => {
       'uri': uri ?? 'spotify:track:$title',
       'name': title,
@@ -72,8 +70,6 @@ void main() {
               .map((a) => a.name)
               .toList();
 
-      // Один и тот же набор, поданный в разном порядке, обязан дать один и
-      // тот же список: иначе обложки прыгают между перерисовками.
       expect(
         namesOf([history('t1', 'Бета'), history('t2', 'Альфа')]),
         namesOf([history('t2', 'Альфа'), history('t1', 'Бета')]),
@@ -144,7 +140,6 @@ void main() {
         theirs: [history('t2', 'кино', uri: 'b')],
       );
 
-      // Показываем ту запись, что у хозяина профиля: это его музыка.
       expect(shared.artists, ['кино']);
     });
 

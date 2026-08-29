@@ -7,12 +7,6 @@ import 'package:syncm/providers/appearance_provider.dart';
 import 'package:syncm/theme.dart';
 import 'package:syncm/widgets/settings_widgets.dart';
 
-/// Правила, на которых держится единый вид раздела «Настройки».
-///
-/// Проверяем не картинку, а то, что легко сломать правкой в одном месте:
-/// размер цели нажатия, ширину колонки на большом экране, отсутствие
-/// переполнений на маленьком и то, что справочная строка не притворяется
-/// кнопкой.
 Widget _wrap(Widget child, {Brightness brightness = Brightness.light}) =>
     ChangeNotifierProvider<AppearanceProvider>(
       create: (_) => AppearanceProvider(),
@@ -200,7 +194,6 @@ void main() {
       ),
     ));
 
-    // Не по тумблеру, а по подписи — палец чаще попадает именно туда.
     await tester.tap(find.text('Больше строк на экране'));
     await tester.pumpAndSettle();
 

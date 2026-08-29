@@ -25,7 +25,6 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   List<Map<String, dynamic>> _blocked = [];
   bool _loading = true;
 
-  /// Кого сейчас разблокируем — чтобы не нажать дважды.
   final Set<String> _pending = {};
 
   @override
@@ -61,8 +60,6 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
 
       if (ok) {
         setState(() => _blocked.removeWhere((u) => u['id'] == id));
-        // Список друзей мог измениться: блокировка удаляла дружбу, и после
-        // разблокировки состояние в приложении должно быть согласованным.
         context.read<FriendsProvider>().fetchFriends(refresh: true).ignore();
         showSuccess(
           context,

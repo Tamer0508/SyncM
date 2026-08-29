@@ -132,7 +132,6 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
             ),
             onChanged: (value) {
               _searchSubject.add(value);
-              // Перерисовка нужна, чтобы крестик появлялся и исчезал.
               setState(() {});
             },
             onSubmitted: _search,
@@ -288,9 +287,6 @@ class _ActionButton extends StatelessWidget {
       );
     }
 
-    // Статусы показываем иконкой с подписью: без текста «в друзьях» и
-    // «ждёт ответа» неразличимы, а одна иконка галочки читалась бы как
-    // кнопка подтверждения.
     Widget label(String text, {IconData? icon, Color? color}) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
@@ -321,10 +317,6 @@ class _ActionButton extends StatelessWidget {
         return label(L.of(context).searchStatusWaiting, icon: Icons.mark_email_unread_rounded);
       case FriendshipStatus.none:
       case FriendshipStatus.sent:
-        // Круглая кнопка вместо надписи «Добавить»: текстовая занимала
-        // заметную часть строки и перетягивала внимание с имени
-        // пользователя, ради которого список и открывают. Смысл иконки
-        // раскрывает всплывающая подсказка и озвучка для чтения с экрана.
         return IconButton.filledTonal(
           onPressed: onSend,
           icon: const Icon(Icons.person_add_alt_1_rounded),

@@ -69,8 +69,6 @@ class NowPlayingScreen extends StatefulWidget {
 
 class _NowPlayingScreenState extends State<NowPlayingScreen>
     with TickerProviderStateMixin {
-  /// Позиция, которую пользователь тянет пальцем. null — показываем живую
-  /// позицию из провайдера.
   final ValueNotifier<int?> _seekPreview = ValueNotifier<int?>(null);
 
   late AnimationController _colorAnimController;
@@ -80,8 +78,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
   Color _targetDominant = Colors.deepPurple;
   Color _targetVibrant = Colors.purpleAccent;
 
-  // Текущий цвет читается прямо из анимации, поэтому перекраска
-  // перестраивает только фон и цветные элементы, а не весь экран.
   Color get _displayDominant => _colorDominantAnim.value ?? _targetDominant;
   Color get _displayVibrant => _colorVibrantAnim.value ?? _targetVibrant;
 
@@ -270,9 +266,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     _entrance = AnimationController(vsync: this, duration: AppMotion.page)
       ..forward();
 
-    // Своего таймера позиции здесь нет: её тикает один общий механизм в
-    // провайдере, а слушает только полоса прогресса.
-
     _colorAnimController = AnimationController(
       vsync: this,
       duration: AppMotion.tint,
@@ -319,7 +312,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
     _colorTrackId = trackId;
 
-    // Расчёты палитры прежнего трека с этого момента недействительны.
     _paletteRequest++;
   }
   void _applyTrackColors(
@@ -356,8 +348,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
     required String? trackUri,
   }) async {
     if (imageBytes == null && (imageUrl == null || imageUrl.isEmpty)) {
-      // У трека нет обложки вообще — это его собственный цвет, а не заглушка
-      // на время расчёта.
       _applyTrackColors(trackUri, Colors.deepPurple, Colors.purpleAccent);
       return;
     }
@@ -429,8 +419,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 
         final artworkTrackId = currentUri ?? imageUrl ?? '';
 
-        // Соседей опрашиваем один раз за перестроение экрана, а не на
-        // каждом кадре свайпа.
         final previousTrack = pb.previousQueueTrack;
         final nextTrack = pb.nextQueueTrack;
         final previousArtworkUrl = previousTrack?['imageUrl'] as String?;
@@ -488,9 +476,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                 Positioned.fill(
                   child: RepaintBoundary(
                     child: AnimatedBuilder(
-                      // Кадр свайпа и перекраска обложки — единственные
-                      // причины пересчитать фон. Цвета соседей берутся из
-                      // кэша палитр заранее, а не на каждом кадре.
                       animation: Listenable.merge(
                         [_swipeProgress, _colorAnimController, pb.paletteVersion],
                       ),
@@ -639,8 +624,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
                               _rise(
                                 delay: 0.2,
                                 offset: 20,
-                                // Позицию и цвет слушает только сама полоса:
-                                // тик прогресса не трогает остальной экран.
                                 child: AnimatedBuilder(
                                   animation: Listenable.merge([
                                     pb.positionNotifier,
@@ -713,10 +696,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
 class _Foreground {
   const _Foreground._({required this.primary, required this.contrast});
 
-  /// Основной текст и иконки.
   final Color primary;
 
-  /// То, что лежит поверх [primary] — иконка на белом круге play/pause.
   final Color contrast;
 
   Color get muted => primary.withValues(alpha: 0.70);

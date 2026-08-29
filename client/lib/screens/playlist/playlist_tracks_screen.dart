@@ -22,7 +22,6 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/track_card.dart';
 import '../player/now_playing.dart';
 
-/// Действия над отдельным треком внутри плейлиста.
 enum _TrackAction { addToPlaylist, removeFromPlaylist }
 
 enum TrackListSource {
@@ -40,10 +39,6 @@ class PlaylistTracksScreen extends StatefulWidget {
   final TrackListSource source;
   final bool embedded;
 
-  /// Вызывается, когда плейлист удалили изнутри его же экрана.
-  ///
-  /// Во встроенной раскладке закрыть себя экран не может — панель показывает
-  /// не он, а главный экран, и убрать её должен тоже он.
   final VoidCallback? onDeleted;
 
   const PlaylistTracksScreen({
@@ -91,11 +86,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     _loadTracks();
   }
 
-  /// Живая версия плейлиста из провайдера.
-  ///
-  /// Переименование и смена обложки должны быть видны здесь сразу, а не после
-  /// возврата в список: аргументы конструктора — снимок на момент открытия и
-  /// про изменения не знают.
   Map<String, dynamic> get _playlist {
     if (widget.isSpotifySaved) {
       return {
@@ -135,7 +125,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
             );
 
       if (tracks == null) {
-        // Доступ закрыт — показываем объяснение, а не ошибку.
         if (mounted) setState(() => _unavailable = true);
         return;
       }
@@ -161,8 +150,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       if (mounted) setState(() => _loading = false);
     }
   }
-
-  // ---------- Воспроизведение ----------
 
   Future<void> _onTrackTap(
     Map<String, dynamic> track,
@@ -225,8 +212,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         LocalStore.readBool(StoreKeys.autoOpenPlayer, defaultValue: true);
 
     if (!context.layout.showNowPlayingPanel && autoOpen) {
-      // Не ждём закрытия плеера: он живёт до тех пор, пока его не свернут, а
-      // запуску трека это никак не мешает.
       unawaited(NowPlayingScreen.open(
         context,
         title: track['name'] as String?,
@@ -257,15 +242,10 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     await _onTrackTap(shuffled.first, 0, queue: shuffled);
   }
 
-  // ---------- Изменение списка ----------
-
   Future<void> _removeTrack(Map<String, dynamic> track) async {
     final uri = track['uri'] as String?;
     if (uri == null || uri.isEmpty) return;
 
-    // Убираем из списка сразу: удаление своего же трека не та операция, ради
-    // которой стоит смотреть на спиннер. При отказе сервера список
-    // возвращается на место.
     final previous = _tracks;
     setState(() => _tracks = _tracks.where((t) => t['uri'] != uri).toList());
 
@@ -280,7 +260,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
   }
 
   Future<void> _reorder(int oldIndex, int newIndex) async {
-    // ReorderableList отдаёт newIndex по состоянию «до» изъятия элемента.
     if (newIndex > oldIndex) newIndex -= 1;
     if (oldIndex == newIndex) return;
 
@@ -323,8 +302,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         }
       });
     } catch (e) {
-      // showError вместо 'Ошибка: $e': текст исключения пользователю ничего
-      // не объясняет.
       if (mounted) showError(context, e);
     }
   }
@@ -337,20 +314,11 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  // ---------- Разметка ----------
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final playlist = _playlist;
 
-    // Играющий трек читаем здесь, один раз на весь список.
-    //
-    // Раньше каждая строка спрашивала провайдер сама — но строит их
-    // itemBuilder, который вызывается лениво, уже вне build этого виджета, а
-    // context.select там запрещён: приложение падало красным экраном сразу
-    // после добавления трека. Заодно так дешевле: одна подписка вместо одной
-    // на каждую строку.
     final activeUri = context.select<PlaybackProvider, String?>(
       (pb) => pb.currentTrack?['uri'] as String?,
     );
@@ -365,8 +333,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
           SliverToBoxAdapter(
             child: SkeletonTrackList(
               itemCount: 8,
-              // Отступы списка треков: сверху и по бокам — от SliverPadding,
-              // снизу к ним добавляется промежуток после последней строки.
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.sm,
                 AppSpacing.sm,
@@ -418,7 +384,7 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     );
 
     if (widget.embedded) {
-      return content; // только список: шапку рисует главный экран
+      return content;
     }
 
     return Scaffold(
@@ -435,9 +401,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
 
     final imageUrl = playlist.playlistImageUrl;
 
-    // SliverAppBar.large вместо ручной сборки: у него уже настроено поведение
-    // крупного заголовка по Material 3 — размер, отступы и переход к
-    // компактному виду при прокрутке.
     return SliverAppBar.large(
       expandedHeight: 300,
       pinned: true,
@@ -507,8 +470,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     );
   }
 
-  /// Строка над списком: слушать, перемешать и — во встроенной раскладке —
-  /// меню действий, которого там нет в шапке.
   Widget _buildHeaderActions(Map<String, dynamic> playlist) {
     final hasTracks = _tracks.isNotEmpty;
     final description = playlist.playlistDescription;
@@ -580,10 +541,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     );
   }
 
-  /// «12 треков · 47 мин» — сведения о плейлисте там, где на них смотрят.
-  ///
-  /// Отдельного окна «Информация» для двух чисел не нужно: их читают перед
-  /// тем, как включить, а не по особому запросу.
   String _summary() {
     final l = L.of(context);
     final tracks = l.trackCount(_tracks.length);
@@ -661,11 +618,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     );
   }
 
-  /// Список треков.
-  ///
-  /// В своём плейлисте — перетаскиваемый: порядок задаёт человек, и хранится
-  /// он на сервере. В чужом порядок задаёт Spotify, и делать вид, что его
-  /// можно поменять, нельзя — там обычный список.
   Widget _buildTrackSliver({required String? activeUri, required bool wide}) {
     const padding = EdgeInsets.symmetric(
       horizontal: AppSpacing.sm,
@@ -690,8 +642,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
         onReorder: _reorder,
         itemBuilder: (context, i) =>
             _buildTrackCard(context, i, activeUri: activeUri, wide: wide),
-        // Плавающая копия строки во время перетаскивания: без неё строка
-        // теряет фон списка и на тёмной теме превращается в текст на пустоте.
         proxyDecorator: (child, index, animation) => Material(
           color: context.colors.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(AppRadius.row),
@@ -702,11 +652,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
     );
   }
 
-  /// Строка трека.
-  ///
-  /// [context] — именно тот, что дал itemBuilder, а не context самого экрана:
-  /// строки строятся лениво при прокрутке, и обращаться отсюда к состоянию
-  /// экрана как к своему нельзя.
   Widget _buildTrackCard(
     BuildContext context,
     int index, {
@@ -746,9 +691,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
                   label: L.of(context).addToPlaylistTitle,
                 ),
                 if (widget.isCustom)
-                  // Именно «из плейлиста»: трек остаётся и в Spotify, и в
-                  // остальных плейлистах — здесь удаляется только строка
-                  // этого списка.
                   AppMenuEntry(
                     value: _TrackAction.removeFromPlaylist,
                     icon: Icons.playlist_remove_rounded,
@@ -768,8 +710,6 @@ class _PlaylistTracksScreenState extends State<PlaylistTracksScreen> {
       return KeyedSubtree(key: ValueKey(uri.isEmpty ? '$index' : uri), child: card);
     }
 
-    // Долгое нажатие на самой строке — привычный способ перетащить на
-    // сенсорном экране; на десктопе для этого есть ручка справа.
     return ReorderableDelayedDragStartListener(
       key: ValueKey(uri.isEmpty ? '$index' : uri),
       index: index,

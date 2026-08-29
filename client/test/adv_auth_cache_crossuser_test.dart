@@ -1,11 +1,3 @@
-// Adversarial-тест: ответ на запрос предыдущего пользователя попадает в кэш
-// уже ПОСЛЕ смены аккаунта.
-//
-// Тест НАМЕРЕННО падает на текущей реализации.
-//
-// Атакуемый код: client/lib/services/api_service.dart:145-158 (_cachedGet)
-//                client/lib/services/api_service.dart:167-171 (clearCache)
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -19,7 +11,6 @@ void main() {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
 
-    // Первый запрос держим, пока не сменится аккаунт.
     final firstRequestArrived = Completer<void>();
     final releaseFirstResponse = Completer<void>();
     var served = 0;
@@ -48,21 +39,16 @@ void main() {
       timeout: const Duration(seconds: 10),
     );
 
-    // Пользователь A открывает историю прослушиваний.
     api.setCookie('token-user-A');
     final pendingForA = api.getPlayHistory();
     await firstRequestArrived.future;
 
-    // Пока запрос A в полёте — выходим и входим под другим аккаунтом.
-    // Оба вызова меняют токен, то есть оба зовут clearCache().
     api.setCookie('');
     api.setCookie('token-user-B');
 
-    // Только теперь сервер отвечает пользователю A.
     releaseFirstResponse.complete();
     await pendingForA;
 
-    // Пользователь B открывает свою историю.
     final historyForB = await api.getPlayHistory();
     final names = historyForB.map((e) => e['name']).toList();
 

@@ -34,7 +34,6 @@ const MESSAGES = {
     en: 'User not found',
   },
 
-  // Друзья
   cannotAddSelf: {
     ru: 'Нельзя добавить себя',
     en: "You can't add yourself",
@@ -64,7 +63,6 @@ const MESSAGES = {
     en: 'Use /friends/by-user/:friendId to remove a friend',
   },
 
-  // Сессии
   notFriends: {
     ru: 'Вы не друзья с этим пользователем',
     en: 'You are not friends with this person',
@@ -111,7 +109,6 @@ const MESSAGES = {
     en: 'Session',
   },
 
-  // Плейлисты и треки
   playlistNotFound: {
     ru: 'Плейлист не найден',
     en: 'Playlist not found',
@@ -133,7 +130,6 @@ const MESSAGES = {
     en: 'That track is already in this playlist',
   },
 
-  // Файлы
   fileNotChosen: {
     ru: 'Файл не выбран или имеет неподдерживаемый формат. Разрешены: PNG, JPG, JPEG, GIF, WEBP',
     en: 'No file chosen, or the format is unsupported. Allowed: PNG, JPG, JPEG, GIF, WEBP',
@@ -147,7 +143,6 @@ const MESSAGES = {
     en: 'Could not save the cover',
   },
 
-  // Аутентификация и Spotify
   googleEmailUnverified: {
     ru: 'Email в Google-аккаунте не подтверждён',
     en: 'The email on the Google account is not verified',
@@ -189,7 +184,6 @@ const MESSAGES = {
     en: 'Spotify API error',
   },
 
-  // Устройства и сеансы
   deviceNotFound: {
     ru: 'Сеанс не найден',
     en: 'Session not found',
@@ -207,8 +201,6 @@ const MESSAGES = {
 const SUPPORTED = ['ru', 'en'];
 const DEFAULT_LANGUAGE = 'ru';
 
-// Разбор Accept-Language без внешних зависимостей: нам нужен один язык из
-// двух, а не полноценное согласование содержимого.
 function languageOf(req) {
   const header = req?.headers?.['accept-language'];
   if (!header || typeof header !== 'string') return DEFAULT_LANGUAGE;
@@ -231,12 +223,9 @@ function languageOf(req) {
   return candidates[0]?.language || DEFAULT_LANGUAGE;
 }
 
-// Сообщение по ключу на языке запроса.
 function t(req, key, params = {}) {
   const entry = MESSAGES[key];
   if (!entry) {
-    // Неизвестный ключ — ошибка программиста, а не пользователя: отдаём сам
-    // ключ, чтобы промах был виден сразу и в ответе, и в журнале.
     return key;
   }
 

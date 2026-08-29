@@ -1,10 +1,3 @@
-// Враждебные проверки навигации главного экрана.
-//
-// Атака: человек нажимает дважды. Не «двойной клик мышью» как жест, а
-// обычное для сенсорного экрана «нажал ещё раз, потому что не увидел
-// отклика». Ни один обработчик в HomeScreen не защищён от повторного входа:
-// каждый зовёт Navigator.push безусловно.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -20,8 +13,6 @@ import 'package:syncm/providers/theme_provider.dart';
 import 'package:syncm/screens/home/home_screen.dart';
 import 'package:syncm/screens/playlist/playlist_tracks_screen.dart';
 import 'package:syncm/theme.dart';
-
-// ---------- Заглушки провайдеров ----------
 
 class _StubAuth extends AuthProvider {
   @override
@@ -101,7 +92,6 @@ class _StubPlaylists extends PlaylistsProvider {
       const [];
 }
 
-/// Считает, сколько маршрутов положили в стопку.
 class _PushCounter extends NavigatorObserver {
   final List<Route<dynamic>> pushed = [];
 
@@ -125,7 +115,6 @@ const _playlists = [
 ];
 
 Future<_PushCounter> _pumpHome(WidgetTester tester, {bool reduceMotion = false}) async {
-  // Узкое окно: нижняя навигация и переходы маршрутами, а не панелями.
   tester.view.physicalSize = const Size(400, 800);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -157,8 +146,6 @@ Future<_PushCounter> _pumpHome(WidgetTester tester, {bool reduceMotion = false})
         ),
         locale: const Locale('en'),
         navigatorObservers: [observer],
-        // Маршруты по имени подменены пустышками: проверяется не то, что
-        // покажет /profile, а сколько раз HomeScreen его попросит.
         onGenerateRoute: (settings) => MaterialPageRoute<void>(
           settings: settings,
           builder: (_) => Scaffold(body: Center(child: Text('=${settings.name}'))),
@@ -173,7 +160,6 @@ Future<_PushCounter> _pumpHome(WidgetTester tester, {bool reduceMotion = false})
   return observer;
 }
 
-/// Два нажатия подряд с зазором в один кадр — так выглядит «нажал ещё раз».
 Future<void> _tapTwice(WidgetTester tester, Finder finder, {Duration gap = const Duration(milliseconds: 16)}) async {
   await tester.tap(finder, warnIfMissed: false);
   if (gap > Duration.zero) await tester.pump(gap);
@@ -198,7 +184,6 @@ void main() {
       (tester) async {
     await _pumpHome(tester);
 
-    // Вкладка «Музыка».
     await tester.tap(find.byIcon(Icons.library_music_outlined));
     await tester.pumpAndSettle();
     expect(find.text('Первый'), findsOneWidget);

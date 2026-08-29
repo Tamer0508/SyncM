@@ -31,31 +31,13 @@ class SessionProvider with ChangeNotifier {
   void syncCookie(String cookie) => api.setCookie(cookie);
 
   List<SessionModel> _sessions = [];
-  /// Представление, а не копия: см. комментарий в FriendsProvider.
   List<SessionModel> get sessions => UnmodifiableListView(_sessions);
 
   List<Map<String, dynamic>> _invites = [];
 
-  /// Итоги только что завершённой сессии, которые ещё не показаны.
-  ///
-  /// Заполняется, когда сессию закрыл кто-то другой, а мы на широком экране:
-  /// показать их должен главный экран в своей центральной части. Он же
-  /// вызывает consumeEndedResults, чтобы итоги не всплыли повторно при
-  /// следующей перерисовке.
   Map<String, dynamic>? _endedResults;
   Map<String, dynamic>? get endedResults => _endedResults;
 
-  /// Сессия, которую просят открыть.
-  ///
-  /// Переход к сессии происходит из нескольких мест: создание, принятие
-  /// приглашения, список активных сессий. Каждое из них раньше открывало её
-  /// маршрутом напрямую — и на широком экране это закрывало боковую панель и
-  /// панель воспроизведения, хотя при повторном заходе с главной та же
-  /// сессия показывалась встроенной. Отсюда и расхождение: одна и та же
-  /// сессия выглядела по-разному в зависимости от того, как в неё попали.
-  ///
-  /// Теперь экраны не решают сами, а просят показать сессию. Как показать —
-  /// встроенно или маршрутом — определяет тот, кто это умеет.
   Map<String, dynamic>? _openSessionRequest;
   Map<String, dynamic>? get openSessionRequest => _openSessionRequest;
 
@@ -66,14 +48,11 @@ class SessionProvider with ChangeNotifier {
 
   void consumeOpenSession() {
     _openSessionRequest = null;
-    // Без оповещения: значение забирают во время построения дерева.
   }
 
   void consumeEndedResults() {
     if (_endedResults == null) return;
     _endedResults = null;
-    // Без оповещения: поле забирают во время построения, а notifyListeners
-    // оттуда вызывать нельзя — это приводит к исключению.
   }
   List<Map<String, dynamic>> get invites => UnmodifiableListView(_invites);
 
@@ -133,10 +112,8 @@ class SessionProvider with ChangeNotifier {
     _subscriptions.add(socketService.on('session_ended', (data) {
       final result = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
 
-      // Список активных сессий изменился.
       fetchMySessions().ignore();
 
-      // Сессию закрыли мы сами — итоги уже показал тот, кто нажал кнопку.
       final endedId = result['sessionId'] as String?;
       if (endedId != null && _selfEndedSessions.remove(endedId)) return;
 
@@ -149,12 +126,6 @@ class SessionProvider with ChangeNotifier {
         return;
       }
 
-      // На узком экране панелей нет — переходим маршрутом.
-      //
-      // pushNamedAndRemoveUntil до главного: экран сессии мог быть открыт не
-      // напрямую, а поверх других (выбор плейлиста, полноэкранный плеер), и
-      // простой pop оставил бы человека на промежуточном экране закрытой
-      // сессии.
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/session/results',
         (route) => route.settings.name == '/home' || route.isFirst,
@@ -162,8 +133,6 @@ class SessionProvider with ChangeNotifier {
       );
     }));
 
-    // Кто-то присоединился к сессии — обновляем список, чтобы состав
-    // участников не приходилось обновлять вручную.
     _subscriptions.add(socketService.on('user_joined', (_) {
       fetchMySessions().ignore();
     }));
@@ -171,7 +140,6 @@ class SessionProvider with ChangeNotifier {
     _subscriptions.add(socketService.on('invite_response', (data) {
       if (data is! Map) return;
       if (data['accept'] == true) {
-        // Список активных сессий изменился — подтягиваем свежий.
         fetchMySessions().ignore();
       }
     }));
@@ -240,14 +208,10 @@ class SessionProvider with ChangeNotifier {
   Future<bool> rateTrack(String trackId, int rating) => api.rateTrack(trackId, rating);
 
   Future<Map<String, dynamic>?> endSession(String sessionId) async {
-    // Помечаем ДО запроса: рассылка session_ended уходит из обработчика на
-    // сервере и вполне может опередить ответ на наш же HTTP-запрос.
     _selfEndedSessions.add(sessionId);
     try {
       return await api.endSession(sessionId);
     } catch (err) {
-      // Не завершилась — отметку снимаем, иначе чужое завершение этой сессии
-      // потом будет молча проигнорировано.
       _selfEndedSessions.remove(sessionId);
       rethrow;
     }

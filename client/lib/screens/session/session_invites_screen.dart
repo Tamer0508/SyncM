@@ -14,11 +14,8 @@ import '../../widgets/skeleton.dart';
 class SessionInvitesScreen extends StatefulWidget {
   const SessionInvitesScreen({super.key, this.embedded = false, this.onBack});
 
-  /// Встроенный режим: экран занимает лишь центральную часть главного,
-  /// поэтому своя шапка не нужна — над ним уже есть шапка главного экрана.
   final bool embedded;
 
-  /// Как вернуться из встроенного вида.
   final VoidCallback? onBack;
 
   @override
@@ -59,11 +56,6 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
 
       final session = result['session'] as Map<String, dynamic>?;
       if (session != null) {
-        // На широком экране просим показать сессию встроенной, а не
-        // открываем маршрутом: иначе она занимала бы весь экран, закрывая
-        // боковую панель и панель воспроизведения. При повторном заходе с
-        // главной та же сессия показывалась встроенной — из-за этого одна и
-        // та же сессия выглядела по-разному в зависимости от пути входа.
         if (context.isWideWindow) {
           context.read<SessionProvider>().requestOpenSession(session);
           unawaited(Navigator.of(context).maybePop());
@@ -92,10 +84,6 @@ class _SessionInvitesScreenState extends State<SessionInvitesScreen> {
         }
 
         if (prov.invites.isEmpty) {
-          // Пустое состояние внутри прокручиваемой области: иначе жест
-          // обновления по нему не срабатывает. Прежний расчёт высоты через
-          // MediaQuery минус kToolbarHeight давал переполнение на невысоких
-          // экранах с открытой клавиатурой.
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: const [SizedBox(height: 80), _EmptyInvitesView()],
@@ -258,8 +246,6 @@ class _InviteCard extends StatelessWidget {
           ),
           if (trackCount > 0) ...[
             const SizedBox(height: AppSpacing.sm + 4),
-            // Количество треков помогает решить, стоит ли присоединяться:
-            // пустая сессия и сессия с готовой подборкой — разные приглашения.
             Row(
               children: [
                 Icon(Icons.queue_music_rounded, size: 18, color: colors.onSurfaceVariant),
@@ -294,8 +280,6 @@ class _InviteCard extends StatelessWidget {
                           width: 18,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            // Цвет из палитры, а не белый: на светлой теме
-                            // белый индикатор на кнопке почти не виден.
                             color: colors.onPrimary,
                           ),
                         )

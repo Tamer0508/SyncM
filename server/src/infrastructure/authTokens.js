@@ -58,8 +58,6 @@ async function revokeAuthToken(token) {
   const record = await get(keyFor(token));
   const removed = await del(keyFor(token));
 
-  // Обратный указатель чистим сразу, иначе список устройств копил бы записи,
-  // от которых остались только имена.
   if (record?.userId) {
     try {
       await redisClient?.srem(`${USER_TOKENS_PREFIX}${record.userId}`, token);
@@ -71,9 +69,6 @@ async function revokeAuthToken(token) {
   return removed;
 }
 
-// Отметка «сеанс живой». Пишется не чаще раза в TOUCH_INTERVAL_MS: запись на
-// каждый запрос — это лишний поход в Redis на любой чих клиента, а список
-// устройств от точности до секунды не выигрывает.
 const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
 async function touchAuthToken(token) {
@@ -88,15 +83,12 @@ async function touchAuthToken(token) {
     const now = Date.now();
     if (record.lastSeenAt && now - record.lastSeenAt < TOUCH_INTERVAL_MS) return;
 
-    // Срок жизни не продлеваем: токен должен истечь ровно тогда, когда был
-    // выдан + TTL, иначе активный клиент жил бы вечно.
     await set(keyFor(token), { ...record, lastSeenAt: now }, ttl);
   } catch (err) {
     logger.warn({ err }, 'Не удалось обновить отметку последнего визита токена');
   }
 }
 
-// Активные сеансы пользователя, выданные приложению (не браузерной сессии).
 async function listUserTokens(userId) {
   if (!userId || !isRedisAvailable()) return [];
 
@@ -116,7 +108,6 @@ async function listUserTokens(userId) {
 
   const stale = records.filter(({ record }) => !record).map(({ token }) => token);
   if (stale.length > 0) {
-    // Истёкшие токены остаются в множестве: у самого множества TTL свой.
     try {
       await redisClient?.srem(setKey, ...stale);
     } catch (err) {
@@ -135,10 +126,6 @@ async function listUserTokens(userId) {
     }));
 }
 
-// Отзыв конкретного сеанса по наружному идентификатору.
-//
-// Ищем перебором собственных токенов пользователя: id — односторонний хеш,
-// обратного пути нет, а токенов у одного человека единицы.
 async function revokeUserTokenById(userId, deviceId) {
   if (!userId || !deviceId || !isRedisAvailable()) return false;
 
@@ -153,8 +140,6 @@ async function revokeUserTokenById(userId, deviceId) {
   const match = tokens.find((token) => deviceIdFor(token) === deviceId);
   if (!match) return false;
 
-  // Проверка владельца обязательна: множество могло устареть, а чужой токен
-  // мы отозвать не имеем права ни при каких обстоятельствах.
   const record = await get(keyFor(match));
   if (record && record.userId !== userId) {
     logger.error({ userId }, 'Токен из списка пользователя принадлежит другому — пропускаем');

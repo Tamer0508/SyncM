@@ -17,7 +17,6 @@ Future<String?> saveBytesToFile(String fileName, Uint8List bytes) async {
       ..click();
     return fileName;
   } finally {
-    // Ссылка держит блоб в памяти, пока её не отозвать.
     web.URL.revokeObjectURL(url);
   }
 }

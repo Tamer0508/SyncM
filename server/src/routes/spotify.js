@@ -86,7 +86,6 @@ const playBodySchema = z
     message: 'Требуется uri или contextUri',
   });
 
-// req нужен ради языка ответа: текст ошибки уходит человеку, а не в журнал.
 function handleSpotifyError(req, res, error, context) {
   if (error instanceof SpotifyNotConnectedError) {
     return res.status(409).json({ error: t(req, 'spotifyNotConnected') });
@@ -164,18 +163,6 @@ router.get('/playlists/:playlistId/tracks', rateLimitMiddleware(30, 60), asyncHa
   const { playlistId } = playlistIdParamsSchema.parse(req.params);
 
   try {
-    // Ключ включает userId, а пространство имён остаётся привязанным к
-    // плейлисту.
-    //
-    // Общий на всех ключ был утечкой: содержимое приватного плейлиста,
-    // однажды загруженное его владельцем, отдавалось любому, кто знает id, —
-    // проверка прав выполняется внутри fetchFn и на попадании в кэш не
-    // срабатывает вовсе. Теперь у каждого своя запись, и каждый получает её
-    // только после собственного запроса к Spotify, который и решает, есть ли
-    // у него доступ. Инвалидация по namespace при этом продолжает гасить
-    // копии всех пользователей разом.
-    // v2 в ключе: записи прошлой версии не содержат contextIndex, и без
-    // смены ключа клиенты полчаса продолжали бы получать список без него.
     const tracks = await getOrSet(`spotify:playlist-tracks:${playlistId}`, `user:${userId}:v2`, CACHE_TTL.playlistTracks, async () => {
       const spotifyUser = await requireSpotifyUser(userId);
 
@@ -256,26 +243,18 @@ router.get('/search', rateLimitMiddleware(40, 60), asyncHandler(async (req, res)
   }
 }));
 
-// Наличие записи SpotifyUser ещё не значит, что подключение живо: доступ
-// могли отозвать в настройках Spotify, и тогда refresh token мёртв, а строка
-// в базе выглядит как ни в чём не бывало. Поэтому статус проверяется живым
-// запросом к Spotify, а не по наличию записи.
 const SPOTIFY_STATE = {
   disconnected: 'disconnected',
   connected: 'connected',
   needsReauth: 'needs_reauth',
 };
 
-// Отказ живёт в кэше меньше удачи: увидев «нужно переподключить», человек
-// идёт переподключаться сейчас, и ждать пять минут ему незачем.
 const STATUS_TTL = { ok: CACHE_TTL.status, failed: 30 };
 
 function isAuthFailure(error) {
   if (error instanceof SpotifyNotConnectedError) return true;
   if (error instanceof SpotifyApiError) return error.status === 401 || error.status === 403;
 
-  // Spotify отвечает invalid_grant, когда доступ отозван. Сеть и 5xx — не
-  // повод объявлять связь мёртвой.
   return error?.response?.data?.error === 'invalid_grant';
 }
 
@@ -326,9 +305,6 @@ router.get('/status', rateLimitMiddleware(30, 60), asyncHandler(async (req, res)
       return res.json(status);
     }
 
-    // Spotify недоступен или моргнула сеть: подключение от этого не рвётся.
-    // Отвечаем «подключён» с пометкой stale и НЕ кэшируем — следующий запрос
-    // проверит заново.
     logger.warn({ err: error, userId }, 'Spotify status probe failed, reporting last known state');
     return res.json({ connected: true, state: SPOTIFY_STATE.connected, stale: true, ...identity });
   }

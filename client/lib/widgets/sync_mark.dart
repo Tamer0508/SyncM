@@ -5,19 +5,6 @@ import 'package:flutter/material.dart';
 import '../models/sync_phase.dart';
 import '../theme.dart';
 
-/// Фирменный знак SyncM: два круга, «мой» и «его».
-///
-/// Это единственное место, где приложение позволяет себе быть громким —
-/// поэтому всё вокруг него держится тихо.
-///
-/// Знак не украшение: он говорит то же, ради чего написана вся синхронизация
-/// в providers/playback_provider.dart. Врозь — никто ничего не слушает вместе.
-/// Пересеклись и пересечение засветилось — звучит одно и то же в одну и ту же
-/// секунду. Разошлись — расхождение, идёт подстройка. Человек читает состояние
-/// сессии, не читая ни слова.
-///
-/// Цвета закреплены за ролями по всему приложению (roles.mine / roles.theirs),
-/// так что знак заодно учит их различать.
 class SyncMark extends StatefulWidget {
   const SyncMark({
     super.key,
@@ -27,7 +14,6 @@ class SyncMark extends StatefulWidget {
 
   final SyncPhase state;
 
-  /// Ширина знака целиком. Диаметр круга — примерно 55% от неё.
   final double size;
 
   @override
@@ -35,13 +21,8 @@ class SyncMark extends StatefulWidget {
 }
 
 class _SyncMarkState extends State<SyncMark> with TickerProviderStateMixin {
-  /// Переход между состояниями. Отдельный контроллер, потому что смена
-  /// состояния — событие, а не фон.
   late final AnimationController _transition;
 
-  /// Медленное дыхание. Идёт только там, где что-то происходит, — в покое
-  /// остановлен: постоянное движение на экране, куда заходят по десять раз в
-  /// день, утомляет и жрёт батарею.
   late final AnimationController _ambient;
 
   double _from = 0;
@@ -65,9 +46,6 @@ class _SyncMarkState extends State<SyncMark> with TickerProviderStateMixin {
     super.didUpdateWidget(old);
     if (old.state == widget.state) return;
 
-    // Стартуем не от целевого значения предыдущего состояния, а от того, где
-    // круги сейчас: состояние может смениться посреди перехода, и прыжок был
-    // бы виден.
     _from = _currentOverlap;
     _to = _overlapFor(widget.state);
     _transition.forward(from: 0);
@@ -87,7 +65,6 @@ class _SyncMarkState extends State<SyncMark> with TickerProviderStateMixin {
     }
   }
 
-  /// Насколько круги перекрываются: 0 — касаются краями, 1 — совпали.
   static double _overlapFor(SyncPhase state) => switch (state) {
         SyncPhase.idle => 0.0,
         SyncPhase.waiting => 0.18,
@@ -119,19 +96,14 @@ class _SyncMarkState extends State<SyncMark> with TickerProviderStateMixin {
         child: AnimatedBuilder(
           animation: Listenable.merge([_transition, _ambient]),
           builder: (context, _) {
-            // При «меньше движения» знак остаётся информативным: положение
-            // кругов по-прежнему отражает состояние, но не дышит и не едет.
             final overlap = still ? _to : _currentOverlap;
 
             var breath = 0.0;
             if (!still) {
               final wave = math.sin(_ambient.value * math.pi);
               breath = switch (widget.state) {
-                // В синхроне — общее, ровное дыхание: круги движутся заодно.
                 SyncPhase.synced => wave * 0.045,
-                // В ожидании — короткие подходы друг к другу.
                 SyncPhase.waiting => wave * 0.09,
-                // При расхождении — качание в противофазе, круги «не попадают».
                 SyncPhase.drifting => -wave * 0.11,
                 SyncPhase.idle => 0.0,
               };
@@ -176,7 +148,6 @@ class _SyncMarkPainter extends CustomPainter {
     final radius = size.height / 2;
     final centerY = size.height / 2;
 
-    // При overlap = 0 круги касаются краями, при 1 — центры совпадают.
     final gap = radius * (1 - overlap);
 
     final leftCenter = Offset(size.width / 2 - gap, centerY);
@@ -192,10 +163,6 @@ class _SyncMarkPainter extends CustomPainter {
 
     if (!lit || overlap <= 0) return;
 
-    // Пересечение — та самая «одна и та же секунда». Рисуем его отдельным
-    // светлым слоем через пересечение двух окружностей: это единственная
-    // часть знака, которая существует, только когда сессия действительно
-    // синхронна.
     final left = Path()
       ..addOval(Rect.fromCircle(center: leftCenter, radius: radius));
     final right = Path()

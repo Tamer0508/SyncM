@@ -8,7 +8,6 @@ const {
   withPaging,
 } = require('../src/infrastructure/spotify/paging');
 
-/** Поддельный Spotify: отдаёт страницы и считает, как его звали. */
 function makeApi(total, { withTotal = true, delayMs = 0 } = {}) {
   const stats = { calls: 0, offsets: [], inFlight: 0, maxInFlight: 0 };
 
@@ -51,8 +50,6 @@ test('порядок элементов сохраняется при парал
   assert.equal(items.length, 457);
   assert.equal(items[0].id, 'item-0');
   assert.equal(items[456].id, 'item-456');
-  // Порядок строго возрастающий — страницы собраны по индексу, а не по
-  // тому, какая ответила первой.
   items.forEach((item, i) => assert.equal(item.id, `item-${i}`));
   assert.equal(stats.calls, 10);
 });

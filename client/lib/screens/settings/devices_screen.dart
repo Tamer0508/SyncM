@@ -27,7 +27,6 @@ class _DevicesScreenState extends State<DevicesScreen> {
   List<Map<String, dynamic>> _devices = [];
   bool _loading = true;
 
-  /// Какие сеансы сейчас завершаются — чтобы не нажать дважды.
   final Set<String> _pending = {};
 
   @override
@@ -109,10 +108,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     }
   }
 
-  /// Общий хвост выхода: остановить плеер, забыть данные, уйти на вход.
   Future<void> _leaveApp({bool alreadyLoggedOut = false}) async {
-    // Проигрыватель переживает смену аккаунта: без остановки следующий
-    // вошедший увидел бы панель с чужим треком.
     await context.read<PlaybackProvider>().stopAndClear();
     if (!mounted) return;
 

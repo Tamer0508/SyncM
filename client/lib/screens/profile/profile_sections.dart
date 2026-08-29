@@ -19,17 +19,13 @@ class ProfileSectionHeader extends StatelessWidget {
   final String title;
   final String? hint;
 
-  /// Кнопки и стрелка справа от заголовка.
   final List<Widget> trailing;
 
-  /// Отступ сверху, отделяющий раздел от предыдущего.
   static const EdgeInsets outerPadding = EdgeInsets.only(top: AppSpacing.lg);
 
-  /// Боковые отступы содержимого разделов.
   static const EdgeInsets sidePadding =
       EdgeInsets.symmetric(horizontal: AppSpacing.md);
 
-  /// Промежуток между шапкой и содержимым раздела.
   static const double gap = AppSpacing.sm;
 
   @override
@@ -77,7 +73,6 @@ class ProfileArtistsSection extends StatelessWidget {
 
   final int maxCount;
 
-  /// Размеры кружка и колонки под ним.
   static const double avatarNarrow = 72;
   static const double avatarWide = 88;
   static const double _wideFrom = 700;
@@ -319,7 +314,6 @@ class _ArtistChip extends StatelessWidget {
 }
 
 
-/// Свои подборки — карусель из тех же карточек, что и на вкладке «Музыка».
 class ProfilePlaylistsSection extends StatelessWidget {
   const ProfilePlaylistsSection({
     super.key,
@@ -332,7 +326,6 @@ class ProfilePlaylistsSection extends StatelessWidget {
   final void Function(Map<String, dynamic> playlist) onOpen;
   final int maxCount;
 
-  /// Ширина карточки и высота полосы: обложка плюс две строки подписи.
   static const double cardWidth = 150;
 
   static double stripHeightFor(BuildContext context) {
@@ -342,7 +335,6 @@ class ProfilePlaylistsSection extends StatelessWidget {
         2 +
         textLineHeight(context, texts.bodySmall);
 
-    // Обложка квадратная, под ней отступы карточки: 8 сверху и 12 снизу.
     return cardWidth + AppSpacing.sm + AppSpacing.sm + 4 + labels;
   }
 
@@ -390,7 +382,6 @@ class ProfilePlaylistsSection extends StatelessWidget {
 }
 
 
-/// Шапка раздела-заглушки.
 class _SkeletonSectionHeader extends StatelessWidget {
   const _SkeletonSectionHeader({required this.titleFactor, this.hintFactor});
 
@@ -419,7 +410,6 @@ class _SkeletonSectionHeader extends StatelessWidget {
   }
 }
 
-/// Зеркало [ProfileArtistsSection].
 class SkeletonProfileArtists extends StatelessWidget {
   const SkeletonProfileArtists({super.key, this.itemCount = 5});
 
@@ -488,13 +478,11 @@ class SkeletonProfileArtists extends StatelessWidget {
   }
 }
 
-/// Зеркало [ProfileSharedMusicSection].
 class SkeletonProfileSharedMusic extends StatelessWidget {
   const SkeletonProfileSharedMusic({super.key, this.chipCount = 4});
 
   final int chipCount;
 
-  /// Доли ширины под названия исполнителей в фишках.
   static const List<double> _chipFactors = [0.26, 0.18, 0.32, 0.22];
 
   @override

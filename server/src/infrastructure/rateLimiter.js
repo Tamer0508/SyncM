@@ -81,7 +81,7 @@ function rateLimitMiddleware(limit, windowSeconds, options = {}) {
           key = `rate:user:${userId}:${req.method}:${routeKey}`;
         } else {
           const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-          const safeIp = String(ip).replace(/:/g, '_'); // IPv6
+          const safeIp = String(ip).replace(/:/g, '_');
           key = `rate:ip:${safeIp}:${req.method}:${routeKey}`;
         }
       }

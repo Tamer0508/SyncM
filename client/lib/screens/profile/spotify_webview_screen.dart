@@ -6,7 +6,6 @@ Widget buildSpotifyWebView(String authUrl) {
   return _SpotifyWebView(authUrl: authUrl);
 }
 
-// Заглушка для мобильных — редирект не используется
 void redirectToUrl(String url) {}
 
 class _SpotifyWebView extends StatefulWidget {

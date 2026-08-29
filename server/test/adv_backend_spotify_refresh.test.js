@@ -1,24 +1,13 @@
 'use strict';
 
-// Adversarial-тест обновления access token Spotify под конкуренцией.
-//
-// Тест НАМЕРЕННО падает на текущей реализации.
-//
-// Атакуемый код: server/src/infrastructure/spotify/auth.js:66-81
-//                (ветка «refresh уже идёт — подождём и перечитаем из БД»)
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-// Ключ шифрования задаём до загрузки модулей: 64 hex-символа используются
-// напрямую, без дорогого scrypt.
 process.env.ENCRYPTION_KEY = 'a'.repeat(64);
 process.env.ENCRYPTION_SALT = 'adversarial-test-salt';
 
 const SPOTIFY_USER_ID = '11111111-2222-3333-4444-555555555555';
 const STALE_TOKEN = 'OLD_EXPIRED_ACCESS_TOKEN';
-
-// ---- подмена Redis: замок ЗАНЯТ параллельным обновлением ------------------
 
 const redisPath = require.resolve('../src/infrastructure/redis');
 require.cache[redisPath] = {
@@ -26,7 +15,6 @@ require.cache[redisPath] = {
   filename: redisPath,
   loaded: true,
   exports: {
-    // null = замок взять не удалось, обновление уже идёт в другом процессе
     acquireLock: async () => null,
     releaseLock: async () => true,
     isRedisAvailable: () => true,
@@ -38,8 +26,6 @@ require.cache[redisPath] = {
     getOrSet: async (_k, _t, _ttl, fn) => fn(),
   },
 };
-
-// ---- подмена Prisma: параллельное обновление ЕЩЁ НЕ ЗАПИСАЛО новый токен --
 
 let storedRecord = null;
 
@@ -65,8 +51,6 @@ const {
 test('пока параллельный refresh не закончился, старый токен не выдаётся за новый', async () => {
   const encrypted = await encryptAccessToken(SPOTIFY_USER_ID, STALE_TOKEN);
 
-  // В БД лежит ровно тот же протухший токен: соседний запрос взял замок,
-  // но ещё не сходил в Spotify и ничего не переписал.
   storedRecord = { id: SPOTIFY_USER_ID, accessToken: encrypted, refreshToken: null };
 
   const spotifyUser = { id: SPOTIFY_USER_ID, accessToken: encrypted, refreshToken: null };

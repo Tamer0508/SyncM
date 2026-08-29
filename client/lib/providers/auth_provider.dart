@@ -171,7 +171,6 @@ class AuthProvider with ChangeNotifier {
         rethrow;
       }
 
-      // Ответ сервера — новая точка отсчёта.
       final confirmed = _privacyConfirmed;
       _privacyConfirmed = {
         for (final key in _privacyKeys)

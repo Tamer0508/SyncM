@@ -6,16 +6,6 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../utils/app_globals.dart';
 
-/// Управляет foreground-сервисом и wakelock на время активной сессии.
-///
-/// Зачем: когда экран гаснет, Android через некоторое время замораживает
-/// приложение, и синхронизация встаёт. Foreground-сервис (постоянное
-/// уведомление в шторке) говорит системе «не замораживай меня», а wakelock
-/// не даёт заснуть процессору — вместе они позволяют держать сокет и
-/// синхронизацию при погашенном экране.
-///
-/// Работает только на Android. На iOS/Windows/Web — no-op (там свои механизмы
-/// фоновой работы, и flutter_foreground_task их не покрывает).
 class SessionForegroundService {
   static const MethodChannel _channel = MethodChannel('syncm/system');
 
@@ -25,7 +15,6 @@ class SessionForegroundService {
   static bool _initialized = false;
   static bool _running = false;
 
-  /// Одноразовая инициализация параметров сервиса. Безопасно вызывать повторно.
   static void _ensureInitialized() {
     if (_initialized || !_isAndroid) return;
     FlutterForegroundTask.init(
@@ -63,7 +52,6 @@ class SessionForegroundService {
     if (!_isAndroid) return;
     _ensureInitialized();
 
-    // Текст видно в системной шторке, поэтому язык — как в приложении.
     final l = appL10n;
     final notificationTitle = title ?? l?.foregroundTitle ?? 'Сессия SyncM активна';
     final notificationText = text ?? l?.foregroundText ?? 'Слушаете вместе с друзьями';
@@ -82,13 +70,10 @@ class SessionForegroundService {
       }
       _running = true;
     } catch (_) {
-      // Если сервис не стартовал (нет разрешения на уведомления и т.п.) —
-      // не роняем приложение, просто остаёмся без фонового удержания.
       _running = false;
     }
   }
 
-  /// Останавливает сервис и снимает wakelock. Вызывать при выходе из сессии.
   static Future<void> stop() async {
     try {
       await WakelockPlus.disable();
@@ -103,8 +88,6 @@ class SessionForegroundService {
     _running = false;
   }
 
-  /// Запрашивает разрешения для надёжной фоновой работы: уведомления и игнор
-  /// оптимизации батареи. Вызывать перед start() или из настроек.
   static Future<bool> requestPermissions() async {
     if (!_isAndroid) return true;
     _ensureInitialized();
@@ -122,9 +105,6 @@ class SessionForegroundService {
     }
   }
 
-  /// Открывает вендорский экран автозапуска (MIUI/Huawei/Oppo/Vivo и т.п.).
-  /// Если у устройства такого экрана нет — откроются настройки приложения.
-  /// Возвращает true, если открылся именно вендорский экран автозапуска.
   static Future<bool> openAutostartSettings() async {
     if (!_isAndroid) return false;
     try {
@@ -135,8 +115,6 @@ class SessionForegroundService {
     }
   }
 
-  /// Открывает системный экран «О приложении» (там можно вручную выставить
-  /// батарею «Без ограничений» и прочее).
   static Future<void> openAppSettings() async {
     if (!_isAndroid) return;
     try {

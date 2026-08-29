@@ -180,10 +180,6 @@ class _TrackCardState extends State<TrackCard> with SingleTickerProviderStateMix
                     const SizedBox(width: AppSpacing.sm),
                     Text(
                       formatDuration(widget.durationMs!),
-                      // context.timecode вместо ручной настройки цифр:
-                      // длительность — это время, а у времени в приложении
-                      // теперь свой голос. Табличные цифры внутри стиля, так
-                      // что колонка по-прежнему не дрожит при прокрутке.
                       style: context.timecode(
                         color: highlighted
                             ? colors.onPrimaryContainer.withValues(alpha: 0.75)

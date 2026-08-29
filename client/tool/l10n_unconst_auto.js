@@ -1,10 +1,3 @@
-// Убирает `const` по отчёту анализатора.
-//
-// Читает вывод `flutter analyze` со стандартного ввода и снимает const там,
-// где локализованная строка перестала быть константой:
-//
-//   flutter analyze --no-pub | node tool/l10n_unconst_auto.js
-
 const fs = require('fs');
 const path = require('path');
 
@@ -39,8 +32,6 @@ process.stdin.on('end', () => {
     const crlf = raw.includes('\r\n');
     const text = raw.replace(/\r\n/g, '\n').split('\n');
 
-    // Сверху вниз: удаление const не сдвигает номера строк, поэтому порядок
-    // важен только для читаемости вывода.
     for (const lineNumber of [...lines].sort((a, b) => a - b)) {
       const index = lineNumber - 1;
 

@@ -1,8 +1,5 @@
 'use strict';
 
-// Враждебные тесты friendsController: счётчики, поиск, несуществующие цели.
-// БД нет — Prisma и Redis подменяются в require.cache ДО загрузки контроллера.
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -16,7 +13,6 @@ function mockModule(relPath, exports) {
   return exports;
 }
 
-// ---- заглушки инфраструктуры -------------------------------------------
 const prismaMock = {};
 mockModule('../src/db/prisma', prismaMock);
 mockModule('../src/infrastructure/redis', {
@@ -57,7 +53,6 @@ const run = async (handler, req) => {
   return { res, errors };
 };
 
-// ---------------------------------------------------------------------------
 test('blockUser: блокировка автора ВИСЯЩЕЙ заявки не должна уменьшать friendsCount', async () => {
   const decrements = [];
 
@@ -69,7 +64,6 @@ test('blockUser: блокировка автора ВИСЯЩЕЙ заявки �
     },
     block: { upsert: async () => ({}) },
     friendship: {
-      // В базе одна СТРОКА ЗАЯВКИ (status = pending), дружбы нет.
       deleteMany: async () => ({ count: 1 }),
       count: async () => 0,
     },
@@ -91,7 +85,6 @@ test('blockUser: блокировка автора ВИСЯЩЕЙ заявки �
   );
 });
 
-// ---------------------------------------------------------------------------
 test('searchUsers: имя из 8 символов алфавита Crockford всё ещё ищется по username', async () => {
   let capturedWhere = null;
 
@@ -104,7 +97,6 @@ test('searchUsers: имя из 8 символов алфавита Crockford в�
     },
   });
 
-  // "Coldplay" -> normalizePublicId -> "C01DP1AY": ровно 8 символов алфавита.
   await run(friends.searchUsers, {
     userId: 'me',
     query: { query: 'Coldplay' },
@@ -119,7 +111,6 @@ test('searchUsers: имя из 8 символов алфавита Crockford в�
   );
 });
 
-// ---------------------------------------------------------------------------
 test('sendRequest: заявка несуществующему получателю — 404, а не падение по FK', async () => {
   const fkError = Object.assign(new Error('Foreign key constraint failed'), { code: 'P2003' });
 

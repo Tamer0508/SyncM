@@ -189,8 +189,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final friendsCount = _profileData?['friendsCount'] as int? ?? 0;
     final mutualCount = _profileData?['mutualFriendsCount'] as int? ?? 0;
 
-    // Заглушка повторяет строение _ProfileContent: шапка, ряд кнопок и
-    // разделы со списками — в том же порядке и с теми же отступами.
     final body = _loading && _profileData == null
         ? SingleChildScrollView(
             child: Column(
@@ -201,7 +199,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SkeletonProfileArtists(),
                 if (!isOwnProfile) const SkeletonProfileSharedMusic(),
                 const SkeletonProfileTrackSection(),
-                // Второй раздел — «любимые треки» — есть только у себя.
                 if (isOwnProfile) const SkeletonProfileTrackSection(),
                 const SizedBox(height: AppSpacing.xl),
               ],
@@ -272,7 +269,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-/// Содержимое профиля: шапка с градиентом и списки треков.
 class _ProfileContent extends StatefulWidget {
   const _ProfileContent({
     super.key,
@@ -308,7 +304,6 @@ class _ProfileContent extends StatefulWidget {
 }
 
 class _ProfileContentState extends State<_ProfileContent> {
-  /// Цвет шапки, снятый с аватара.
   late final ValueNotifier<Color?> _heroColor =
       ValueNotifier<Color?>(ArtworkColorStore.cached(widget.avatarUrl));
 
@@ -317,8 +312,6 @@ class _ProfileContentState extends State<_ProfileContent> {
 
   int _likedCount = 0;
 
-  /// Сводка и пересечение вкусов считаются один раз при получении списков,
-  /// а не в build: на каждой перерисовке пересобирать их незачем.
   MusicSummary _summary = MusicSummary.empty;
   SharedMusic _shared = SharedMusic.none;
 
@@ -375,9 +368,6 @@ class _ProfileContentState extends State<_ProfileContent> {
 
         setState(() {
           _history = history;
-          // В разделе показываются первые двадцать, но исполнители и
-          // подпись в шапке считаются по всему списку: иначе «любимых»
-          // всегда было бы ровно двадцать.
           _liked = likedAll.take(20).toList();
           _likedCount = likedAll.length;
           _summary = MusicSummary.of(history: history, liked: likedAll);
@@ -388,11 +378,7 @@ class _ProfileContentState extends State<_ProfileContent> {
       final id = widget.targetId;
       if (id == null) return;
 
-      // Свои любимые нужны здесь же: по ним считается «Общая музыка».
-      // Запрос кэшируется вместе с остальными, лишнего похода в сеть нет.
       final activityRequest = api.getUserActivity(id);
-      // Не сорвать профиль из-за необязательной секции: если свои любимые
-      // не пришли, «Общая музыка» просто окажется пустой.
       final myLikedRequest =
           api.getLikedTracks().catchError((_) => const <dynamic>[]);
 
@@ -407,8 +393,6 @@ class _ProfileContentState extends State<_ProfileContent> {
                 .toList() ??
             [];
         _likedCount = data['likedCount'] as int? ?? 0;
-        // Список любимых чужого профиля сервер не отдаёт — только число,
-        // поэтому исполнители считаются по одной истории.
         _summary = MusicSummary.of(history: _history, liked: const []);
         _shared = SharedMusic.between(
           mine: myLiked.whereType<Map>().map(Map<String, dynamic>.from).toList(),
@@ -416,15 +400,12 @@ class _ProfileContentState extends State<_ProfileContent> {
         );
       });
     } catch (err) {
-      // Списки второстепенны: профиль полезен и без них.
       debugPrint('Не удалось загрузить списки профиля: $err');
     } finally {
       if (mounted) setState(() => _loadingLists = false);
     }
   }
 
-  /// Сколько всего любимых треков: у себя — длина полного списка, у
-  /// чужого профиля — число, присланное сервером.
   int get _likedTotal => _likedCount;
 
   String _buildSubtitle() {
@@ -443,8 +424,6 @@ class _ProfileContentState extends State<_ProfileContent> {
 
   @override
   Widget build(BuildContext context) {
-    // Свои подборки берём у общего провайдера: он уже загружен вкладкой
-    // «Музыка», второй раз их запрашивать незачем.
     final ownPlaylists = widget.isOwnProfile
         ? context.watch<PlaylistsProvider>().custom
         : const <Map<String, dynamic>>[];
@@ -475,9 +454,6 @@ class _ProfileContentState extends State<_ProfileContent> {
         ),
 
         if (_loadingLists) ...[
-          // Заглушки на месте самих разделов, а не вместо них: заголовки
-          // и отступы у них те же, поэтому содержимое встаёт туда же, где
-          // только что мерцали полосы.
           const SliverToBoxAdapter(child: SkeletonProfileArtists()),
           if (!widget.isOwnProfile)
             const SliverToBoxAdapter(child: SkeletonProfileSharedMusic()),
@@ -485,15 +461,11 @@ class _ProfileContentState extends State<_ProfileContent> {
           if (widget.isOwnProfile)
             const SliverToBoxAdapter(child: SkeletonProfileTrackSection()),
         ] else ...[
-          // Разделы, которым нечего показать, не занимают места вовсе:
-          // пустая карусель хуже её отсутствия.
           if (_summary.topArtists.isNotEmpty)
             SliverToBoxAdapter(
               child: ProfileArtistsSection(artists: _summary.topArtists),
             ),
 
-          // «Общая музыка» остаётся на месте и без совпадений — с ней
-          // разделы ниже не подпрыгивают, когда пересечение досчитается.
           if (!widget.isOwnProfile)
             SliverToBoxAdapter(
               child: ProfileSharedMusicSection(shared: _shared),
@@ -540,7 +512,6 @@ class _ProfileContentState extends State<_ProfileContent> {
   }
 }
 
-/// Шапка профиля с градиентом от цвета аватара.
 class _Hero extends StatelessWidget {
   const _Hero({
     required this.colorSource,
@@ -550,7 +521,6 @@ class _Hero extends StatelessWidget {
     required this.subtitle,
   });
 
-  /// Цвет аватара: null, пока не посчитан.
   final ValueListenable<Color?> colorSource;
   final bool isNarrow;
   final String displayName;
@@ -613,8 +583,6 @@ class _Hero extends StatelessWidget {
     );
 
     final content = Padding(
-      // Отступ сверху с запасом под системную строку и кнопку возврата,
-      // которая лежит поверх градиента.
       padding: EdgeInsets.fromLTRB(
         isNarrow ? AppSpacing.md : AppSpacing.xl,
         MediaQuery.paddingOf(context).top + 64,
@@ -678,8 +646,6 @@ class _HeroAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         boxShadow: [
-          // Тень отделяет аватар от градиента: без неё он сливается с шапкой,
-          // цвет которой снят с него же самого.
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.35),
             blurRadius: 28,
@@ -697,7 +663,6 @@ class _HeroAvatar extends StatelessWidget {
   }
 }
 
-/// Кнопки под шапкой.
 class _ActionsRow extends StatelessWidget {
   const _ActionsRow({
     required this.isOwnProfile,
@@ -731,9 +696,6 @@ class _ActionsRow extends StatelessWidget {
       child: Row(
         children: [
           IconButton.filledTonal(
-            // Через обработчик, а не маршрутом: прямой pushNamed открывал
-            // настройки во весь экран на широкой раскладке, закрывая боковую
-            // панель — в отличие от всех остальных переходов.
             onPressed: onOpenSettings,
             icon: const Icon(Icons.settings_outlined),
             tooltip: L.of(context).settingsTitle,
@@ -807,12 +769,6 @@ class _OverlayButton extends StatelessWidget {
   }
 }
 
-/// Список треков с разворотом.
-///
-/// Горизонтальная лента здесь не подошла: у трека длинное название, в узкой
-/// карточке оно обрезается, а прокрутка вбок внутри вертикального списка
-/// конфликтует с основным жестом. Вертикальный список читается сразу, а
-/// чтобы он не занимал пол-экрана, свёрнут до пяти строк.
 class _TrackSection extends StatefulWidget {
   const _TrackSection({
     required this.title,
@@ -847,12 +803,6 @@ class _TrackSectionState extends State<_TrackSection> {
 
     return Padding(
       padding: ProfileSectionHeader.outerPadding,
-      // GestureDetector, а не InkWell.
-      //
-      // Нажатие в любом месте секции разворачивает и сворачивает её, но
-      // заливка на всю площадь выглядела бы неуместно: подсветка размером
-      // в пол-экрана читается как ошибка, а не как отклик. Отклик здесь даёт
-      // само раскрытие списка.
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: canExpand ? () => setState(() => _expanded = !_expanded) : null,
@@ -869,8 +819,6 @@ class _TrackSectionState extends State<_TrackSection> {
                     child: Text(L.of(context).homeFilterAll),
                   ),
                 if (canExpand)
-                  // Стрелка показывает, что секцию можно раскрыть, и
-                  // поворачивается вместе с состоянием.
                   AnimatedRotation(
                     turns: _expanded ? 0.5 : 0,
                     duration: AppMotion.short,
@@ -907,9 +855,6 @@ class _TrackSectionState extends State<_TrackSection> {
                   else
                     for (var i = 0; i < visible; i++)
                       _TrackRow(
-                        // Ключ по идентификатору трека: без него Flutter
-                        // сопоставляет строки по позиции, и при раскрытии
-                        // обложки на мгновение перескакивают между соседями.
                         key: ValueKey(widget.tracks[i]['spotifyUri'] ??
                             widget.tracks[i]['uri'] ??
                             'row-$i'),
@@ -942,7 +887,6 @@ class _TrackSectionState extends State<_TrackSection> {
   }
 }
 
-/// Строка трека в списке профиля.
 class _TrackRow extends StatelessWidget {
   const _TrackRow({super.key, required this.track, required this.index});
 
@@ -976,9 +920,6 @@ class _TrackRow extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.sm),
           ClipRRect(
-            // Квадрат со скруглением, а не круг: у трека есть обложка, и
-            // круглая маска срезает её углы вместе с частью изображения.
-            // Круглыми показывают исполнителей, а не песни.
             borderRadius: BorderRadius.circular(AppRadius.xs),
             child: SizedBox(
               width: 44,

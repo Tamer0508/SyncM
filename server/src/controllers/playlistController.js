@@ -28,12 +28,6 @@ const createCustomPlaylistSchema = z.object({
   imageUrl: httpUrlSchema.optional().nullable(),
 });
 
-// Отдельная схема для правки, а не переиспользование схемы создания.
-//
-// У PATCH другая семантика: отсутствующее поле означает «не трогать», тогда
-// как явный null у описания и обложки означает «стереть». Схема создания
-// такого различия не делает и молча превратила бы «переименовать» в
-// «переименовать и заодно снять обложку».
 const updatePlaylistSchema = z
   .object({
     name: z.string().trim().min(1, 'Название обязательно').max(100, 'Название не должно превышать 100 символов').optional(),
@@ -44,7 +38,6 @@ const updatePlaylistSchema = z
     message: 'Нечего менять',
   });
 
-// LikedTrack.trackName и .artistName — NOT NULL, см. комментарий у logPlaySchema.
 const toggleLikeSchema = z.object({
   spotifyUri: z.string().min(1, 'spotifyUri обязателен'),
   trackName: z.string().nullable().optional().transform((v) => v ?? ''),
@@ -241,7 +234,6 @@ const importPlaylist = asyncHandler(async (req, res) => {
 
   const { spotifyPlaylistId, name: rawName, description, imageUrl } =
       importPlaylistSchema.parse(req.body);
-  // Playlist.name — NOT NULL, а схема разрешает импорт без названия.
   const name = rawName || t(req, 'untitledPlaylist');
 
   const playlist = await withLock(`playlist-import:${userId}:${spotifyPlaylistId}`, 5000, async () => {
@@ -379,7 +371,7 @@ const addTrackToPlaylist = asyncHandler(async (req, res) => {
     if (err.code === 'P2002') {
       return res.status(409).json({ error: t(req, 'trackAlreadyInPlaylist') });
     }
-    throw err; // пробрасываем остальные ошибки
+    throw err;
   }
 
   await invalidatePlaylistTracks(userId, playlistId);
@@ -639,7 +631,6 @@ const uploadCover = (req, res) => {
       res.json(serializePlaylist(updated));
     } catch (error) {
       logger.error({ err: error, userId }, 'Upload playlist cover error');
-      // Не оставляем осиротевший файл, если запись в БД не удалась.
       await cleanup();
       res.status(500).json({ error: t(req, 'coverSaveFailed') });
     }

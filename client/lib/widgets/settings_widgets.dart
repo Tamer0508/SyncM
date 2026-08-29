@@ -70,7 +70,6 @@ class SettingsScrollView extends StatelessWidget {
   }
 }
 
-/// Страница подраздела настроек.
 class SettingsSectionScreen extends StatelessWidget {
   const SettingsSectionScreen({
     super.key,
@@ -99,7 +98,6 @@ class SettingsSectionScreen extends StatelessWidget {
   }
 }
 
-/// Подпись над группой.
 class SettingsGroupLabel extends StatelessWidget {
   const SettingsGroupLabel({
     super.key,
@@ -133,7 +131,6 @@ class SettingsGroupLabel extends StatelessWidget {
   }
 }
 
-/// Пояснение под группой: то, что не помещается в подпись строки.
 class SettingsNote extends StatelessWidget {
   const SettingsNote(this.text, {super.key});
 
@@ -158,7 +155,6 @@ class SettingsNote extends StatelessWidget {
   }
 }
 
-/// Группа строк: карточка с подписью и разделителями между строками.
 class SettingsGroup extends StatelessWidget {
   const SettingsGroup({
     super.key,
@@ -242,7 +238,6 @@ class SettingsRow extends StatelessWidget {
   final String title;
   final String? subtitle;
 
-  /// Текущее значение — коротко, справа от заголовка.
   final String? value;
 
   final Widget? trailing;
@@ -250,7 +245,6 @@ class SettingsRow extends StatelessWidget {
   final SettingsTone tone;
   final bool enabled;
 
-  /// Для озвучки переключателей: включено или нет.
   final bool? semanticsToggled;
 
   @override
@@ -356,8 +350,6 @@ class SettingsRow extends StatelessWidget {
             if (states.contains(WidgetState.pressed)) {
               return colors.onSurface.withValues(alpha: 0.08);
             }
-            // Фокус подсвечен акцентом: с клавиатуры видно, где ты сейчас,
-            // и это не путается с наведением мыши.
             if (states.contains(WidgetState.focused)) {
               return context.roles.mine.withValues(alpha: 0.14);
             }
@@ -373,7 +365,6 @@ class SettingsRow extends StatelessWidget {
   }
 }
 
-/// Строка-действие: переход, кнопка, ссылка наружу.
 class SettingsAction extends StatelessWidget {
   const SettingsAction({
     super.key,
@@ -392,7 +383,6 @@ class SettingsAction extends StatelessWidget {
   final String? subtitle;
   final IconData? icon;
 
-  /// Значение справа — например, размер кэша или имя аккаунта.
   final String? value;
 
   final Widget? trailing;
@@ -401,7 +391,6 @@ class SettingsAction extends StatelessWidget {
   final bool danger;
   final bool enabled;
 
-  /// Показать шеврон: строка ведёт на другой экран.
   final bool chevron;
 
   @override
@@ -487,7 +476,6 @@ class SettingsSwitch extends StatelessWidget {
   }
 }
 
-/// Переключатель, живущий в локальном хранилище.
 class SettingsFlagSwitch extends StatelessWidget {
   const SettingsFlagSwitch({
     super.key,
@@ -498,7 +486,6 @@ class SettingsFlagSwitch extends StatelessWidget {
     this.defaultValue = false,
   });
 
-  /// Ключ флага в [StoreKeys].
   final String flagKey;
 
   final String title;
@@ -541,7 +528,6 @@ class SettingsPanel extends StatelessWidget {
   final String? title;
   final String? description;
 
-  /// Текущее значение справа от заголовка.
   final Widget? trailing;
 
   @override
@@ -608,7 +594,6 @@ class SettingsPanel extends StatelessWidget {
   }
 }
 
-/// Крупная плитка на главном экране настроек: вход в подраздел.
 class SettingsSectionTile extends StatelessWidget {
   const SettingsSectionTile({
     super.key,
@@ -621,7 +606,6 @@ class SettingsSectionTile extends StatelessWidget {
   final IconData icon;
   final String title;
 
-  /// Одна-две ключевые настройки раздела через разделитель.
   final String summary;
 
   final VoidCallback onTap;

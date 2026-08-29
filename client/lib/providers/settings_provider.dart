@@ -11,13 +11,6 @@ import 'auth_provider.dart';
 import 'locale_provider.dart';
 import 'theme_provider.dart';
 
-/// Настройки, которые живут на сервере: уведомления, кто может звать в
-/// сессию и оформление, общее для всех устройств.
-///
-/// Оформление остаётся локальным по способу применения — тема выбирается на
-/// первом кадре, до всякой сети, — но сервер хранит его копию, чтобы второе
-/// устройство встретило человека тем же интерфейсом. Спор двух устройств
-/// решается по времени изменения: чьё новее, то и остаётся.
 class SettingsProvider extends ChangeNotifier {
   SettingsProvider({
     required this.appearance,
@@ -41,9 +34,6 @@ class SettingsProvider extends ChangeNotifier {
 
   Timer? _pushTimer;
 
-  /// Идёт применение серверных значений. Пока флаг поднят, изменения
-  /// оформления не считаются пользовательскими и обратно не отправляются —
-  /// иначе первый же ответ сервера запустил бы бесконечный пинг-понг.
   bool _applying = false;
 
   Map<String, dynamic>? _lastPushedAppearance;
@@ -56,14 +46,11 @@ class SettingsProvider extends ChangeNotifier {
 
   String _inviteScope = 'friends';
 
-  /// Кто может звать в сессию: `friends` или `nobody`.
   String get inviteScope => _inviteScope;
 
   bool notification(String key) =>
       _notifications[key] ?? NotificationPrefs.defaults[key] ?? true;
 
-  // Смена пользователя. Вызывается из MultiProvider на каждое изменение
-  // AuthProvider — отсюда и проверка на тот же самый id.
   void syncAuth(AuthProvider auth) {
     final user = auth.user;
 
@@ -92,8 +79,6 @@ class SettingsProvider extends ChangeNotifier {
       final settings = await api.getUserSettings(refresh: refresh);
       _applyServerSettings(settings);
     } catch (err) {
-      // Настройки не догрузились — работаем на локальных значениях. Ругаться
-      // на человека нечем: он этого экрана мог и не открывать.
       debugPrint('Не удалось загрузить настройки: $err');
     } finally {
       _loading = false;
@@ -123,9 +108,6 @@ class SettingsProvider extends ChangeNotifier {
         LocalStore.readDouble(StoreKeys.settingsUpdatedAt).toInt();
 
     if (serverUpdatedAt == 0 && localUpdatedAt == 0) {
-      // Первый заход: на сервере пусто. Отправляем то, что человек уже
-      // выбрал на этом устройстве, вместе с настройкой приглашений,
-      // доставшейся от прежнего локального переключателя.
       unawaited(_seedFromLocal());
       return;
     }
@@ -151,14 +133,12 @@ class SettingsProvider extends ChangeNotifier {
     }
 
     if (localUpdatedAt > serverUpdatedAt) {
-      // Локальные настройки новее: догоняем сервер, а не наоборот.
       unawaited(_push(_localPreferences(), localUpdatedAt));
     } else {
       _lastPushedAppearance = _localPreferences();
     }
   }
 
-  /// Перенос настроек, живших только на этом устройстве.
   Future<void> _seedFromLocal() async {
     final legacyInvites =
         LocalStore.readBool(StoreKeys.inviteNotifications, defaultValue: true);
@@ -178,14 +158,11 @@ class SettingsProvider extends ChangeNotifier {
     );
   }
 
-  /// Снимок настроек, общих для устройств: оформление плюс язык.
   Map<String, dynamic> _localPreferences() => {
         'appearance': _localAppearance(),
         'language': localeProvider.language,
       };
 
-  /// Язык для сервера. «Системный» превращаем в реальный код: сервер про
-  /// системные настройки устройства ничего не знает.
   String get _effectiveLanguage {
     final language = localeProvider.language;
     if (language != 'system') return language;
@@ -204,8 +181,6 @@ class SettingsProvider extends ChangeNotifier {
         'startTab': appearance.startTab,
       };
 
-  // Вызывается под поднятым _applying: значения приходят с сервера, и
-  // отправлять их обратно не нужно.
   void _applyAppearance(Map<String, dynamic> data) {
     {
       final mode = switch (data['themeMode']) {
@@ -249,8 +224,6 @@ class SettingsProvider extends ChangeNotifier {
     final next = _localPreferences();
     if (mapEquals(next, _lastPushedAppearance)) return;
 
-    // Отметку времени ставим сразу, а отправку откладываем: пока человек
-    // возит ползунок размера текста, уходить должен один запрос, а не сорок.
     final now = DateTime.now().millisecondsSinceEpoch;
     LocalStore.saveDouble(StoreKeys.settingsUpdatedAt, now.toDouble());
 
@@ -276,8 +249,6 @@ class SettingsProvider extends ChangeNotifier {
       });
       _lastPushedAppearance = preferences;
     } catch (err) {
-      // Оформление уже применено и сохранено локально — синхронизация
-      // догонит при следующем изменении или входе.
       debugPrint('Не удалось отправить настройки на сервер: $err');
     }
   }
@@ -352,12 +323,6 @@ class SettingsProvider extends ChangeNotifier {
   }
 }
 
-/// Снимок настроек уведомлений для мест, где нет BuildContext.
-///
-/// Провайдеры показывают всплывающие карточки из обработчиков сокета, куда
-/// дерево виджетов не дотягивается. Снимок сохраняется локально, поэтому
-/// первое же уведомление после запуска учитывает выбор человека, не дожидаясь
-/// ответа сервера.
 class NotificationPrefs {
   const NotificationPrefs._();
 

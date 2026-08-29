@@ -10,12 +10,6 @@ import '../services/api_service.dart';
 import 'app_globals.dart';
 import 'notifications.dart';
 
-/// Текст ошибки для человека.
-///
-/// Локализация берётся из переданного контекста, а если его нет — из
-/// навигатора: ошибку иногда показывают из провайдера, куда дерево виджетов
-/// не дотягивается. Совсем без локализации остаётся последняя линия обороны —
-/// английский текст, потому что он читается везде.
 String getUserFriendlyError(Object? error, [BuildContext? context]) {
   final l = _localizations(context);
   if (l == null) return _fallback(error);
@@ -72,13 +66,10 @@ L? _localizations(BuildContext? context) {
   try {
     return L.of(target);
   } catch (_) {
-    // Дерево ещё не построено или делегаты не подключены — не повод падать
-    // на показе ошибки.
     return null;
   }
 }
 
-/// Что показать, когда локализации нет вовсе.
 String _fallback(Object? error) {
   if (error is String) return error;
   if (error is ApiException) {
@@ -118,8 +109,6 @@ String _fromApiException(ApiException error, L l) {
 
   if (hasReadableServerMessage) return server;
 
-  // error.message — служебный текст для журнала («Ошибка получения плейлистов»
-  // и подобное). Человеку он ничего не объясняет и не переводится.
   return l.errorGeneric;
 }
 

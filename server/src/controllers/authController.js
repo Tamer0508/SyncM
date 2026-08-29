@@ -147,8 +147,6 @@ const updateSettingsSchema = z.object({
   message: 'Нет данных для обновления',
 });
 
-// Что отдаём как «настройки». Один набор для чтения и для ответа на запись —
-// клиенту не приходится гадать, что изменилось.
 const SETTINGS_SELECT = {
   isOnlineHidden: true,
   isFriendsHidden: true,
@@ -189,8 +187,6 @@ const destroySession = (req) =>
 async function loginAsUser(req, userId) {
   await regenerateSession(req);
   req.session.userId = userId;
-  // Браузерная сессия — такой же сеанс, как токен приложения, и попадает в
-  // тот же список устройств. Описание снимается один раз, при входе.
   req.session.device = describeDevice(req);
   req.session.createdAt = Date.now();
   req.session.lastSeenAt = Date.now();
@@ -203,9 +199,6 @@ const invalidateUserCaches = (userId) =>
     incrementVersion(`db:user-settings:${userId}`),
   ]);
 
-// Состояние подключения Spotify кэшируется отдельно и проверяется живым
-// запросом (см. routes/spotify.js). После привязки аккаунта старый ответ
-// «не подключён» провисел бы ещё пять минут, поэтому гасим его сразу.
 const invalidateSpotifyCaches = (userId) =>
   Promise.all([
     incrementVersion(`spotify:status:${userId}`),
@@ -230,7 +223,6 @@ const login = asyncHandler(async (req, res) => {
     if (intent) {
       linkUserId = intent.userId || null;
       returnTo = sanitizeReturnTo(intent.returnTo) || '';
-      // Одноразовое: гасим сразу, повторно тем же значением воспользоваться нельзя.
       await redisDel(linkIntentKey(intentId));
     } else {
       logger.warn('Spotify link intent not found or expired');
@@ -288,7 +280,6 @@ const callback = asyncHandler(async (req, res) => {
   const linkUserId =
     storedState?.linkUserId || req.session.spotifyLinkUserId || req.session.userId || null;
 
-  // state одноразовый — гасим сразу после проверки.
   if (state) await redisDel(oauthStateKey(state));
   delete req.session.spotifyOAuthState;
   delete req.session.spotifyOAuthReturnTo;
@@ -588,9 +579,6 @@ const logout = asyncHandler(async (req, res) => {
   res.json({ message: 'Вышли из системы' });
 });
 
-// Активные сеансы живут в двух местах: токены приложения — в Redis,
-// браузерные сессии — в таблице express-session. Список показывает и те, и
-// другие, иначе «выйти со всех устройств» выглядело бы враньём.
 async function listWebSessions(userId) {
   const rows = await prisma.$queryRaw`
     SELECT sid, sess, expire
@@ -611,8 +599,6 @@ async function listWebSessions(userId) {
   });
 }
 
-// Какой из сеансов — этот самый. Считается из того, чем пришёл запрос, а не
-// из данных клиента: подменить чужой «текущий» так нельзя.
 function currentDeviceId(req) {
   if (req.authVia === 'token' && req.authToken) return deviceIdFor(req.authToken);
   if (req.sessionID) return deviceIdFor(req.sessionID);
@@ -650,9 +636,6 @@ const revokeDevice = asyncHandler(async (req, res) => {
   let revoked = await revokeUserTokenById(userId, deviceId);
 
   if (!revoked) {
-    // Идентификатор — односторонний хеш, поэтому ищем перебором своих же
-    // сессий. Условие по userId в запросе обязательно: без него чужой sid
-    // с совпавшим хешем стал бы способом выкинуть другого человека.
     const rows = await prisma.$queryRaw`
       SELECT sid FROM "session" WHERE sess->>'userId' = ${userId}
     `;
@@ -666,9 +649,6 @@ const revokeDevice = asyncHandler(async (req, res) => {
 
   if (!revoked) return res.status(404).json({ error: t(req, 'deviceNotFound') });
 
-  // Сокет живёт своей жизнью: личность проверяется один раз, при подключении,
-  // и отозванный сеанс продолжал бы получать события сессии. Разрываем все
-  // сокеты пользователя — уцелевшие устройства переподключатся сами.
   try {
     getIo()?.in(`user:${userId}`).disconnectSockets(true);
   } catch (err) {
@@ -698,8 +678,6 @@ const logoutEverywhere = asyncHandler(async (req, res) => {
     logger.warn({ err, userId }, 'Не удалось разорвать сокеты при выходе со всех устройств');
   }
 
-  // Текущая сессия уже удалена запросом выше, но объект в памяти о том не
-  // знает — гасим и его, чтобы ответ не оставил живую куку.
   if (req.session) {
     try {
       await destroySession(req);
@@ -715,12 +693,6 @@ const logoutEverywhere = asyncHandler(async (req, res) => {
   res.json({ message: 'Вы вышли на всех устройствах' });
 });
 
-// Выгрузка собственных данных одним файлом.
-//
-// Собирается ровно то, что хранится о самом человеке. О других людях в
-// выгрузку попадает минимум, без которого она бессмысленна: имя друга и
-// название общей сессии — иначе это был бы список чужих профилей, скачанный
-// по чужой воле.
 const exportUserData = asyncHandler(async (req, res) => {
   const userId = req.userId;
   if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
@@ -785,8 +757,6 @@ const exportUserData = asyncHandler(async (req, res) => {
       where: { userId },
       select: { trackName: true, artistName: true, spotifyUri: true, playedAt: true },
       orderBy: { playedAt: 'desc' },
-      // История длинная и ценна как недавняя: тысяча записей — это месяцы
-      // прослушивания и уже мегабайты файла.
       take: 1000,
     }),
     prisma.sessionMember.findMany({
@@ -881,10 +851,6 @@ const updateSettings = asyncHandler(async (req, res) => {
 
   const { preferences, ...dataToUpdate } = updateSettingsSchema.parse(req.body);
 
-  // Настройки сливаются с сохранёнными, а не заменяют их целиком: клиент
-  // присылает только изменённую группу, и остальные должны уцелеть. Чтение и
-  // запись в одной транзакции — два устройства могут менять разные группы
-  // одновременно, и без неё одно затёрло бы другое.
   const updated = await prisma.$transaction(async (tx) => {
     let data = dataToUpdate;
 
@@ -1058,7 +1024,6 @@ const checkPendingAuth = asyncHandler(async (req, res) => {
   const key = `auth:pending:${token}`;
   const data = await redisGet(key);
   if (data) {
-    // Одноразовый: гасим сразу после выдачи.
     await redisDel(key);
     return res.json({ success: true, userId: data.userId, authToken: data.authToken, cookie: data.cookie });
   }
@@ -1073,10 +1038,6 @@ const ALLOWED_MIME = {
 
 const ALLOWED_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 
-// Пакет http в Dart при MultipartFile.fromBytes без явного contentType
-// проставляет application/octet-stream. Проверка только по MIME отклоняла
-// такие загрузки, хотя файл корректный, — поэтому смотрим ещё и на
-// расширение исходного имени.
 function resolveImageExt(file) {
   const byMime = ALLOWED_MIME[file.mimetype];
   if (byMime) return byMime;
@@ -1154,7 +1115,6 @@ const uploadAvatar = (req, res) => {
       });
     } catch (error) {
       logger.error({ err: error, userId }, 'Upload avatar error');
-      // Не оставляем осиротевший файл, если запись в БД не удалась.
       await fsp.unlink(req.file.path).catch(() => {});
       res.status(500).json({ error: t(req, 'avatarSaveFailed') });
     }
@@ -1213,8 +1173,6 @@ const deleteAccount = asyncHandler(async (req, res) => {
 
   if (user.customAvatarUrl) {
     try {
-      // Тот же расчёт, что и при смене аватара: удаление своего аккаунта не
-      // должно уносить с собой чужой файл, на который был подставлен URL.
       const resolved = resolveOwnedUploadPath(user.customAvatarUrl, {
         dir: AVATARS_DIR,
         pathPrefix: '/uploads/avatars/',

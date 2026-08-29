@@ -3,10 +3,6 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../theme.dart';
 
-/// Мерцание поверх заглушек.
-///
-/// Один контроллер на весь список, а не на строку: анимация здесь —
-/// исключительно окраска, она ничего не двигает и не меняет размеров.
 class Skeleton extends StatefulWidget {
   const Skeleton({super.key, required this.child, this.enabled = true});
 
@@ -333,7 +329,6 @@ class SkeletonFriendTile extends StatelessWidget {
         horizontal: AppSpacing.sm,
         vertical: AppSpacing.xs + 2,
       ),
-      // TappableAvatar(radius: 21).
       leading: const SkeletonBox(width: 42, height: 42, circle: true),
       gap: AppSpacing.sm + 4,
       lineGap: 2,
@@ -597,7 +592,6 @@ class SkeletonBlockedList extends StatelessWidget {
             color: colors.surfaceContainerLow,
             borderRadius: AppRadius.large,
           ),
-          // TappableAvatar(radius: 22).
           leading: const SkeletonBox(width: 44, height: 44, circle: true),
           gap: AppSpacing.md,
           lineGap: 0,
@@ -685,7 +679,6 @@ class SkeletonDeviceList extends StatelessWidget {
 }
 
 enum SkeletonTrackTrailing {
-  /// Ничего.
   none,
 
   checkbox,
@@ -895,7 +888,6 @@ class SkeletonPlaylistTile extends StatelessWidget {
         SkeletonLine(style: texts.titleSmall, widthFactor: _titleFactor(index)),
         SkeletonLine(style: texts.bodySmall, widthFactor: _subtitleFactor(index)),
       ],
-      // На месте PlaylistActionsButton.
       trailing: const SkeletonSlot(
         reserve: IconButton(
           onPressed: null,
@@ -928,7 +920,6 @@ class SkeletonPlaylistList extends StatelessWidget {
   }
 }
 
-/// Зеркало `_PlaylistTile` из выбора плейлиста для сессии.
 class SkeletonPickPlaylistList extends StatelessWidget {
   const SkeletonPickPlaylistList({super.key, this.itemCount = 6});
 
@@ -962,7 +953,6 @@ class SkeletonPickPlaylistList extends StatelessWidget {
           SkeletonLine(style: texts.titleMedium, widthFactor: _titleFactor(i)),
           SkeletonLine(style: texts.bodySmall, widthFactor: _subtitleFactor(i)),
         ],
-        // На месте шеврона.
         trailing: const SkeletonIcon(),
       ),
     );
@@ -1059,7 +1049,6 @@ class _SkeletonSyncMark extends StatelessWidget {
 }
 
 
-/// Зеркало `_Hero`.
 class SkeletonProfileHeader extends StatelessWidget {
   const SkeletonProfileHeader({super.key});
 
@@ -1127,7 +1116,6 @@ class SkeletonProfileHeader extends StatelessWidget {
   }
 }
 
-/// Зеркало `_ActionsRow`.
 class SkeletonProfileActions extends StatelessWidget {
   const SkeletonProfileActions({super.key, required this.isOwnProfile});
 
@@ -1135,7 +1123,6 @@ class SkeletonProfileActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // У чужого профиля вместо кнопок — только отступ.
     if (!isOwnProfile) return const SizedBox(height: AppSpacing.md);
 
     return const Skeleton(
@@ -1170,7 +1157,6 @@ class SkeletonProfileActions extends StatelessWidget {
   }
 }
 
-/// Зеркало `_TrackRow` из профиля.
 class SkeletonProfileTrackRow extends StatelessWidget {
   const SkeletonProfileTrackRow({super.key, this.index = 0});
 
@@ -1212,8 +1198,6 @@ class SkeletonProfileTrackRow extends StatelessWidget {
                   style: texts.titleSmall,
                   widthFactor: _titleFactor(index),
                 ),
-                // Между названием и исполнителем у настоящей строки
-                // промежутка нет.
                 SkeletonLine(
                   style: texts.bodySmall,
                   widthFactor: _subtitleFactor(index),
@@ -1227,7 +1211,6 @@ class SkeletonProfileTrackRow extends StatelessWidget {
   }
 }
 
-/// Зеркало `_TrackSection`: заголовок раздела и строки под ним.
 class SkeletonProfileTrackSection extends StatelessWidget {
   const SkeletonProfileTrackSection({super.key, this.itemCount = 5});
 

@@ -65,12 +65,6 @@ class HomeBottomNav extends StatelessWidget {
     );
   }
 
-  /// Счётчик непрочитанных на вкладке «Друзья».
-  ///
-  /// Badge — штатный виджет Material 3. Раньше значок собирался вручную из
-  /// Stack + Positioned + Container с жёстко заданным Colors.yellow[700]:
-  /// он не менялся вместе с темой, съезжал при другом размере шрифта и не
-  /// озвучивался программами чтения с экрана.
   Widget _maybeBadge(BuildContext context, Widget icon, int index) {
     if (index != 2 || unreadFriendRequests <= 0) return icon;
     return Badge.count(
@@ -102,7 +96,6 @@ class HomeNavigationRail extends StatefulWidget {
 
   final double maxWidth;
 
-  /// Подписи рядом со значками. Без них панель схлопывается до [_railIconWidth].
   final bool showLabels;
 
   final VoidCallback? onCreateSession;
@@ -114,7 +107,6 @@ class HomeNavigationRail extends StatefulWidget {
   State<HomeNavigationRail> createState() => _HomeNavigationRailState();
 }
 
-/// Ширина панели, свёрнутой до значков.
 const double _railIconWidth = 72;
 
 class _HomeNavigationRailState extends State<HomeNavigationRail> {
@@ -125,7 +117,6 @@ class _HomeNavigationRailState extends State<HomeNavigationRail> {
 
   bool _hoveringHandle = false;
 
-  /// Ширина с оглядкой на то, сколько места есть сейчас.
   double get _effectiveWidth =>
       _width.clamp(_minWidth, widget.maxWidth.clamp(_minWidth, double.infinity));
 
@@ -253,7 +244,6 @@ class _HomeNavigationRailState extends State<HomeNavigationRail> {
   }
 }
 
-/// Пункт навигации в панели.
 class _RailItem extends StatelessWidget {
   const _RailItem({
     required this.destination,
@@ -354,7 +344,6 @@ class _RailItem extends StatelessWidget {
   }
 }
 
-/// Второстепенное действие в панели — тоньше и бледнее пунктов навигации.
 class _RailAction extends StatelessWidget {
   const _RailAction({
     required this.icon,

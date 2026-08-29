@@ -7,14 +7,6 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
-/**
- * Мост Flutter ⇄ MediaSession.
- *
- * Наверх (в Dart) уходят только команды пользователя, вниз — компактный
- * снимок трека и состояния воспроизведения. Позиция гоняется не таймером, а
- * лишь когда её нельзя вывести экстраполяцией (старт, пауза, перемотка,
- * смена трека), поэтому постоянного трафика через канал нет.
- */
 class MediaSessionChannel(
     context: Context,
     messenger: BinaryMessenger,
@@ -36,10 +28,6 @@ class MediaSessionChannel(
         channel.setMethodCallHandler(this)
     }
 
-    /**
-     * Пользователь нажал на media-карточку. Запрос запоминается: intent может
-     * прийти раньше, чем Dart успеет подписаться на канал при холодном старте.
-     */
     fun requestOpenNowPlaying() {
         pendingOpenNowPlaying = true
         flushOpenRequest()
@@ -59,8 +47,6 @@ class MediaSessionChannel(
         channel.setMethodCallHandler(null)
         MediaSessionController.detach(this)
     }
-
-    // ------------------------------------------------------------ из Flutter
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -118,8 +104,6 @@ class MediaSessionChannel(
 
     private fun longArg(call: MethodCall, name: String): Long =
         (call.argument<Number>(name))?.toLong() ?: 0L
-
-    // --------------------------------------------------------------- в Flutter
 
     override fun onCommand(action: String, value: Long?) {
         if (disposed) return

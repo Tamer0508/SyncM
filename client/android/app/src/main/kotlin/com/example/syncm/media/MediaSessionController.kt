@@ -24,36 +24,16 @@ import androidx.core.content.ContextCompat
 import com.example.syncm.MainActivity
 import com.example.syncm.R
 
-/** Команда системной карточки, которую нужно выполнить в существующей Spotify-интеграции. */
 interface MediaCommandSink {
     fun onCommand(action: String, value: Long?)
 }
 
-/**
- * Единственная MediaSession SyncM.
- *
- * Звук по-прежнему воспроизводит Spotify: сессия только **отражает** его
- * состояние (метаданные + PlaybackState) и **пересылает** команды системы в
- * существующий PlaybackProvider через [MediaCommandSink]. Своего плеера,
- * своей очереди и своего состояния здесь нет.
- *
- * Объект-синглтон: сколько бы раз ни пересоздавалась Activity и ни
- * переподключался Spotify, MediaSessionCompat создаётся ровно одна
- * ([ensureSession]) и живёт до [release].
- *
- * Прогресс система экстраполирует сама из тройки (позиция, время, скорость) в
- * PlaybackStateCompat, поэтому периодических обновлений позиции здесь нет:
- * состояние пишется, только когда оно действительно изменилось.
- */
 object MediaSessionController {
 
     private const val TAG = "SyncMMediaSession"
 
     const val CHANNEL_ID = "syncm_media"
 
-    // Короткоживущая отладочная сборка успела создать канал с этим id и
-    // повышенным importance. Затея не сработала, а канал в настройках
-    // остался бы — убираем его.
     private const val ABANDONED_CHANNEL_ID = "syncm_media_playback"
     const val NOTIFICATION_ID = 0x5C41
 
@@ -66,7 +46,6 @@ object MediaSessionController {
     const val ACTION_PREVIOUS = PREFIX + "PREVIOUS"
     const val ACTION_STOP = PREFIX + "STOP"
 
-    // Имена команд, которые уходят в Dart.
     const val CMD_PLAY = "play"
     const val CMD_PAUSE = "pause"
     const val CMD_NEXT = "next"
@@ -76,7 +55,6 @@ object MediaSessionController {
     const val CMD_SHUFFLE = "shuffle"
     const val CMD_REPEAT = "repeat"
 
-    /** Обложка в MediaMetadata парселится в system_server — большие битмапы там режутся. */
     private const val ARTWORK_MAX_PX = 512
 
     private var appContext: Context? = null
@@ -90,7 +68,6 @@ object MediaSessionController {
     private var channelName = "Playback"
     private var channelDescription = ""
 
-    // Отражение состояния Spotify. Меняется только из Dart.
     private var active = false
     private var trackId: String? = null
     private var title = ""
@@ -101,8 +78,6 @@ object MediaSessionController {
     private var positionUpdatedAt = 0L
     private var isPlaying = false
 
-    // Трек выбран, но Spotify ещё не подтвердил старт: система в этом
-    // состоянии не двигает прогресс сама.
     private var isBuffering = false
     private var shuffle = false
     private var repeatMode = PlaybackStateCompat.REPEAT_MODE_NONE
@@ -124,9 +99,6 @@ object MediaSessionController {
         override fun onSetRepeatMode(repeat: Int) = dispatch(CMD_REPEAT, repeat.toLong())
     }
 
-    // ------------------------------------------------------------------ вход
-
-    /** Подключает канал Flutter. Повторный вызов только обновляет получателя команд. */
     @Synchronized
     fun attach(
         context: Context,
@@ -150,11 +122,6 @@ object MediaSessionController {
         }
     }
 
-    /**
-     * Flutter-движок уходит вместе с Activity — командам карточки некуда
-     * приходить, поэтому она снимается целиком. Так система никогда не
-     * покажет кнопки, нажатие на которые ничего не сделает.
-     */
     @Synchronized
     fun detach(commandSink: MediaCommandSink) {
         if (sink !== commandSink) return
@@ -176,8 +143,6 @@ object MediaSessionController {
         artist = newArtist
         album = newAlbum
         durationMs = newDurationMs
-        // Обложка приезжает отдельно и позже: старую нужно убрать сразу,
-        // иначе она на секунду повиснет поверх нового трека.
         if (changed) artwork = null
         active = true
         ensureSession() ?: return
@@ -186,7 +151,6 @@ object MediaSessionController {
 
     @Synchronized
     fun updateArtwork(id: String?, bytes: ByteArray?) {
-        // Пока обложка ехала через канал, трек мог смениться — тогда она чужая.
         if (id != trackId) return
         artwork = bytes?.let { decodeArtwork(it) }
         if (session == null) return
@@ -218,7 +182,6 @@ object MediaSessionController {
         publish()
     }
 
-    /** Spotify отключился или трека больше нет: карточка не должна висеть со старым треком. */
     @Synchronized
     fun release() {
         active = false
@@ -239,8 +202,6 @@ object MediaSessionController {
         }
         session = null
     }
-
-    // ---------------------------------------------------------------- сессия
 
     private fun ensureSession(): MediaSessionCompat? {
         session?.let { return it }
@@ -304,9 +265,6 @@ object MediaSessionController {
             PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE or
             PlaybackStateCompat.ACTION_SET_REPEAT_MODE
 
-        // Скорость 0 у BUFFERING — принципиальный момент: пока Spotify не
-        // подтвердил старт, системе нечего экстраполировать, иначе в шторке
-        // окажется время, которого нет.
         val state = when {
             isBuffering -> PlaybackStateCompat.STATE_BUFFERING
             isPlaying -> PlaybackStateCompat.STATE_PLAYING
@@ -341,19 +299,15 @@ object MediaSessionController {
         )
     }
 
-    // --------------------------------------------------------------- команды
-
     private fun dispatch(action: String, value: Long?) {
         val target = sink
         if (target == null) {
-            // Слать некуда — карточка мертва; убираем её, а не молчим в ответ.
             release()
             return
         }
         target.onCommand(action, value)
     }
 
-    /** Нажатие на кнопку в уведомлении (см. [MediaActionReceiver]). */
     @Synchronized
     fun handleAction(action: String?) {
         when (action) {
@@ -364,8 +318,6 @@ object MediaSessionController {
             ACTION_STOP -> dispatch(CMD_STOP, null)
         }
     }
-
-    // ------------------------------------------------------- сервис и шторка
 
     @Synchronized
     fun onServiceStarted(startedService: Service) {
@@ -386,7 +338,6 @@ object MediaSessionController {
         }
     }
 
-    /** Пользователь смахнул SyncM из недавних: движок Flutter уходит вместе с задачей. */
     @Synchronized
     fun onTaskRemoved() = release()
 
@@ -396,10 +347,6 @@ object MediaSessionController {
             stopService()
             return
         }
-        // Позиция и прогресс живут в PlaybackState, а не в уведомлении:
-        // система рисует их сама. Пересобирать Notification на каждое
-        // обновление позиции незачем — только когда меняется то, что в нём
-        // действительно видно.
         val signature = notificationSignature()
 
         val running = service
@@ -410,9 +357,6 @@ object MediaSessionController {
                     Intent(context, SyncMMediaService::class.java)
                 )
             } catch (e: Exception) {
-                // Android 12+ запрещает старт foreground-сервиса из фона.
-                // Карточка всё равно нужна — показываем обычным уведомлением,
-                // пока процесс жив.
                 Log.w(TAG, "Foreground-сервис не стартовал: $e")
                 notifiedSignature = signature
                 buildNotification(context)?.let { notifyCompat(context, it) }
@@ -424,7 +368,6 @@ object MediaSessionController {
         pushNotification(running)
     }
 
-    // Всё, что видно в самом уведомлении. Позиции здесь нет намеренно.
     private fun notificationSignature(): String =
         "$title $artist $isPlaying $isBuffering " +
             "${artwork?.hashCode() ?: 0} $foregroundStarted"
@@ -438,8 +381,6 @@ object MediaSessionController {
                 startForegroundCompat(target, notification)
             }
         } else {
-            // На паузе уведомление должно смахиваться, поэтому выходим из
-            // foreground, но саму карточку оставляем.
             if (foregroundStarted) {
                 try {
                     ServiceCompat.stopForeground(target, ServiceCompat.STOP_FOREGROUND_DETACH)
@@ -477,7 +418,6 @@ object MediaSessionController {
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
         } catch (e: Exception) {
-            // Нет разрешения на уведомления (Android 13+) — не повод падать.
             Log.w(TAG, "Уведомление не показано: $e")
         }
     }
@@ -576,10 +516,6 @@ object MediaSessionController {
                 manager.deleteNotificationChannel(ABANDONED_CHANNEL_ID)
             } catch (_: Exception) {
             }
-            // LOW — как принято для media-уведомлений. Поднимать importance
-            // ради того, чтобы обойти Spotify в шторке, проверено на
-            // устройстве и бессмысленно: медиа-панель выбирает сессию не по
-            // ранжированию уведомлений, а по владельцу аудиопотока.
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 channelName,
@@ -597,12 +533,6 @@ object MediaSessionController {
         channelReady = true
     }
 
-    /**
-     * Обложка приходит готовыми байтами из уже существующего кэша SyncM —
-     * сеть здесь не трогается. Декодируем с прореживанием: крупнее
-     * [ARTWORK_MAX_PX] карточке не нужно, а лишние мегабайты system_server
-     * всё равно урежет при парселинге метаданных.
-     */
     private fun decodeArtwork(bytes: ByteArray): Bitmap? = try {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)

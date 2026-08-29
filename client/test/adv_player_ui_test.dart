@@ -13,8 +13,6 @@ import 'package:syncm/screens/player/artwork_pager.dart';
 import 'package:syncm/screens/player/now_playing.dart';
 import 'package:syncm/widgets/mini_player.dart';
 
-/// Провайдер-заглушка: экран трека и мини-плеер читают у него только
-/// состояние, поэтому сеть и SDK не нужны.
 class _StubPlayback extends PlaybackProvider {
   _StubPlayback({
     Map<String, dynamic>? track,
@@ -40,8 +38,6 @@ class _StubPlayback extends PlaybackProvider {
   @override
   Uint8List? get currentImageBytes => null;
 
-  // Очередь у заглушки пустая: соседей читают и Now Playing, и мини-плеер,
-  // но ни один тест их не задаёт.
   @override
   Map<String, dynamic>? get nextQueueTrack => null;
 
@@ -105,9 +101,6 @@ void main() {
 
   setUpAll(() {
     SharedPreferences.setMockInitialValues({});
-    // path_provider намеренно НЕ подменяется: с ним google_fonts пытается
-    // сохранить шрифт на диск и роняет тест своей сетевой ошибкой, маскируя
-    // настоящие ошибки вёрстки.
   });
 
   group('мусорные данные трека', () {
@@ -204,7 +197,7 @@ void main() {
       Size(390, 844),
       Size(1440, 900),
       Size(2560, 1440),
-      Size(844, 390), // альбомная ориентация телефона
+      Size(844, 390),
     ]) {
       testWidgets('P-014: экран трека без переполнений на ${size.width.toInt()}'
           'x${size.height.toInt()}', (tester) async {
@@ -337,7 +330,6 @@ void main() {
 
       await tester.pumpWidget(host(switching: false));
 
-      // Свайп «вперёд»: команда принята, провайдер начал переключение.
       expect(key.currentState!.animateTo(1), isTrue);
       await tester.pumpAndSettle();
 
@@ -346,8 +338,6 @@ void main() {
       await tester.pumpWidget(host(switching: true));
       await tester.pumpAndSettle();
 
-      // Очередь переключиться так и не смогла (замок скипа, недоступный
-      // трек): текущий трек прежний, переключение закончилось.
       await tester.pumpWidget(host(switching: false));
       await tester.pumpAndSettle();
 
@@ -406,7 +396,6 @@ void main() {
       await tester.pumpWidget(_host(pb, const NowPlayingScreen()));
       await tester.pump(const Duration(milliseconds: 60));
 
-      // Уходим со экрана, пока идут и вход, и перекраска.
       await tester.pumpWidget(_host(pb, const Scaffold(body: SizedBox())));
       await tester.pump(const Duration(milliseconds: 600));
 

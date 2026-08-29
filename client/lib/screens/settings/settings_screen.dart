@@ -11,9 +11,6 @@ import '../../providers/auth_provider.dart';
 import '../../providers/locale_provider.dart';
 import '../../providers/session_provider.dart';
 import '../../providers/settings_provider.dart';
-// hide Config: пакет экспортирует свой класс с таким же именем, и он
-// сталкивается с нашим config.dart. Скрываем чужой, а не прячем свой за
-// префиксом — Config.baseUrl используется по всему приложению без него.
 import '../../services/socket_service.dart';
 import '../../theme.dart';
 import 'play_history_screen.dart';
@@ -51,10 +48,8 @@ class SettingsScreen extends StatelessWidget {
     this.onOpenHistory,
   });
 
-  /// Как открыть историю. На широкой раскладке её показывает главный экран.
   final VoidCallback? onOpenHistory;
 
-  /// Как вернуться из встроенного вида.
   final VoidCallback? onBack;
 
   @override
@@ -85,11 +80,6 @@ class _SettingsBody extends StatefulWidget {
 class _SettingsBodyState extends State<_SettingsBody> {
   bool _isUploading = false;
 
-  /// Открытый раздел настроек.
-  ///
-  /// На широкой раскладке раздел показывается ВНУТРИ настроек, а не
-  /// отдельным маршрутом: маршрут закрыл бы боковую панель и панель
-  /// воспроизведения, как и любой полноэкранный переход на десктопе.
   String? _openSectionTitle;
 
   List<Widget> Function(BuildContext context)? _openSectionBuilder;
@@ -112,7 +102,7 @@ class _SettingsBodyState extends State<_SettingsBody> {
   Future<void> _pickAndUploadAvatar() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
-      withData: true, // получаем bytes сразу (работает и на мобильных)
+      withData: true,
       allowMultiple: false,
     );
 
@@ -142,13 +132,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
       return;
     }
 
-    // Проверка mounted после await: пока открыт системный выбор файла,
-    // экран мог быть закрыт, и обращение к context привело бы к ошибке.
     if (!mounted) return;
 
-    // Кадрирование перед загрузкой. Аватар везде показывается кругом, поэтому
-    // некруглое изображение всё равно обрезалось бы — но по центру и без
-    // участия пользователя, который не понял бы, почему пропала часть кадра.
     final cropped = await Navigator.of(context).push<Uint8List>(
       MaterialPageRoute(
         builder: (_) => AvatarCropScreen(imageBytes: bytes),
@@ -156,15 +141,12 @@ class _SettingsBodyState extends State<_SettingsBody> {
       ),
     );
 
-    if (cropped == null) return; // пользователь отказался
+    if (cropped == null) return;
     if (!mounted) return;
 
     setState(() => _isUploading = true);
     try {
       final auth = context.read<AuthProvider>();
-      // Расширение всегда png: экран кадрирования кодирует результат именно
-      // в него, и прежнее имя файла (например, .jpg) ввело бы сервер в
-      // заблуждение при определении типа.
       final fileName = 'avatar_${DateTime.now().millisecondsSinceEpoch}.png';
       await auth.uploadAvatar(cropped, fileName);
       if (!mounted) return;
@@ -203,8 +185,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
         return;
       }
       Navigator.of(context).push(MaterialPageRoute(
-        // builder вызывается внутри — раздел перестраивается при каждом
-        // изменении настроек, как и на широком экране.
         builder: (ctx) => SettingsSectionScreen(
           title: title,
           children: builder(ctx),
@@ -364,12 +344,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
     );
   }
 
-  /// Смена содержимого настроек на широкой раскладке.
-  ///
-  /// Разделы там открываются внутри экрана, а не отдельным маршрутом, —
-  /// значит, штатного перехода между страницами нет, и раздел появлялся
-  /// рывком. Короткое проявление с едва заметным сдвигом даёт то же
-  /// ощущение направления, что и push на телефоне.
   Widget _swap(BuildContext context, Key key, Widget child) {
     final keyed = KeyedSubtree(key: key, child: child);
     if (!context.isWideWindow || context.reduceMotion) return keyed;
@@ -461,8 +435,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
   List<Widget> _appearanceSection(BuildContext context) {
     final appearance = context.watch<AppearanceProvider>();
 
-    // Плитки здесь сами носят заголовок с иконкой — ровно как строки, — и
-    // подпись над карточкой только повторяла бы его.
     return [
       SettingsGroup(
         children: const [_ThemeModePicker(), _AccentPicker()],
@@ -538,8 +510,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
       SettingsGroup(
         title: L.of(context).playbackConnections,
         children: [
-          // Подключено — сообщение, не кнопка: нажимать не на что, и подсветка
-          // при наведении обещала бы действие, которого нет.
           if (pb.isConnected)
             SettingsInfo(
               icon: Icons.check_circle_outline_rounded,
@@ -669,8 +639,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
                   child: Text(L.of(context).commonFinish),
                 ),
                 onTap: () {
-                  // Открываем сессию тем же путём, что и остальные экраны:
-                  // провайдер просит показать, а решает главный экран.
                   sessions.requestOpenSession({'id': session.id, 'name': session.name});
                   Navigator.of(context).maybePop();
                 },
@@ -824,7 +792,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
                 L.of(context).privacyPresetFriends,
                 L.of(context).privacyPresetHidden,
               ],
-              // -1, когда сочетание своё: ни одна таблетка не подсвечена.
               selectedIndex: switch (preset) {
                 'open' => 0,
                 'friends' => 1,
@@ -879,8 +846,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
         children: [_BlockedSummaryTile(onOpen: () => _openBlocked(context))],
       ),
 
-      // Ниже — не настройки, а сведения: переключать здесь нечего, и строки
-      // не притворяются кнопками.
       SettingsGroup(
         title: L.of(context).privacyAlwaysVisible,
         children: [
@@ -899,8 +864,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
           SettingsInfo(
             icon: Icons.history_rounded,
             title: L.of(context).privacyHistory,
-            // Не ограничение, а наоборот — гарантия. Стоит здесь же, потому
-            // что человек ищет ответ на тот же вопрос: «а это видно?»
             subtitle: L.of(context).privacyHistoryHint,
             trailing: const Icon(Icons.visibility_off_outlined),
           ),
@@ -1065,8 +1028,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
         ],
       ),
 
-      // Опасная зона отделена и заголовком, и рамкой: сюда не должна
-      // соскользнуть рука, листающая обычные настройки.
       SettingsGroup(
         title: L.of(context).securityDangerZone,
         tone: SettingsTone.danger,
@@ -1096,8 +1057,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
     ];
   }
 
-  /// Как человек входит в аккаунт. Пароля в системе нет — вход только через
-  /// внешние сервисы, поэтому «сменить пароль» здесь предлагать нечего.
   String _signInSummary(BuildContext context) {
     final user = context.read<AuthProvider>().user;
     if (user?.spotifyConnected == true) return L.of(context).securitySignInSpotifyGoogle;
@@ -1183,8 +1142,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
                     assetPath: Config.privacyPolicyAsset,
                     url: Config.privacyPolicyUrl,
                     embedded: innerCtx.isWideWindow,
-                    // Возврат ведёт обратно к краткому пересказу, а не сразу
-                    // в список разделов: человек пришёл оттуда.
                     onBack: () => _openChild(
                       context,
                       (c, b) => PrivacyPolicyScreen(
@@ -1263,8 +1220,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
     if (!confirmed || !context.mounted) return;
 
     try {
-      // Останавливаем воспроизведение до удаления: проигрыватель переживает
-      // смену пользователя, и после выхода панель осталась бы играть.
       await context.read<PlaybackProvider>().stopAndClear();
       if (!context.mounted) return;
 
@@ -1272,8 +1227,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
       await auth.api.deleteAccount();
       if (!context.mounted) return;
 
-      // Локальное состояние чистим вручную: обычный logout обращается к
-      // серверу, а пользователя там уже нет — запрос вернул бы 401.
       await auth.forgetLocalSession();
       if (!context.mounted) return;
 
@@ -1296,9 +1249,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
 
     if (!confirmed || !context.mounted) return;
 
-    // Останавливаем воспроизведение до выхода: проигрыватель переживает
-    // смену аккаунта, и без этого следующий вошедший видел бы панель с
-    // чужим треком.
     await context.read<PlaybackProvider>().stopAndClear();
     if (!context.mounted) return;
 
@@ -1343,17 +1293,6 @@ class _SettingsBodyState extends State<_SettingsBody> {
 
 
 
-/// Состояние подключения Spotify.
-///
-/// Отдельная плитка, а не строка в списке: наличие записи о подключении в
-/// профиле ничего не говорит о том, живо ли оно. Доступ можно отозвать из
-/// самого Spotify, и тогда приложение продолжало показывать «Подключён»,
-/// пока человек не попробует включить трек и не получит невнятную ошибку.
-/// Плитка спрашивает сервер, а тот проверяет токен настоящим запросом.
-/// Выгрузка своих данных в файл.
-///
-/// Файл собирает сервер: только он знает всё, что хранится о человеке.
-/// Клиент выбирает, куда положить, и ничего не додумывает.
 class _ExportDataTile extends StatefulWidget {
   const _ExportDataTile();
 
@@ -1377,7 +1316,7 @@ class _ExportDataTileState extends State<_ExportDataTile> {
       final saved = await saveBytesToFile(fileName, bytes);
       if (!mounted) return;
 
-      if (saved == null) return; // от сохранения отказались
+      if (saved == null) return;
       showSuccess(context, L.of(context).exportSaved(saved));
     } catch (err) {
       if (!mounted) return;
@@ -1400,10 +1339,6 @@ class _ExportDataTileState extends State<_ExportDataTile> {
   }
 }
 
-/// Язык интерфейса.
-///
-/// «Системный» — не отдельный перевод, а отказ выбирать: приложение берёт
-/// язык устройства и откатывается к русскому, если такого перевода нет.
 class _LanguageTile extends StatelessWidget {
   const _LanguageTile();
 
@@ -1429,10 +1364,6 @@ class _LanguageTile extends StatelessWidget {
   }
 }
 
-/// Кто может звать в сессию.
-///
-/// Ограничение соблюдает сервер: он отказывает в создании сессии, если
-/// приглашения отключены. Интерфейс лишь показывает и меняет значение.
 class _InviteScopeTile extends StatefulWidget {
   const _InviteScopeTile();
 
@@ -1466,7 +1397,6 @@ class _InviteScopeTileState extends State<_InviteScopeTile> {
     final settings = context.watch<SettingsProvider>();
     final index = _scopes.indexOf(settings.inviteScope);
 
-    // Заголовок несёт группа — плитке остаётся пояснение к текущему выбору.
     return SettingsPanel(
       icon: Icons.mark_email_unread_outlined,
       description: settings.inviteScope == 'nobody'
@@ -1484,9 +1414,6 @@ class _InviteScopeTileState extends State<_InviteScopeTile> {
   static void _ignore(int _) {}
 }
 
-/// Кэш обложек: сколько занято и очистка.
-///
-/// Считает и оперативную память, и диск — очистка удаляет и то, и другое.
 class _ImageCacheTile extends StatefulWidget {
   const _ImageCacheTile();
 
@@ -1524,7 +1451,6 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
     final disk = _diskBytes;
 
     if (disk == null) {
-      // Диск посчитать не вышло (или это браузер) — не выдумываем цифру.
       if (memory.currentSize == 0) return L.of(context).commonEmpty;
       return L.of(context).cacheInMemory(_size(memory.currentSizeBytes));
     }
@@ -1562,8 +1488,6 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
   }
 }
 
-/// Индикатор занятости в строке настройки: размер под 20-точечную иконку,
-/// чтобы строка не подпрыгивала, пока идёт работа.
 class _RowSpinner extends StatelessWidget {
   const _RowSpinner();
 
@@ -1577,7 +1501,6 @@ class _RowSpinner extends StatelessWidget {
   }
 }
 
-/// Точка состояния: зелёная — связь есть, серая — нет.
 class _StatusDot extends StatelessWidget {
   const _StatusDot({required this.color});
 
@@ -1594,10 +1517,6 @@ class _StatusDot extends StatelessWidget {
   }
 }
 
-/// Шапка страницы «О приложении».
-///
-/// Раньше версия была обычной строкой списка и терялась среди ссылок.
-/// Знак, название и версия — то, зачем сюда заходят, — стоят отдельно.
 class _AboutHeader extends StatelessWidget {
   const _AboutHeader();
 
@@ -1618,8 +1537,6 @@ class _AboutHeader extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Фирменный знак приложения в состоянии покоя: он же встречает на
-          // главном экране, и здесь не анимируется.
           const SyncMark(size: 84),
           const SizedBox(height: AppSpacing.lg),
           Text('SyncM', style: texts.headlineSmall),
@@ -1646,8 +1563,6 @@ class _AboutHeader extends StatelessWidget {
 class _SpotifyTile extends StatefulWidget {
   const _SpotifyTile({required this.fallbackConnected});
 
-  /// Что известно из профиля. Показывается, пока идёт проверка и если
-  /// проверка не удалась — лучше приблизительно, чем пусто.
   final bool fallbackConnected;
 
   @override
@@ -1680,7 +1595,6 @@ class _SpotifyTileState extends State<_SpotifyTile> {
           'connected' => _SpotifyLink.connected,
           'needs_reauth' => _SpotifyLink.needsReauth,
           'disconnected' => _SpotifyLink.disconnected,
-          // Сервер старой версии не присылает state — падаем на connected.
           _ => (status['connected'] == true)
               ? _SpotifyLink.connected
               : _SpotifyLink.disconnected,
@@ -1755,12 +1669,6 @@ class _SpotifyTileState extends State<_SpotifyTile> {
   }
 }
 
-/// Шапка настроек: кто вошёл и чем это подтверждено.
-///
-/// Раньше аватар с именем стояли по центру колонкой и занимали треть первого
-/// экрана — до первой настройки приходилось прокручивать. Горизонтальная
-/// карточка говорит то же самое втрое ниже и одинаково хорошо ложится и на
-/// телефон, и на широкое окно.
 class _ProfileCard extends StatelessWidget {
   const _ProfileCard({
     required this.avatarUrl,
@@ -1792,10 +1700,6 @@ class _ProfileCard extends StatelessWidget {
         children: [
           Stack(
             children: [
-              // Нажатие на сам аватар разворачивает его на весь экран, а
-              // изменить фотографию можно кнопкой в углу. Раньше нажатие в
-              // любое место сразу открывало выбор файла, и посмотреть свою
-              // аватарку целиком было невозможно.
               TappableAvatar(
                 imageUrl: avatarUrl,
                 radius: 34,
@@ -1884,11 +1788,6 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
-/// Выбор темы: три образца вместо трёх слов.
-///
-/// Кнопки «Система / Светлая / Тёмная» ничего не показывали — приходилось
-/// переключать и смотреть, что стало с приложением. Образец рисует ту же
-/// картинку, что человек увидит: фон, карточку, текст и акцент.
 class _ThemeModePicker extends StatelessWidget {
   const _ThemeModePicker();
 
@@ -2024,8 +1923,6 @@ class _ThemeModeCard extends StatelessWidget {
     return switch (mode) {
       ThemeMode.light => _half(Brightness.light),
       ThemeMode.dark => _half(Brightness.dark),
-      // «Система» — половина светлая, половина тёмная: приложение возьмёт ту,
-      // что стоит в устройстве.
       ThemeMode.system => Row(
           children: [
             Expanded(child: _half(Brightness.light)),
@@ -2035,10 +1932,6 @@ class _ThemeModeCard extends StatelessWidget {
     };
   }
 
-  /// Половинка образца в заданной яркости.
-  ///
-  /// Цвета берутся из той же палитры, которую применит приложение, — образец
-  /// не может разойтись с результатом нажатия.
   Widget _half(Brightness brightness) {
     final scheme = AppTheme.previewScheme(brightness, accent);
     final ink = scheme.onSurface;
@@ -2104,7 +1997,7 @@ class _AudioLatencyTile extends StatelessWidget {
           Slider(
             value: latency.toDouble().clamp(0, 1000),
             max: 1000,
-            divisions: 40, // шаг 25 мс
+            divisions: 40,
             label: l.latencyMilliseconds(latency),
             onChanged: (v) => pb.setAudioLatency(v.round()),
           ),
@@ -2125,9 +2018,6 @@ class _AudioLatencyTile extends StatelessWidget {
                 ),
             ],
           ),
-          // Кнопка сброса всегда занимает своё место, просто становится
-          // неактивной: иначе при первом же движении ползунка она появлялась
-          // и сдвигала содержимое карточки вниз.
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
@@ -2183,10 +2073,6 @@ class _AccentDot extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  /// Название цвета на языке интерфейса.
-  ///
-  /// В самом перечислении подпись остаётся русской и служит запасной: цвета
-  /// заданы в теме, а тема о языке ничего не знает.
   static String nameOf(BuildContext context, AccentColor accent) {
     final l = L.of(context);
     return switch (accent) {
@@ -2204,8 +2090,6 @@ class _AccentDot extends StatelessWidget {
     final colors = context.colors;
 
     return Semantics(
-      // Название в озвучке: программам чтения с экрана цвет недоступен, и
-      // без подписи все пять кружков звучали бы одинаково.
       label: name,
       selected: selected,
       button: true,
@@ -2219,8 +2103,6 @@ class _AccentDot extends StatelessWidget {
             child: InkWell(
               onTap: onTap,
               customBorder: const CircleBorder(),
-              // Цель нажатия — все 48 точек, а кружок внутри меньше:
-              // плотный ряд крупных пятен читался как светофор.
               child: SizedBox(
                 width: 48,
                 height: 48,
@@ -2258,7 +2140,6 @@ class _AccentDot extends StatelessWidget {
   }
 }
 
-/// Размер текста с живым примером.
 class _TextScaleTile extends StatelessWidget {
   const _TextScaleTile({required this.scale});
 
@@ -2279,10 +2160,6 @@ class _TextScaleTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Образец меняется вместе с ползунком.
-          //
-          // Без него выбирать приходится вслепую: число «1.15» ничего не
-          // говорит о том, как это будет выглядеть в списке треков.
           Container(
             padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
@@ -2344,7 +2221,6 @@ class _TextScaleTile extends StatelessWidget {
                   value: scale,
                   min: AppearanceProvider.minTextScale,
                   max: AppearanceProvider.maxTextScale,
-                  // Шаг 5%: мельче незаметно, крупнее — скачками.
                   divisions: 9,
                   label: '${(scale * 100).round()}%',
                   onChanged: (v) =>

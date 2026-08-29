@@ -22,8 +22,6 @@ const playlist = (over = {}) => ({
   ...over,
 });
 
-// ---------- OWNED ----------
-
 test('владелец определяется по owner.id, а не по названию', () => {
   assert.equal(isPlaylistOwnedByCurrentUser(playlist(), ME), true);
   assert.equal(
@@ -36,8 +34,6 @@ test('без spotifyId текущего пользователя владель�
   assert.equal(isPlaylistOwnedByCurrentUser(playlist(), null), false);
   assert.equal(isPlaylistOwnedByCurrentUser(playlist(), ''), false);
 });
-
-// ---------- EDITABLE ----------
 
 test('менять можно свой плейлист и совместный', () => {
   assert.equal(isPlaylistEditableByCurrentUser(playlist(), ME), true);
@@ -59,8 +55,6 @@ test('чужой несовместный плейлист менять нель
     false
   );
 });
-
-// ---------- READABLE ----------
 
 test('чужой плейлист читается: право на чтение не выводится из владения', () => {
   assert.equal(isPlaylistReadable(playlist({ owner: { id: 'friend' } })), true);
@@ -85,7 +79,6 @@ test('запись без id или без владельца открыть н�
 
 test('не плейлист — не плейлист', () => {
   assert.equal(isPlaylistReadable(playlist({ type: 'episode' })), false);
-  // Поля type может не быть вовсе: это не повод выбрасывать запись.
   assert.equal(isPlaylistReadable(playlist({ type: undefined })), true);
 });
 
@@ -97,8 +90,6 @@ test('подборки самой Spotify недоступны приложен�
   });
   assert.equal(isPlaylistReadable(discoverWeekly), false);
 });
-
-// ---------- Пригодность в контексте ----------
 
 test('для списка спрашивается чтение, и чужие плейлисты остаются', () => {
   const friends = playlist({ owner: { id: 'friend' } });

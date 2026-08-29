@@ -1,19 +1,9 @@
-// Adversarial-тесты локального OAuth-сервера (Windows-вход через Google).
-//
-// Все тесты в этом файле НАМЕРЕННО падают на текущей реализации:
-// они фиксируют ожидаемое корректное поведение, а не текущее.
-//
-// Атакуемый код: client/lib/services/oauth_loopback_io.dart
-//                client/lib/screens/login/google_sign.dart
-
 import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncm/services/oauth_loopback.dart';
 
-/// Шлёт GET и молча глотает ошибки: нас интересует реакция сервера,
-/// а не тело ответа.
 Future<void> _hit(Uri uri) async {
   final client = HttpClient();
   try {
@@ -21,7 +11,6 @@ Future<void> _hit(Uri uri) async {
     final res = await req.close();
     await res.drain<void>();
   } catch (_) {
-    // соединение могло быть закрыто сервером — это нормально
   } finally {
     client.close(force: true);
   }
@@ -41,9 +30,6 @@ void main() {
         path: '/callback',
         timeout: const Duration(seconds: 3),
         onServerReady: (_) async {
-          // Атака: любая веб-страница, открытая у жертвы, может увести
-          // браузер на localhost с чужим токеном. Путь не совпадает с
-          // тем, что был отдан провайдеру как redirect_uri.
           await _hit(Uri.parse('http://localhost:$port/anything?token=ATTACKER_TOKEN'));
         },
       );
@@ -64,8 +50,6 @@ void main() {
         path: '/callback',
         timeout: const Duration(seconds: 3),
         onServerReady: (_) async {
-          // Посторонний стук в порт: префетч браузера, антивирус,
-          // старая вкладка. Полезной нагрузки нет.
           await _hit(Uri.parse('http://localhost:$port/callback'));
         },
       );
@@ -84,7 +68,6 @@ void main() {
     test('порт локального сервера должен быть занят монопольно', () async {
       const port = 45873;
 
-      // Сначала порт занимает посторонний процесс.
       final squatter = await HttpServer.bind(
         InternetAddress.loopbackIPv4,
         port,

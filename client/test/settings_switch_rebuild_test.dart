@@ -8,13 +8,6 @@ import 'package:syncm/theme.dart';
 import 'package:syncm/utils/local_store.dart';
 import 'package:syncm/widgets/settings_widgets.dart';
 
-/// Один тап по переключателю обязан перестроить одну строку.
-///
-/// Раньше он будил `AppearanceProvider`, а на него подписан весь
-/// `MaterialApp` — тема, плотность, масштаб текста. Вдобавок раздел
-/// настроек читал флаги через `context.watch` и пересобирался целиком.
-/// Оба перестроения приходились ровно на тот кадр, с которого начинается
-/// анимация тумблера, — отсюда и рывок.
 Widget _wrap(Widget child) => ChangeNotifierProvider<AppearanceProvider>(
       create: (_) => AppearanceProvider(),
       child: MaterialApp(
@@ -31,7 +24,6 @@ Widget _wrap(Widget child) => ChangeNotifierProvider<AppearanceProvider>(
       ),
     );
 
-/// Считает, сколько раз перестроилось поддерево.
 class _Counter extends StatelessWidget {
   const _Counter({required this.onBuild, required this.child});
 
@@ -51,8 +43,6 @@ void main() {
     var rootBuilds = 0;
 
     await tester.pumpWidget(_wrap(
-      // Так устроен корень приложения: Consumer поверх всего, потому что от
-      // оформления зависят тема и масштаб текста.
       Consumer<AppearanceProvider>(
         builder: (context, _, _) {
           rootBuilds += 1;
@@ -94,8 +84,6 @@ void main() {
     var sectionBuilds = 0;
 
     await tester.pumpWidget(_wrap(
-      // Так устроен раздел настроек: он подписан на провайдер ради других
-      // своих данных и собирает строки списком.
       Consumer<AppearanceProvider>(
         builder: (context, _, _) {
           sectionBuilds += 1;
@@ -116,14 +104,11 @@ void main() {
     await tester.tap(find.text('Не гасить экран'));
     await tester.pumpAndSettle();
 
-    // Раздел целиком не пересобирается...
     expect(sectionBuilds, sectionBefore);
-    // ...а соседние строки к чужому флагу отношения не имеют.
     expect(builds[StoreKeys.autoOpenPlayer], before[StoreKeys.autoOpenPlayer]);
     expect(builds[StoreKeys.confirmEndSession],
         before[StoreKeys.confirmEndSession]);
 
-    // И у них не сбилось значение.
     final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
     expect(switches[0].value, isTrue);
     expect(switches[1].value, isFalse);
@@ -166,8 +151,6 @@ void main() {
 
     await tester.tap(find.byType(Switch).first);
 
-    // Кадры анимации тумблера: ни строка, ни текст, ни соседи, ни группа
-    // не должны сдвинуться ни на точку.
     for (var i = 0; i < 8; i++) {
       await tester.pump(const Duration(milliseconds: 25));
 
@@ -192,7 +175,6 @@ void main() {
       ),
     ));
 
-    // Тап, не дожидаясь конца анимации, — и так пять раз подряд.
     for (var i = 0; i < 5; i++) {
       await tester.tap(find.byType(Switch));
       await tester.pump(const Duration(milliseconds: 30));
@@ -200,7 +182,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    // Нечётное число переключений от «включено» — значит выключено.
     expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
   });
 
@@ -214,8 +195,6 @@ void main() {
       ),
     ));
 
-    // Анимация тумблера идёт два десятка кадров; без своей области
-    // перерисовки каждый кадр пачкал бы скруглённую группу целиком.
     expect(
       find.descendant(
         of: find.byType(SettingsSwitch),

@@ -1,17 +1,3 @@
-// Применяет карту переводов: дописывает ключи в ARB и заменяет литералы в коде.
-//
-// Карта — JSON вида:
-// {
-//   "file": "lib/screens/foo.dart",
-//   "accessor": "L.of(context)",          // необязательно
-//   "strings": [ { "key": "fooTitle", "ru": "Заголовок", "en": "Title" } ]
-// }
-//
-// Замена буквальная, по всему файлу: одинаковый текст в разных местах — это
-// одна и та же строка интерфейса, и разводить их по разным ключам незачем.
-// Строки с подстановкой ($) скрипт не трогает — у них другой синтаксис вызова,
-// и такие места правятся руками.
-
 const fs = require('fs');
 const path = require('path');
 
@@ -25,15 +11,12 @@ const root = path.resolve(__dirname, '..');
 const map = JSON.parse(fs.readFileSync(mapPath, 'utf8'));
 const accessor = map.accessor || 'L.of(context)';
 
-// Строки можно писать как объектами, так и тройками ["ключ","ru","en"] —
-// на сотне строк разница в читаемости карты заметная.
 map.strings = map.strings.map((item) =>
   Array.isArray(item) ? { key: item[0], ru: item[1], en: item[2] } : item
 );
 
 const targets = Array.isArray(map.file) ? map.file : [map.file];
 
-// 1. ARB.
 for (const [locale, field] of [['ru', 'ru'], ['en', 'en']]) {
   const arbPath = path.join(root, 'lib', 'l10n', `app_${locale}.arb`);
   const arb = JSON.parse(fs.readFileSync(arbPath, 'utf8'));
@@ -48,7 +31,6 @@ for (const [locale, field] of [['ru', 'ru'], ['en', 'en']]) {
     arb[item.key] = item[field];
   }
 
-  // Ключи в файле держим отсортированными: так видно, что добавилось.
   const sorted = Object.fromEntries(
     Object.entries(arb).sort(([a], [b]) => (a.startsWith('@') ? -1 : a.localeCompare(b)))
   );
@@ -56,7 +38,6 @@ for (const [locale, field] of [['ru', 'ru'], ['en', 'en']]) {
   fs.writeFileSync(arbPath, `${JSON.stringify(sorted, null, 2)}\n`);
 }
 
-// 2. Код.
 let replaced = 0;
 let untouched = [];
 

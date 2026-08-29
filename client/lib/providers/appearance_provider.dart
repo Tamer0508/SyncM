@@ -83,7 +83,6 @@ class AppearanceProvider extends ChangeNotifier {
 
   final Map<String, ValueNotifier<bool>> _flags = {};
 
-  /// Текущее значение флага.
   bool flag(String key, {bool defaultValue = false}) =>
       _flagOf(key, defaultValue).value;
 
@@ -102,7 +101,6 @@ class AppearanceProvider extends ChangeNotifier {
       );
 
   Future<void> setFlag(String key, bool value) async {
-    // defaultValue здесь не важен: значение задаётся явно следующей строкой.
     _flagOf(key, value).value = value;
     await LocalStore.saveBool(key, value);
   }
@@ -134,7 +132,6 @@ class AppearanceProvider extends ChangeNotifier {
     );
   }
 
-  /// Возвращает всё к значениям по умолчанию.
   void resetAll() {
     _textScale = 1.0;
     _compact = false;

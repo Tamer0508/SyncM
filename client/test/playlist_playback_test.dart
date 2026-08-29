@@ -8,19 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncm/providers/playback_provider.dart';
 import 'package:syncm/services/api_service.dart';
 
-/// Конец плейлиста — это конец плейлиста.
-///
-/// Баг: на последнем треке плейлиста «дальше» и естественное окончание трека
-/// уходили командой к самому Spotify (`POST /spotify/next`). У плейлиста
-/// SyncM контекста в Spotify нет вовсе, а у плейлиста Spotify за последним
-/// треком начинается автоплей — в обоих случаях играл трек со стороны, и
-/// вместе с ним сбрасывался включённый repeat.
-///
-/// Тесты гоняют windows-ветку провайдера: там всё воспроизведение идёт через
-/// ApiService, поэтому команды к плееру видно как обычные HTTP-запросы.
-/// Главный инвариант всех проверок ниже — `POST /spotify/next` не должен
-/// прозвучать ни разу: пока пользователь внутри плейлиста, следующий трек
-/// выбирает плейлист, а не Spotify.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -41,8 +28,6 @@ void main() {
       );
 
   setUpAll(() {
-    // Плагинов в тестовой среде нет: провайдер по пути к плееру трогает кэш
-    // изображений (path_provider) и настройки задержки.
     SharedPreferences.setMockInitialValues({});
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -93,7 +78,6 @@ void main() {
     await server.close(force: true);
   });
 
-  /// Плейлист Spotify: у него есть контекст, и провайдер его помнит.
   Future<PlaybackProvider> playingSpotifyPlaylist(
     List<Map<String, dynamic>> tracks,
     int index,
@@ -110,7 +94,6 @@ void main() {
     return pb;
   }
 
-  /// Плейлист SyncM: контекста в Spotify нет, очередь держится списком.
   Future<PlaybackProvider> playingCustomPlaylist(
     List<Map<String, dynamic>> tracks,
     int index,
@@ -128,7 +111,6 @@ void main() {
   }
 
   Future<void> setRepeat(PlaybackProvider pb, String mode) async {
-    // off -> context -> track -> off
     while (pb.repeatMode != mode) {
       await pb.cycleRepeatMode();
     }
@@ -140,10 +122,6 @@ void main() {
       calls.contains('POST /spotify/previous');
 
   String? uriOf(PlaybackProvider pb) => pb.currentTrack?['uri'] as String?;
-
-  // ---------------------------------------------------------------------
-  // Ручное переключение на последнем треке.
-  // ---------------------------------------------------------------------
 
   test('playlist_last_track_manual_skip_test', () async {
     final tracks = playlistOf(3);
@@ -160,8 +138,6 @@ void main() {
     expect(pb.playlistEnded, isTrue, reason: 'плейлист должен завершиться');
     expect(calls, contains('PUT /spotify/pause'));
 
-    // Контекст плейлиста переживает завершение: продолжить можно с любого
-    // трека, ничего не «протухло».
     expect(uriOf(pb), 'spotify:track:t2');
     expect(pb.currentPlaylistId, 'spotify:playlist:playlist1');
     expect(pb.currentQueueIndex, 2);
@@ -202,7 +178,6 @@ void main() {
     expect(pb.repeatMode, 'context', reason: 'repeat не должен сбрасываться');
     expect(pb.playlistEnded, isFalse);
 
-    // И то же самое руками.
     calls.clear();
     final pb2 = await playingSpotifyPlaylist(tracks, 2);
     await setRepeat(pb2, 'context');
@@ -229,8 +204,6 @@ void main() {
     expect(uriOf(pb), 'spotify:track:t2', reason: 'C -> C');
     expect(pb.repeatMode, 'track');
 
-    // Ручное «дальше» при repeat one всё-таки переключает: иначе кнопка
-    // перестаёт работать. Но остаётся внутри плейлиста.
     await pb.goToNext();
     await Future<void>.delayed(const Duration(milliseconds: 200));
     expect(askedSpotifyForNextTrack(), isFalse, reason: '$calls');
@@ -238,10 +211,6 @@ void main() {
 
     pb.dispose();
   });
-
-  // ---------------------------------------------------------------------
-  // Оба вида плейлистов ведут себя одинаково.
-  // ---------------------------------------------------------------------
 
   test('spotify_playlist_last_track_test', () async {
     final tracks = playlistOf(4);
@@ -288,7 +257,6 @@ void main() {
       pb.dispose();
     }
 
-    // Порядок соблюдается: repeat playlist возвращает к первому треку.
     final pb = await playingCustomPlaylist(tracks, 3);
     await setRepeat(pb, 'context');
     await pb.handleTrackCompleted();
@@ -310,10 +278,6 @@ void main() {
 
     pb.dispose();
   });
-
-  // ---------------------------------------------------------------------
-  // Граничные плейлисты.
-  // ---------------------------------------------------------------------
 
   test('single_track_playlist_repeat_test', () async {
     final tracks = playlistOf(1);
@@ -390,16 +354,11 @@ void main() {
     pb.dispose();
   });
 
-  // ---------------------------------------------------------------------
-  // Состояние режимов и контекста.
-  // ---------------------------------------------------------------------
-
   test('repeat_mode_persistence_test', () async {
     final tracks = playlistOf(3);
     final pb = await playingSpotifyPlaylist(tracks, 0);
     await setRepeat(pb, 'context');
 
-    // Полный круг: A -> B -> C -> A -> B -> C.
     final seen = <String?>[uriOf(pb)];
     for (var i = 0; i < 5; i++) {
       await pb.handleTrackCompleted();
@@ -434,8 +393,6 @@ void main() {
       expect(pb.shuffleActive, isFalse);
       calls.clear();
 
-      // Нажали «дальше» три раза подряд: ни один из них не должен вылиться в
-      // трек со стороны.
       for (var i = 0; i < 3; i++) {
         await pb.goToNext();
         await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -446,7 +403,6 @@ void main() {
             reason: 'шаг $i вывел из плейлиста: $uri');
       }
 
-      // И сразу назад — индекс не должен разъехаться.
       await pb.goToPrevious();
       await Future<void>.delayed(const Duration(milliseconds: 100));
       expect(askedSpotifyForNextTrack(), isFalse, reason: '$calls');
@@ -494,7 +450,6 @@ void main() {
     final pb = await playingCustomPlaylist(first, 1);
     await setRepeat(pb, 'context');
 
-    // Открыли второй плейлист и запустили трек оттуда.
     await pb.playTrack(
       Map<String, dynamic>.from(second.first),
       playlistId: null,
@@ -531,13 +486,8 @@ void main() {
     pb.dispose();
   });
 
-  // ---------------------------------------------------------------------
-  // Сторож позиции действительно доводит трек до автоперехода.
-  // ---------------------------------------------------------------------
-
   test('position_watcher_triggers_playlist_end_test', () async {
     final tracks = playlistOf(3);
-    // Плеер сообщает последний трек почти доигравшим.
     playerState = {
       'is_playing': true,
       'progress_ms': 2000,
@@ -554,8 +504,6 @@ void main() {
     final pb = await playingCustomPlaylist(tracks, 2);
     await setRepeat(pb, 'context');
 
-    // Состояние плеера провайдер забирает раз в три секунды, дальше решение
-    // принимает сторож позиции (тик 250 мс).
     await Future<void>.delayed(const Duration(milliseconds: 4500));
 
     expect(askedSpotifyForNextTrack(), isFalse, reason: '$calls');
@@ -568,9 +516,6 @@ void main() {
   test('spotify_autoplay_is_pulled_back_into_playlist_test', () async {
     final tracks = playlistOf(3);
 
-    // Repeat one Spotify отрабатывает сам, поэтому сторож позиции сюда не
-    // вмешивается — проверяем именно страховку на случай, когда переход
-    // Spotify всё-таки опередил наш.
     playerState = {
       'is_playing': true,
       'progress_ms': 2900,
@@ -587,10 +532,8 @@ void main() {
     final pb = await playingSpotifyPlaylist(tracks, 2);
     await setRepeat(pb, 'track');
 
-    // Первый опрос: провайдер видит последний трек почти доигравшим.
     await Future<void>.delayed(const Duration(milliseconds: 3600));
 
-    // Spotify ушёл в автоплей на трек, которого в плейлисте нет.
     playerState = {
       'is_playing': true,
       'progress_ms': 500,

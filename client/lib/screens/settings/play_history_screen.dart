@@ -11,7 +11,6 @@ import '../../widgets/screen_chrome.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/skeleton.dart';
 
-/// История прослушанного.
 class PlayHistoryScreen extends StatefulWidget {
   const PlayHistoryScreen({super.key, this.embedded = false, this.onBack});
 
@@ -73,10 +72,6 @@ class _PlayHistoryScreenState extends State<PlayHistoryScreen> {
     }
   }
 
-  /// Когда трек играл — словами.
-  ///
-  /// Точное время здесь не нужно: важно «сегодня» или «на прошлой неделе»,
-  /// а не «14:32». Дату показываем, только когда прошло больше недели.
   String _formatWhen(String? raw) {
     if (raw == null) return '';
     final at = DateTime.tryParse(raw)?.toLocal();

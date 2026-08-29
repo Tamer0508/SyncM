@@ -127,8 +127,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: Center(
                     child: ConstrainedBox(
-                      // На планшете и в браузере форма во всю ширину читается
-                      // тяжело: строка становится слишком длинной.
                       constraints: const BoxConstraints(maxWidth: 460),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,

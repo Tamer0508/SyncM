@@ -105,8 +105,6 @@ class NowPlayingPanelCompactState extends State<NowPlayingPanelCompact> {
       final durationMs = pb.durationMs;
 
       return LayoutBuilder(builder: (context, constraints) {
-        // Бюджет под обложку: ширина за вычетом отступов панели, высота — за
-        // вычетом того, что стоит ниже (подписи, полоса, таймкоды, контролы).
         const belowArtwork = 232.0;
         final widthBudget = constraints.maxWidth - AppSpacing.md * 2;
         final heightBudget = constraints.hasBoundedHeight

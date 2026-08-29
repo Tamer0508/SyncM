@@ -6,12 +6,6 @@ import 'package:syncm/theme.dart';
 import 'package:syncm/widgets/playlist_card.dart';
 import 'package:syncm/widgets/skeleton.dart';
 
-/// Заглушка плейлиста должна совпадать по геометрии с настоящей карточкой.
-///
-/// До исправления на вкладке «Музыка» показывался горизонтальный ряд
-/// вертикальных карточек, у которых обложка занимала всю доступную высоту
-/// (`Expanded` + `height: double.infinity`). На экране 360×640 заглушка
-/// получалась 150×548 при настоящей карточке 360×68.
 Widget _wrap(Widget child) => MaterialApp(
       localizationsDelegates: L.localizationsDelegates,
       supportedLocales: L.supportedLocales,
@@ -58,7 +52,6 @@ void main() {
     final cardSize = tester.getSize(find.byType(PlaylistCard));
 
     expect(skeletonHeight, cardSize.height);
-    // Никаких карточек во весь экран: строка списка, а не обложка на пол-экрана.
     expect(skeletonHeight, lessThan(100));
   });
 

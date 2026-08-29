@@ -30,8 +30,6 @@ Future<Map<String, String?>?> runOAuthLoopback({
   await stopOAuthLoopback();
 
   final completer = Completer<Map<String, String?>?>();
-  // Порт занимается монопольно: с shared сюда мог встать посторонний
-  // слушатель и получать часть редиректов вместе с токеном входа.
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
   _server = server;
 
@@ -87,7 +85,6 @@ Future<Map<String, String?>?> runOAuthLoopback({
   try {
     await onServerReady('http://localhost:$port$path');
   } catch (err) {
-    // Ссылку открыть не удалось — держать порт занятым незачем.
     await finish(null);
     rethrow;
   }

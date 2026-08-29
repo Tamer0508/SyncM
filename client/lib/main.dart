@@ -103,7 +103,6 @@ class MyApp extends StatelessWidget {
           title: 'SyncM',
           localizationsDelegates: L.localizationsDelegates,
           supportedLocales: L.supportedLocales,
-          // null — «как в системе»: MaterialApp сам выберет из поддерживаемых.
           locale: localeProvider.locale,
           theme: _ThemeCache.of(
             brightness: Brightness.light,

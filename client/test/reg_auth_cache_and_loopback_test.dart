@@ -1,7 +1,3 @@
-// Regression-покрытие к BUG #006 / #008 / #016 / #017.
-//
-// Проверяет обе стороны исправлений: дыры закрыты И штатные сценарии живы.
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -16,7 +12,6 @@ Future<void> _hit(Uri uri) async {
     final res = await (await client.getUrl(uri)).close();
     await res.drain<void>();
   } catch (_) {
-    // сервер мог закрыть соединение — это нормально
   } finally {
     client.close(force: true);
   }
@@ -81,7 +76,6 @@ void main() {
     });
 
     test('второй пользователь не присоединяется к запросу первого', () async {
-      // Оба запроса стартуют почти одновременно, но под разными аккаунтами.
       api.setCookie('token-A');
       final pendingA = api.getPlayHistory();
 
@@ -152,12 +146,10 @@ void main() {
         path: '/callback',
         timeout: const Duration(seconds: 5),
         onServerReady: (redirectUri) async {
-          // Шум: префетч, чужой путь, чужой токен на чужом пути.
           await _hit(Uri.parse('http://localhost:$port/'));
           await _hit(Uri.parse('http://localhost:$port/favicon.ico'));
           await _hit(Uri.parse('http://localhost:$port/evil?token=ATTACKER'));
           await _hit(Uri.parse('http://localhost:$port/callback'));
-          // И только теперь настоящий редирект.
           await _hit(Uri.parse('$redirectUri?token=REAL_TOKEN'));
         },
       );
@@ -181,7 +173,6 @@ void main() {
         },
       );
 
-      // Если бы сервер остался висеть, следующий вход не смог бы подняться.
       final again = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
       addTearDown(() async => again.close(force: true));
       expect(again.port, port);

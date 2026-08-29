@@ -18,7 +18,6 @@ class MediaSessionBridge {
   PlaybackProvider? _provider;
   bool _wired = false;
 
-  // Снимок того, что уже уехало в MediaSession.
   bool _sessionActive = false;
   String _uri = '';
   String _title = '';
@@ -148,7 +147,6 @@ class MediaSessionBridge {
     String uri,
     Map<String, dynamic> track,
   ) {
-    // Одна обложка на трек: первый добравшийся источник и выигрывает.
     if (_artworkUri == uri) return;
 
     final bytes = provider.currentImageBytes;
@@ -172,7 +170,6 @@ class MediaSessionBridge {
       final file = await AppImageCache.manager.getSingleFile(url);
       final bytes = await file.readAsBytes();
 
-      // Пока файл читался, трек мог смениться или SDK мог отдать свои байты.
       if (_uri != uri || _artworkUri == uri || !_sessionActive) return;
 
       _artworkUri = uri;
@@ -255,15 +252,12 @@ class MediaSessionBridge {
 
     switch (command.action) {
       case 'play':
-        // togglePlay() переключает, а система просит конкретное состояние:
-        // если Spotify уже играет, повторный PLAY не должен его остановить.
         if (!provider.isPlaying) unawaited(provider.togglePlay());
         break;
       case 'pause':
         if (provider.isPlaying) unawaited(provider.togglePlay());
         break;
       case 'next':
-        // Защита от гонки при частых нажатиях уже внутри _skip().
         unawaited(provider.skipNext());
         break;
       case 'previous':
@@ -287,10 +281,7 @@ class MediaSessionBridge {
     }
   }
 
-  /// У провайдера есть только циклический переключатель режима повтора —
-  /// заводить ради карточки второй сеттер незачем, достаточно докрутить цикл.
   Future<void> _applyRepeat(PlaybackProvider provider, int? mode) async {
-    // PlaybackStateCompat: 0 — NONE, 1 — ONE, 2 — ALL, 3 — GROUP.
     final target = switch (mode) {
       1 => 'track',
       2 || 3 => 'context',
@@ -301,7 +292,6 @@ class MediaSessionBridge {
     }
   }
 
-  /// Тап по карточке открывает Now Playing существующим механизмом SyncM.
   void _openNowPlaying() {
     final context = navigatorKey.currentContext;
     if (context == null) return;

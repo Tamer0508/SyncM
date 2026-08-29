@@ -13,25 +13,15 @@ class SessionResultsScreen extends StatelessWidget {
     this.onClose,
   });
 
-  /// Совпавшие треки.
-  ///
-  /// Обычно приходят аргументом маршрута, но на широком экране этот экран
-  /// показывается диалогом поверх главного — там маршрута нет, и данные
-  /// передаются напрямую.
   final List<Map>? mutualLikes;
 
-  /// Во встроенном виде экран занимает только центральную часть, а панели
-  /// остаются на месте — уводить на главную не нужно, достаточно вернуться.
   final bool embedded;
 
-  /// Как закрыть встроенный вид. Задаёт главный экран.
   final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    // whereType вместо приведения всего списка: один некорректный элемент от
-    // сервера не должен ронять весь экран результатов.
     final tracks = mutualLikes ??
         (args?['mutualLikes'] as List?)?.whereType<Map>().toList() ??
         const <Map>[];
@@ -87,9 +77,6 @@ class _ResultsList extends StatelessWidget {
         AppSpacing.md,
         AppSpacing.sm,
       ),
-      // +1 — заголовок в самом списке, а не отдельной карточкой сверху.
-      // Раньше он занимал постоянное место на экране, оставляя списку
-      // меньше половины высоты; теперь уезжает при прокрутке.
       itemCount: tracks.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, i) {

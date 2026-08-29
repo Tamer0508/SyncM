@@ -11,7 +11,6 @@ import 'package:syncm/theme.dart';
 import 'package:syncm/widgets/home_nav.dart';
 import 'package:syncm/widgets/now_playing_panel.dart';
 
-/// Размеры окна из задания плюс предел, ниже которого ужимать нечего.
 const List<Size> _windowSizes = [
   Size(1920, 1080),
   Size(1600, 900),
@@ -43,7 +42,6 @@ class _StubPlayback extends PlaybackProvider {
   @override
   int get durationMs => 210000;
 
-  // Палитра тянет изображение — в тесте её просто нет.
   @override
   Future<PaletteGenerator?> paletteFor({
     String? imageUrl,
@@ -53,18 +51,12 @@ class _StubPlayback extends PlaybackProvider {
       Future<PaletteGenerator?>.value(null);
 }
 
-/// Ставит размер окна и возвращает всё как было после теста.
 Future<void> _withWindow(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 }
 
-/// Выполняет тело, притворившись нужной платформой.
-///
-/// Сбрасывать подмену нужно внутри тела теста, а не через addTearDown:
-/// flutter_test проверяет отладочные переменные раньше, чем доходит до
-/// tearDown, и незакрытая подмена валит тест как «переменная осталась».
 Future<void> _asPlatform(TargetPlatform platform, Future<void> Function() body) async {
   debugDefaultTargetPlatformOverride = platform;
   try {
@@ -77,31 +69,25 @@ Future<void> _asPlatform(TargetPlatform platform, Future<void> Function() body) 
 void main() {
   group('AppLayout', () {
     test('раскладка меняется ступенями, а не одним переключателем', () {
-      // Широкое окно: панель навигации с подписями и панель «сейчас играет».
       final wide = AppLayout.of(1440);
       expect(wide.showRail, isTrue);
       expect(wide.railLabels, isTrue);
       expect(wide.showNowPlayingPanel, isTrue);
 
-      // Окно сузили: правая панель уступила место, навигация осталась.
       final medium = AppLayout.of(900);
       expect(medium.showRail, isTrue);
       expect(medium.railLabels, isTrue);
       expect(medium.showNowPlayingPanel, isFalse);
 
-      // Ещё уже: у навигации остались значки, но она никуда не делась.
       final narrow = AppLayout.of(680);
       expect(narrow.showRail, isTrue);
       expect(narrow.railLabels, isFalse);
 
-      // И только здесь навигация уезжает вниз.
       final compact = AppLayout.of(560);
       expect(compact.showRail, isFalse);
     });
 
     test('между соседними размерами меняется не больше одного решения', () {
-      // Смысл ступеней в том, что окно нельзя протащить через две смены
-      // раскладки разом: каждая граница отвечает за что-то одно.
       var previous = AppLayout.of(400);
 
       for (var width = 401.0; width <= 1600; width += 1) {
@@ -134,9 +120,6 @@ void main() {
     });
 
     test('в окне минимального размера навигация остаётся боковой', () {
-      // Смысл нижней границы окна: до неё раскладка ни разу не успевает
-      // дойти до нижней навигации. В браузере на десктопе её не появляется
-      // вовсе, сколько окно ни сужай.
       expect(AppLayout.minWindowSize.width,
           greaterThanOrEqualTo(AppLayout.railMinSpace));
       expect(AppLayout.of(AppLayout.minWindowSize.width).showRail, isTrue);
@@ -179,7 +162,6 @@ void main() {
           ),
         ));
 
-        // Экран телефона не растягивают до 640 — там нижняя навигация уместна.
         expect(seen.width, 360);
         expect(seen.showRail, isFalse);
         expect(find.byType(SingleChildScrollView), findsNothing);
@@ -189,7 +171,6 @@ void main() {
     testWidgets('окно меньше минимума держит размер и даёт прокрутку',
         (tester) async {
       await _asPlatform(TargetPlatform.windows, () async {
-        // Размер из третьего скриншота: окно сжали до полоски.
         await _withWindow(tester, const Size(600, 130));
 
         late AppLayout seen;
@@ -208,9 +189,7 @@ void main() {
 
         expect(seen.width, AppLayout.minWindowSize.width);
         expect(seenMedia, AppLayout.minWindowSize);
-        // Прокрутка по обеим осям: и вниз, и вбок.
         expect(find.byType(SingleChildScrollView), findsNWidgets(2));
-        // И раскладка при этом осталась десктопной.
         expect(seen.showRail, isTrue);
       });
     });
@@ -218,7 +197,6 @@ void main() {
     testWidgets('в браузере на десктопе нижняя навигация не появляется',
         (tester) async {
       await _asPlatform(TargetPlatform.windows, () async {
-        // Размеры со скриншотов, где раскладка срывалась в мобильную.
         for (final size in const [
           Size(603, 652),
           Size(694, 1018),
@@ -297,7 +275,6 @@ void main() {
       await tester.pumpWidget(rail(layout));
       await tester.pump();
 
-      // Значок раздела на месте, подпись — в подсказке.
       expect(find.byIcon(Icons.radio_rounded), findsOneWidget);
       expect(find.text('Музыка'), findsNothing);
       expect(find.byType(Tooltip), findsWidgets);
@@ -312,8 +289,6 @@ void main() {
     });
 
     testWidgets('в низком окне прокручивается, а не вылезает', (tester) async {
-      // Со скриншота: широкое, но низкое окно. Список пунктов выше того, что
-      // осталось по вертикали, и раньше он вылезал за нижний край панели.
       await _withWindow(tester, const Size(1770, 420));
       await tester.pumpWidget(rail(AppLayout.of(1770)));
       await tester.pump();
@@ -326,7 +301,6 @@ void main() {
       );
       expect(scroller, findsOneWidget);
 
-      // Список действительно не помещается — иначе тест ничего не проверял бы.
       final content = tester.getSize(
         find.descendant(of: scroller, matching: find.byType(Column)).first,
       );

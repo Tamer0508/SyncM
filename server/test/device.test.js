@@ -12,13 +12,11 @@ test('браузеры узнаются вместе с системой', () =>
   assert.strictEqual(chrome.name, 'Chrome · Windows');
   assert.strictEqual(chrome.kind, 'browser');
 
-  // Edge представляется ещё и Chrome — порядок проверок должен это учитывать.
   const edge = describeDevice(
     req('Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/120.0 Safari/537.36 Edg/120.0')
   );
   assert.strictEqual(edge.name, 'Edge · Windows');
 
-  // Chrome представляется Safari — иначе на macOS всё было бы «Safari».
   const chromeMac = describeDevice(
     req('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0 Safari/537.36')
   );
@@ -48,7 +46,6 @@ test('идентификатор сеанса не раскрывает сам �
   assert.strictEqual(id.length, 16);
   assert.ok(/^[a-f0-9]{16}$/.test(id));
   assert.ok(!token.includes(id));
-  // Одинаковый вход — одинаковый идентификатор, разный — разный.
   assert.strictEqual(id, deviceIdFor(token));
   assert.notStrictEqual(id, deviceIdFor('b'.repeat(64)));
 });

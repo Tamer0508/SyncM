@@ -8,7 +8,7 @@ const TRACE_ID_REGEX = /^[0-9a-f]{32}$/;
 const SPAN_ID_REGEX = /^[0-9a-f]{16}$/;
 const FLAGS_REGEX = /^[0-9a-f]{2}$/;
 
-const DEFAULT_FLAGS = '01'; // sampled
+const DEFAULT_FLAGS = '01';
 
 function generateHex(bytes) {
   return crypto.randomBytes(bytes).toString('hex');
@@ -22,7 +22,7 @@ function parseTraceParent(header) {
 
   const [version, traceId, spanId, flags] = parts;
 
-  if (version !== '00') return null; // поддержка только версии 00
+  if (version !== '00') return null;
   if (traceId === ALL_ZERO_TRACE_ID || !TRACE_ID_REGEX.test(traceId)) return null;
   if (spanId === ALL_ZERO_SPAN_ID || !SPAN_ID_REGEX.test(spanId)) return null;
   if (!FLAGS_REGEX.test(flags)) return null;
@@ -42,7 +42,7 @@ module.exports = function requestIdMiddleware(req, res, next) {
   req.spanId = spanId;
   req.parentSpanId = parentSpanId;
   req.requestId = traceId;
-  req.id = traceId; // используется genReqId в pino-http (см. index.js)
+  req.id = traceId;
   req.traceFlags = flags;
 
   if (typeof res.setHeader === 'function') {

@@ -1,14 +1,7 @@
-/// Состояние отношений с пользователем в результатах поиска.
-///
-/// Сервер возвращает это поле в /friends/search, но клиент его раньше не
-/// читал: кнопка «Добавить» показывалась даже для тех, кто уже в друзьях,
-/// запрос уходил впустую и возвращался отказом «Вы уже друзья».
 enum FriendshipStatus {
   none,
   friends,
-  /// Заявка отправлена нами и ждёт ответа.
   sent,
-  /// Заявка получена от этого пользователя.
   received;
 
   static FriendshipStatus fromJson(Object? value) {
@@ -61,7 +54,6 @@ class Friend {
         'avatarUrl': avatarUrl,
         'friendshipId': friendshipId,
         'isOnline': isOnline,
-        // ISO-8601 в UTC: fromJson переведёт обратно в местное время.
         'lastSeenAt': lastSeenAt?.toUtc().toIso8601String(),
         'isOnlineHidden': isOnlineHidden,
         'friendshipStatus': friendshipStatus.name,
@@ -89,6 +81,5 @@ class Friend {
     );
   }
 
-  /// Показывать ли статус присутствия. Учитывает настройку приватности.
   bool get showsPresence => !isOnlineHidden;
 }

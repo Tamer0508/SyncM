@@ -7,24 +7,18 @@ class AppMotion {
 
   static const Duration press = Duration(milliseconds: 140);
 
-  /// Подсказки, переключение иконок, смена цвета.
   static const Duration short = Duration(milliseconds: 180);
 
-  /// Раскрытие, всплывающие панели, появление карточек.
   static const Duration medium = Duration(milliseconds: 240);
 
-  /// Крупные элементы внутри экрана: диалоги, разъезжающиеся уведомления.
   static const Duration long = Duration(milliseconds: 320);
 
   static const Duration tint = Duration(milliseconds: 500);
 
-  /// Смена экрана целиком. Единственное, чему позволено выходить за 300 мс.
   static const Duration page = Duration(milliseconds: 420);
 
-  /// Появление: начинается резко, замедляется к концу.
   static const Curve enter = Cubic(0.23, 1.0, 0.32, 1.0);
 
-  /// Перемещение по экрану: разгон и торможение симметричны.
   static const Curve move = Cubic(0.77, 0.0, 0.175, 1.0);
 
   static const Curve exit = Cubic(0.3, 0.0, 0.8, 0.15);
@@ -40,7 +34,6 @@ class AppMotion {
 
   static const Curve bounce = Cubic(0.34, 1.16, 0.64, 1.0);
 
-  // Прежние имена — чтобы не переписывать десятки мест разом.
   static const Curve emphasized = move;
   static const Curve emphasizedDecelerate = enter;
   static const Curve emphasizedAccelerate = exit;
@@ -77,7 +70,6 @@ class AppRadius {
   static BorderRadius get extraLarge => BorderRadius.circular(xl);
 }
 
-/// Размеры, повторяющиеся в разметке.
 class AppSizes {
   const AppSizes._();
 
@@ -355,7 +347,6 @@ class AppTheme {
       pageTransitionsTheme: reduceMotion
           ? const PageTransitionsTheme(
               builders: {
-                // Мгновенная смена экрана вместо перехода.
                 TargetPlatform.android: _NoTransitionsBuilder(),
                 TargetPlatform.iOS: _NoTransitionsBuilder(),
                 TargetPlatform.macOS: _NoTransitionsBuilder(),

@@ -4,13 +4,6 @@
 const DEFAULT_PAGE_SIZE = 50;
 const DEFAULT_CONCURRENCY = 4;
 
-/**
- * @param fetchPage async (offset, limit) => { items, total, next }
- * @param options.pageSize   сколько элементов просить за раз (предел Spotify — 50)
- * @param options.maxItems   жёсткий потолок: защита от плейлистов на десятки тысяч
- * @param options.concurrency сколько страниц тянуть одновременно
- * @returns массив элементов в исходном порядке
- */
 async function collectAllPages(fetchPage, options = {}) {
   const pageSize = options.pageSize || DEFAULT_PAGE_SIZE;
   const maxItems = options.maxItems || Infinity;

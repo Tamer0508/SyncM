@@ -9,7 +9,6 @@ const PRETTY_OPTIONS = {
   ignore: 'pid,hostname',
 };
 
-// Расширенный список для предотвращения утечек чувствительных данных в логи
 const REDACT_PATHS = [
   'req.headers.cookie',
   'req.headers.authorization',
@@ -19,11 +18,10 @@ const REDACT_PATHS = [
   '*.password',
   '*.accessToken',
   '*.refreshToken',
-  // Защита от утечек токенов через объекты ошибок Axios
   'err.config.headers.Authorization',
   'err.config.headers.authorization',
   'err.response.request._header',
-  'err.config.data', // тело запроса Axios — там тоже бывают пароли и токены
+  'err.config.data',
 ];
 
 function prettyTransportAvailable() {

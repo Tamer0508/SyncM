@@ -1,7 +1,5 @@
 'use strict';
 
-// Атака на middleware/idempotency.js. Redis подменяется на память.
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
@@ -54,7 +52,6 @@ function makeRes() {
   return res;
 }
 
-// Прогон одного запроса через middleware + «контроллер».
 function pass(req, handler) {
   return new Promise((resolve) => {
     const res = makeRes();
@@ -66,9 +63,7 @@ function pass(req, handler) {
 
 test.beforeEach(() => { store.clear(); locks.clear(); });
 
-// ---------------------------------------------------------------------------
 test('POST /playlists/liked/toggle без Idempotency-Key: второй запрос обязан снять лайк', async () => {
-  // Реальная семантика toggleLike: первый вызов ставит лайк, второй снимает.
   let liked = false;
   const handler = (_req, res) => { liked = !liked; res.status(200).json({ liked }); };
 
@@ -86,7 +81,6 @@ test('POST /playlists/liked/toggle без Idempotency-Key: второй запр
   assert.equal(second.res.body.liked, false, 'ответ отдан из кэша: клиент видит liked:true, лайк не снят');
 });
 
-// ---------------------------------------------------------------------------
 test('чужой ответ по тому же Idempotency-Key не отдаётся другому пользователю', async () => {
   const handler = (req, res) => res.status(200).json({ owner: req.userId, secret: `data-of-${req.userId}` });
 
@@ -97,7 +91,6 @@ test('чужой ответ по тому же Idempotency-Key не отдаёт
   assert.equal(b.res.body.owner, 'bob', 'отпечаток включает userId — подсмотреть чужой ответ нельзя');
 });
 
-// ---------------------------------------------------------------------------
 test('повтор ключа с ДРУГИМ телом не подменяет ответ', async () => {
   const handler = (req, res) => res.status(200).json({ echo: req.body });
 

@@ -90,7 +90,7 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // чтобы /uploads работали с другого origin
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
 const httpServer = createServer(app);
@@ -188,7 +188,6 @@ app.use(rateLimitMiddleware(100, 60, {
 }));
 
 
-// Маршруты
 app.use('/auth', authRoutes);
 app.use('/friends', friendsRoutes);
 app.use('/sessions', sessionRoutes);

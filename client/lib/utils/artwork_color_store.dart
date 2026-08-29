@@ -11,7 +11,6 @@ import 'local_store.dart';
 class ArtworkColorStore {
   const ArtworkColorStore._();
 
-  /// Цвета в памяти. Порядок вставки = порядок вытеснения.
   static final Map<String, Color> _colors = {};
 
   static final Map<String, Future<Color?>> _pending = {};

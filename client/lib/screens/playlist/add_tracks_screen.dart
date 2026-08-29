@@ -56,10 +56,8 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
   bool _loadingSourceTracks = false;
   bool _sourceUnavailable = false;
 
-  /// uri треков, уже лежащих в целевом плейлисте.
   Set<String> _existingUris = {};
 
-  /// Выбранные треки — по uri, чтобы выбор переживал смену источника.
   final Map<String, Map<String, dynamic>> _selected = {};
 
   bool _adding = false;
@@ -132,7 +130,7 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
     try {
       final api = context.read<PlaylistsProvider>().api;
       final results = await api.searchSpotifyTracks(query);
-      if (!mounted || _query != query) return; // запрос устарел
+      if (!mounted || _query != query) return;
       setState(() {
         _searchResults =
             results.whereType<Map>().map(Map<String, dynamic>.from).toList();
@@ -543,20 +541,10 @@ class _AddTracksScreenState extends State<AddTracksScreen> {
           showLike: false,
           selected: selected,
           onPlay: already ? null : () => _toggle(track),
-          // Общая коробка под флажок и галочку.
-          //
-          // Checkbox занимает 48 точек — размер зоны нажатия по Material, — а
-          // голая иконка 24, и строки с уже добавленными треками съезжали
-          // вправо относительно соседних: колонка справа переставала быть
-          // колонкой. Ширина здесь одна на оба состояния, меняется только
-          // содержимое.
           trailing: SizedBox.square(
             dimension: 48,
             child: Center(
               child: already
-                  // Галочка вместо погашенного флажка: добавленное выбрать
-                  // нельзя, и неактивный флажок читался бы как «сейчас
-                  // нельзя, попробуйте иначе», а не как «уже сделано».
                   ? Tooltip(
                       message: L.of(context).addTracksAlreadyIn,
                       child: Icon(

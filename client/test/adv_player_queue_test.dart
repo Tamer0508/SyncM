@@ -9,10 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncm/providers/playback_provider.dart';
 import 'package:syncm/services/api_service.dart';
 
-/// Враждебные тесты очереди плеера.
-///
-/// Гоняем windows-ветку провайдера: там все команды плееру уходят через
-/// ApiService, поэтому их видно как HTTP-запросы и можно пересчитать.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -21,7 +17,6 @@ void main() {
   late List<String> calls;
   late List<Map<String, dynamic>> playBodies;
 
-  // Состояние «плеера», которое сервер отдаёт на GET /spotify/player.
   late Map<String, dynamic> playerState;
 
   final tracks = List.generate(
@@ -101,8 +96,6 @@ void main() {
   List<String> playedUris() =>
       playBodies.map((b) => '${b['uri'] ?? b['spotifyUri'] ?? ''}').toList();
 
-  /// Кастомный (SyncM) плейлист: контекста Spotify нет, очередь целиком
-  /// ведёт провайдер — ровно так вызывает playlist_tracks_screen.dart:181.
   Future<PlaybackProvider> playingCustomPlaylist({int startIndex = 0}) async {
     final pb = PlaybackProvider();
     pb.setApiService(api);
@@ -126,11 +119,9 @@ void main() {
         knownPlaylistTracks: tracks,
       );
 
-      // Трек доиграл почти до конца (пришло состояние плеера).
       unawaited(pb.seekTo(195000));
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      // Пользователь тапнул другой трек в том же плейлисте.
       await pb.playTrack(
         Map<String, dynamic>.from(tracks[3]),
         knownPlaylistTracks: tracks,
@@ -153,9 +144,6 @@ void main() {
         () async {
       final pb = await playingCustomPlaylist();
 
-      // Spotify Web API отвечает с задержкой и продолжает отдавать
-      // предыдущий трек у самого конца — обычная ситуация после того, как
-      // приложение само переключило трек.
       playerState = {
         'is_playing': true,
         'progress_ms': 199500,
@@ -169,9 +157,6 @@ void main() {
         },
       };
 
-      // Первое переключение (t0 действительно доиграл) законно. Дальше
-      // приложение уже играет t1 длиной 200 c — ни один следующий трек
-      // закончиться за время теста не может.
       await Future<void>.delayed(const Duration(milliseconds: 9000));
 
       final played = playedUris().where((u) => u.isNotEmpty).toList();
@@ -198,7 +183,6 @@ void main() {
       final pb = PlaybackProvider();
       pb.setApiService(api);
 
-      // Пользователь запустил ВТОРОЕ вхождение трека A (индекс 2).
       await pb.playTrack(
         {'uri': 'spotify:track:a', 'index': 2, 'title': 'A'},
         knownPlaylistTracks: dup,
@@ -206,7 +190,6 @@ void main() {
 
       expect(pb.currentQueueIndex, 2);
 
-      // Приходит состояние плеера (обычный опрос Web API): тот же трек A.
       playerState = {
         'is_playing': true,
         'progress_ms': 1000,
@@ -282,7 +265,7 @@ void main() {
     test('P-008: repeat=context на последнем треке возвращает в начало',
         () async {
       final pb = await playingCustomPlaylist(startIndex: 5);
-      await pb.cycleRepeatMode(); // off -> context
+      await pb.cycleRepeatMode();
       expect(pb.repeatMode, 'context');
       calls.clear();
       playBodies.clear();

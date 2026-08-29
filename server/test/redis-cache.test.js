@@ -3,8 +3,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-// Без REDIS_URL модуль поднимается в режиме «кэш недоступен» — ровно то, что
-// нужно, чтобы проверить разбор ответа скрипта без живого Redis.
 delete process.env.REDIS_URL;
 const {
   parseVersionedReply,
@@ -51,8 +49,6 @@ test('повреждённое значение считается промах�
 });
 
 test('скрипт собирает тот же ключ, что и buildVersionedKey', () => {
-  // Скрипт склеивает ARGV[1] .. ver .. ARGV[2]; здесь фиксируем, что формат
-  // совпадает с тем, которым пишутся значения.
   const namespace = 'ns';
   const key = 'k';
   const version = 5;

@@ -7,9 +7,7 @@ const LANGUAGES = ['system', 'ru', 'en'];
 
 const DEFAULTS = Object.freeze({
   notifications: Object.freeze({
-    // Заявки в друзья.
     friendRequests: true,
-    // Приглашения в сессию.
     sessionInvites: true,
   }),
   language: 'system',
@@ -36,7 +34,6 @@ const appearanceSchema = z
   .object({
     themeMode: z.enum(THEME_MODES),
     accent: z.enum(ACCENTS),
-    // Границы те же, что у ползунка в интерфейсе.
     textScale: z.number().min(0.85).max(1.3),
     compact: z.boolean(),
     reduceMotion: z.boolean(),

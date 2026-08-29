@@ -91,9 +91,7 @@ void main() {
     await server.close(force: true);
   });
 
-  /// Провайдер с играющим треком и уже подключённым мостом.
   Future<PlaybackProvider> playing() async {
-    // Конструктор подключает мост; playTrack должен идти уже по windows-ветке.
     final pb = PlaybackProvider();
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     pb.setApiService(api);
@@ -111,7 +109,6 @@ void main() {
   List<MethodCall> named(String method) =>
       session.where((c) => c.method == method).toList();
 
-  /// Дёргает мост так же, как это делает нативная сторона.
   Future<void> command(String action, [int? value]) async {
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
@@ -137,13 +134,9 @@ void main() {
       expect(setTrack.single.arguments['artist'], 'Artist');
       expect(setTrack.single.arguments['durationMs'], 200000);
 
-      // Одно состояние, а не пара «ещё не играет» → «играет»: провайдер
-      // сообщает о запуске сразу, не дожидаясь ответа плеера.
       final states = named('setPlaybackState');
       expect(states, hasLength(1));
       expect(states.single.arguments['isPlaying'], isTrue);
-      // Плеер старт ещё не подтвердил — карточке говорим «буферизация», иначе
-      // система начнёт отсчитывать прогресс от несуществующего момента.
       expect(states.single.arguments['buffering'], isTrue);
       expect(states.single.arguments['positionMs'], lessThan(1000));
 
@@ -155,7 +148,6 @@ void main() {
       final pb = await playing();
       final before = session.length;
 
-      // Провайдер сообщает о себе снова, ничего не изменив.
       pb.notifyListeners();
       pb.notifyListeners();
       await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -196,7 +188,6 @@ void main() {
       final pb = await playing();
       expect(pb.isPlaying, isTrue);
 
-      // Намеренно не ждём: кнопка не должна залипать на время round-trip.
       final command = pb.togglePlay();
       expect(pb.isPlaying, isFalse,
           reason: 'состояние обязано смениться в том же кадре');
@@ -214,8 +205,6 @@ void main() {
       final pb = await playing();
       calls.clear();
 
-      // Пять нажатий подряд: наружу уходит не пять параллельных запросов, а
-      // последовательность, и последнее намерение обязательно исполняется.
       final commands = [
         pb.togglePlay(),
         pb.togglePlay(),
@@ -326,7 +315,6 @@ void main() {
       ]);
       restorePlatform();
 
-      // Защита _skip() пропускает одно переключение, а не три подряд.
       expect(calls.where((c) => c == 'POST /spotify/play'), hasLength(1));
       pb.dispose();
     });
@@ -347,7 +335,6 @@ void main() {
     test('M-012: REPEAT докручивается до запрошенного режима', () async {
       final pb = await playing();
 
-      // PlaybackStateCompat.REPEAT_MODE_ONE
       await command('repeat', 1);
       restorePlatform();
 
@@ -364,7 +351,6 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
 
     expect(named('release'), isNotEmpty);
-    // Мост больше не держит ссылку — повторный attach безопасен.
     MediaSessionBridge.instance.detach(pb);
   });
 }

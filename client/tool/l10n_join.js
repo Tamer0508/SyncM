@@ -1,12 +1,3 @@
-// Склеивает соседние строковые литералы в один.
-//
-// В Dart два литерала подряд — это конкатенация: длинный текст разбивают по
-// строкам, чтобы влезал в ширину файла. Для переноса в ARB такой текст должен
-// быть цельным, иначе в словарь попадут обрывки фраз, которые невозможно
-// перевести.
-//
-//   node tool/l10n_join.js lib/screens/foo.dart
-
 const fs = require('fs');
 
 const files = process.argv.slice(2);
@@ -15,8 +6,6 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-// Между литералами только пробелы и переводы строк — значит, это склейка, а не
-// два разных аргумента (там был бы хотя бы запятая).
 const pair = /'([^'\\\n]*)'\s*\n\s*'([^'\\\n]*)'/;
 
 for (const file of files) {
@@ -28,7 +17,7 @@ for (const file of files) {
   while (pair.test(text)) {
     text = text.replace(pair, (_, a, b) => `'${a}${b}'`);
     joined += 1;
-    if (joined > 500) break; // страховка от зацикливания
+    if (joined > 500) break;
   }
 
   fs.writeFileSync(file, crlf ? text.replace(/\n/g, '\r\n') : text);

@@ -1,19 +1,9 @@
-// Adversarial-тесты конфигурации Google Sign-In.
-//
-// Тесты НАМЕРЕННО падают на текущей реализации: они фиксируют контракт,
-// который код сейчас нарушает.
-//
-// Атакуемый код: client/lib/screens/login/login_screen.dart
-//                client/lib/screens/login/google_sign.dart
-
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
 final _libDir = Directory('lib');
 
-/// Все места, где вызывается GoogleSignIn.instance.initialize(...),
-/// вместе с телом вызова (до закрывающей скобки).
 List<({String file, String call})> _initializeCallSites() {
   final sites = <({String file, String call})>[];
   final pattern = RegExp(r'GoogleSignIn\.instance\.initialize\s*\(');

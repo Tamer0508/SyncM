@@ -91,7 +91,6 @@ const createSession = asyncHandler(async (req, res) => {
   if (!userId) return res.status(401).json({ error: t(req, 'unauthorized') });
 
   const { name: rawName, friendId } = createSessionSchema.parse(req.body);
-  // Session.name — NOT NULL, а схема разрешает создание без названия.
   const name = rawName || t(req, 'untitledSession');
 
   if (userId === friendId) {
@@ -113,8 +112,6 @@ const createSession = asyncHandler(async (req, res) => {
       return res.status(403).json({ error: t(req, 'notFriends') });
     }
 
-    // Настройку «кто может звать» соблюдает сервер, а не интерфейс: спрятать
-    // кнопку в клиенте недостаточно — запрос можно послать и без неё.
     const invitee = await prisma.user.findUnique({
       where: { id: friendId },
       select: { allowSessionInvites: true, username: true },
@@ -265,7 +262,6 @@ const addTracks = asyncHandler(async (req, res) => {
 
     await prisma.sessionTrack.createMany({ data: rows });
 
-    // Все треки сессии
     const allTracks = await prisma.sessionTrack.findMany({
       where: { sessionId },
       orderBy: [{ addedAt: 'asc' }, { id: 'asc' }],
@@ -280,7 +276,6 @@ const addTracks = asyncHandler(async (req, res) => {
 
     await invalidateSessionsListForMembers(session.members);
 
-    // Уведомление
     const tracksPayload = {
       type: 'tracks_added',
       sessionId,

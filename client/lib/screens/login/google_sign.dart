@@ -72,9 +72,9 @@ class GoogleSignInButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.login), // цвет унаследуется от кнопки
+            Icon(Icons.login),
             SizedBox(width: 8),
-            Text(L.of(context).loginGoogle), // цвет унаследуется от кнопки
+            Text(L.of(context).loginGoogle),
           ],
         ),
       );

@@ -9,8 +9,6 @@ import 'package:syncm/providers/appearance_provider.dart';
 import 'package:syncm/providers/playback_provider.dart';
 import 'package:syncm/screens/player/now_playing.dart';
 
-/// Экран трека читает у провайдера только состояние текущего трека —
-/// подменять сеть и SDK ради этого теста не нужно.
 class _StubPlayback extends PlaybackProvider {
   _StubPlayback(this._track);
 
@@ -59,14 +57,12 @@ void main() {
 
     final context = navigator.currentContext!;
 
-    // Первое открытие — из сессии.
     unawaited(NowPlayingScreen.open(context, title: 'Track A'));
     await tester.pumpAndSettle();
 
     expect(find.byType(NowPlayingScreen), findsOneWidget);
     expect(NowPlayingScreen.isOpen, isTrue);
 
-    // Next/свайп: провайдер сменил трек и снова позвал открыть плеер.
     playback.switchTrack({
       'uri': 'spotify:track:b',
       'title': 'Track B',
@@ -77,7 +73,6 @@ void main() {
 
     expect(find.byType(NowPlayingScreen), findsOneWidget);
 
-    // Ещё несколько переключений подряд ничего не накапливают.
     for (final uri in ['c', 'd', 'e']) {
       playback.switchTrack({
         'uri': 'spotify:track:$uri',

@@ -1,11 +1,3 @@
-// Adversarial-тесты карточек на враждебных данных и узких экранах.
-//
-// Раздел 17 (responsive) и раздел 18 (edge cases) ТЗ: длинные названия,
-// emoji, RTL, отсутствующая обложка, нулевая длительность.
-//
-// Атакуемый код: client/lib/widgets/track_card.dart
-//                client/lib/widgets/playlist_card.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -16,10 +8,8 @@ import 'package:syncm/theme.dart';
 import 'package:syncm/widgets/playlist_card.dart';
 import 'package:syncm/widgets/track_card.dart';
 
-/// Ширины окна от самого узкого телефона до десктопа.
 const List<double> _widths = [280, 320, 360, 480, 768, 1280, 1920];
 
-/// Данные, которые реальный каталог отдаёт регулярно.
 const Map<String, String> _hostileTitles = {
   'длинное название':
       'Symphony No. 9 in D minor, Op. 125 «Choral» — IV. Presto — Allegro assai '
@@ -31,7 +21,6 @@ const Map<String, String> _hostileTitles = {
   'пусто': '',
 };
 
-/// Карточка трека читает у провайдера только текущий трек — сеть не нужна.
 class _StubPlayback extends PlaybackProvider {
   @override
   Map<String, dynamic>? get currentTrack => null;
@@ -56,7 +45,6 @@ Widget _host({required Widget child, required double width}) {
   );
 }
 
-/// Возвращает исключение отрисовки, если оно было.
 Future<Object?> _renderError(WidgetTester tester, Widget app) async {
   await tester.pumpWidget(app);
   await tester.pump(const Duration(milliseconds: 350));
@@ -80,8 +68,8 @@ void main() {
                 id: 'track-1',
                 title: entry.value,
                 artist: entry.value,
-                artworkUrl: null, // обложки нет — обычное дело для локальных треков
-                durationMs: null, // длительность неизвестна
+                artworkUrl: null,
+                durationMs: null,
                 showMore: true,
               ),
             ),

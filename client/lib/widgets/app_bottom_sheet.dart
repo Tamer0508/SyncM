@@ -60,8 +60,6 @@ class _SheetBody extends StatelessWidget {
           children: [
             if (showHandle) ...[
               const SizedBox(height: AppSpacing.sm + 4),
-              // Полоска-захват: подсказывает, что панель тянется вниз. Без
-              // неё свайп остаётся скрытой возможностью.
               Container(
                 width: 36,
                 height: 4,

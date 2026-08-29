@@ -10,12 +10,6 @@ import 'package:syncm/widgets/friend_tile.dart';
 import 'package:syncm/widgets/skeleton.dart';
 import 'package:syncm/widgets/track_card.dart';
 
-/// Заглушка — не отдельный дизайн, а та же разметка без данных.
-///
-/// Проверяем это единственным способом, который ничего не упускает: строим
-/// настоящий виджет и заглушку в одинаковой коробке и сравниваем коробки,
-/// которые они заняли. Совпали размеры и начала — значит, при появлении
-/// данных ничто не сдвинется.
 Widget _wrap(Widget child) => MultiProvider(
       providers: [
         ChangeNotifierProvider<PlaybackProvider>(create: (_) => PlaybackProvider()),
@@ -30,7 +24,6 @@ Widget _wrap(Widget child) => MultiProvider(
           compact: false,
           reduceMotion: true,
         ),
-        // Высота не ограничена — так же, как у строки настоящего списка.
         home: Scaffold(
           body: SingleChildScrollView(
             child: Align(alignment: Alignment.topLeft, child: child),
@@ -39,7 +32,6 @@ Widget _wrap(Widget child) => MultiProvider(
       ),
     );
 
-/// Ширина строки списка на телефоне: экран минус боковые отступы списка.
 const double _rowWidth = 360 - AppSpacing.sm * 2;
 
 void _phone(WidgetTester tester) {
@@ -57,9 +49,6 @@ Future<Size> _measure(WidgetTester tester, Widget child, Type type) async {
 
 void main() {
   group('SkeletonLine держит высоту настоящей строки текста', () {
-    // Стиль строки — единственный источник её высоты и в тексте, и в
-    // заглушке, поэтому проверяем сразу весь набор, которым пользуются
-    // строки списков.
     for (final entry in <String, TextStyle? Function(TextTheme)>{
       'titleLarge': (t) => t.titleLarge,
       'titleMedium': (t) => t.titleMedium,
@@ -133,8 +122,6 @@ void main() {
     final fakeTitle = tester.getTopLeft(find.byType(SkeletonLine).first);
 
     expect(fakeSize, realSize);
-    // Заголовок начинается там же: совпадают и отступ слева, и высота
-    // строки, и вертикальное выравнивание колонки.
     expect(fakeTitle, realTitle);
   });
 
@@ -220,7 +207,6 @@ void main() {
   testWidgets('строка истории: заглушка совпадает с ListTile', (tester) async {
     _phone(tester);
 
-    // Тот же ListTile, что строит экран истории.
     await tester.pumpWidget(_wrap(
       SizedBox(
         width: _rowWidth,
@@ -272,16 +258,8 @@ void main() {
       'раздел профиля': const SkeletonProfileTrackSection(),
     };
 
-    // Строка «Разблокировать» на узком экране при крупном шрифте не
-    // помещается — ровно так же, как настоящая строка того же экрана
-    // (проверено: обе переполняются на одно и то же число точек). Это
-    // ограничение самого экрана, и заглушка обязана его повторять, а не
-    // расходиться с ним ради зелёного теста.
     const knownTightRows = {'заблокированные'};
 
-    // Узкий телефон, планшет и крупный системный шрифт: заглушка тянется по
-    // тем же правилам, что и настоящая разметка, поэтому нигде не должна ни
-    // переполняться, ни требовать бесконечной ширины.
     for (final size in const [Size(360, 640), Size(900, 700)]) {
       for (final scale in const [1.0, 1.5]) {
         for (final entry in cases.entries) {
@@ -300,8 +278,6 @@ void main() {
             await tester.pumpWidget(_wrap(
               MediaQuery(
                 data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-                // Ограниченная высота: так заглушку показывают экраны,
-                // где она занимает отведённую списку область.
                 child: SizedBox(height: size.height - 100, child: entry.value),
               ),
             ));
@@ -323,8 +299,6 @@ void main() {
     ));
     await tester.pump();
 
-    // Кнопка-мерка внутри SkeletonSlot существует только ради размера:
-    // нажатие по ней не должно ни во что попасть.
     await tester.tap(find.byType(SkeletonSlot), warnIfMissed: false);
     await tester.pump();
 

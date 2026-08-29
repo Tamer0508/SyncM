@@ -11,10 +11,6 @@ import 'package:syncm/providers/playback_provider.dart';
 import 'package:syncm/screens/player/artwork_pager.dart';
 import 'package:syncm/screens/player/now_playing.dart';
 
-/// Идентификатор трека, чья обложка сейчас стоит ровно в центре.
-///
-/// Плитки лежат в Stack со сдвигом по горизонтали, поэтому «видно сейчас» —
-/// это та, у которой сдвиг равен нулю.
 String? centeredTrackId(WidgetTester tester) {
   final tiles = tester.widgetList<FractionalTranslation>(
     find.descendant(
@@ -44,8 +40,6 @@ Map<String, dynamic> _track(String id) => {
       'durationMs': 200000,
     };
 
-/// Провайдер, который переключает трек не мгновенно — ровно так же, как
-/// настоящий ждёт ответа Spotify.
 class _SlowPlayback extends PlaybackProvider {
   _SlowPlayback(this._current, this._next, this._previous);
 
@@ -104,7 +98,6 @@ class _SlowPlayback extends PlaybackProvider {
     notifyListeners();
   }
 
-  /// Ответ Spotify наконец пришёл.
   void confirm({
     required String current,
     String? next,
@@ -150,8 +143,6 @@ Widget _pagerHost({
   );
 }
 
-/// Свайп по обложке. Один шаг drag() арбитраж жестов не всегда отдаёт
-/// горизонтальному распознавателю — тянем как настоящий палец.
 Future<void> swipeArtwork(WidgetTester tester, {required int direction}) async {
   final gesture =
       await tester.startGesture(tester.getCenter(find.byType(ArtworkPager)));
@@ -202,14 +193,11 @@ void main() {
       await tester.pumpWidget(host(current: 'a', switching: false));
       expect(centeredTrackId(tester), 'artwork.track.a');
 
-      // Свайп «вперёд»: команда ушла, провайдер ещё не подтвердил трек.
       expect(key.currentState!.animateTo(1), isTrue);
       await tester.pumpAndSettle();
 
       expect(centeredTrackId(tester), 'artwork.track.b');
 
-      // Провайдер догоняет медленно. Ни на одном кадре в центре не должен
-      // оказаться прежний трек.
       for (var frame = 0; frame < 40; frame++) {
         await tester.pumpWidget(host(current: 'a', switching: true));
         await tester.pump(const Duration(milliseconds: 16));
@@ -222,7 +210,6 @@ void main() {
         );
       }
 
-      // Подтверждение: точка отсчёта переезжает, картинка не дёргается.
       await tester.pumpWidget(host(current: 'b', switching: false));
       await tester.pumpAndSettle();
 
@@ -292,8 +279,6 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      // Тот же элемент — значит, уже загруженная картинка осталась на месте:
-      // ни пустого кадра, ни повторной загрузки при смене трека.
       expect(identical(elementFor('b'), before), isTrue);
 
       progress.dispose();
@@ -318,7 +303,6 @@ void main() {
 
       expect(pb.nextCalls, 1);
 
-      // Spotify отвечает не сразу — но обложка «a» больше не появится.
       for (var frame = 0; frame < 40; frame++) {
         await tester.pump(const Duration(milliseconds: 16));
         expect(centeredTrackId(tester), 'artwork.track.spotify:track:b');
@@ -375,8 +359,6 @@ void main() {
       }
       await tester.pumpAndSettle();
 
-      // Провайдер ещё не подтвердил первую смену — остальные свайпы не
-      // превращаются в очередь команд.
       expect(pb.nextCalls, 1);
       expect(centeredTrackId(tester), 'artwork.track.spotify:track:b');
 

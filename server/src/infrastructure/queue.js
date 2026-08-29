@@ -41,7 +41,6 @@ function initQueues() {
   playlistSyncQueue = new Queue('playlistSync', { connection });
   playlistSyncDLQ = new Queue('playlistSync-dlq', { connection });
 
-  // Notification worker
   notificationWorker = new Worker(
     'notifications',
     async (job) => {

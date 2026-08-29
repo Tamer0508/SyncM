@@ -1,9 +1,5 @@
 'use strict';
 
-// Атака на границу «схема валидации ↔ схема базы» и на невалидируемые
-// query-параметры. Prisma подменена: тесты смотрят, ЧТО контроллер собирается
-// записать, а не что вернёт настоящая БД.
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -64,9 +60,6 @@ async function run(handler, req) {
   return { res, errors };
 }
 
-// В схеме Prisma эти колонки объявлены NOT NULL, без default.
-// Любой undefined/null, дошедший до create, — гарантированная
-// PrismaClientValidationError и 500 у клиента.
 const notNull = (v, column) =>
   assert.equal(
     typeof v,
@@ -74,7 +67,6 @@ const notNull = (v, column) =>
     `${column} объявлена NOT NULL в prisma/schema.prisma, а контроллер шлёт ${JSON.stringify(v)}`
   );
 
-// ---------------------------------------------------------------------------
 test('toggleLike без trackName/artistName не отправляет null в NOT NULL колонки', async () => {
   let data = null;
   Object.assign(prismaMock, {
@@ -95,7 +87,6 @@ test('toggleLike без trackName/artistName не отправляет null в N
   notNull(data.artistName, 'LikedTrack.artistName');
 });
 
-// ---------------------------------------------------------------------------
 test('logPlay без trackName/artistName не отправляет null в NOT NULL колонки', async () => {
   let data = null;
   Object.assign(prismaMock, {
@@ -111,7 +102,6 @@ test('logPlay без trackName/artistName не отправляет null в NOT 
   notNull(data.artistName, 'PlayHistory.artistName');
 });
 
-// ---------------------------------------------------------------------------
 test('importPlaylist без name не отправляет null в NOT NULL колонку Playlist.name', async () => {
   let data = null;
   Object.assign(prismaMock, {
@@ -130,7 +120,6 @@ test('importPlaylist без name не отправляет null в NOT NULL ко
   notNull(data.name, 'Playlist.name');
 });
 
-// ---------------------------------------------------------------------------
 test('createSession без name не отправляет undefined в NOT NULL колонку Session.name', async () => {
   let data = null;
   Object.assign(prismaMock, {
@@ -157,7 +146,6 @@ test('createSession без name не отправляет undefined в NOT NULL 
   notNull(data.name, 'Session.name');
 });
 
-// ---------------------------------------------------------------------------
 test('getPlayHistory: limit из query не превращается в дробный/отрицательный take', async () => {
   const takes = [];
   Object.assign(prismaMock, {
@@ -177,7 +165,6 @@ test('getPlayHistory: limit из query не превращается в дроб
   );
 });
 
-// ---------------------------------------------------------------------------
 test('deleteAccount пересчитывает friendsCount у оставшихся друзей', async () => {
   const writes = [];
   Object.assign(prismaMock, {

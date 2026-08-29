@@ -19,7 +19,6 @@ model User {
   createdAt        DateTime  @default(now())
   isEmailVerified  Boolean   @default(false)
 
-  // Статус и приватность
   isOnline         Boolean   @default(false)
   lastSeenAt       DateTime?
   isOnlineHidden   Boolean   @default(false)
@@ -27,22 +26,13 @@ model User {
   isActivityHidden Boolean   @default(false)
   isSearchHidden   Boolean   @default(false)
 
-  // Кто может звать в сессию. Проверяется на сервере при создании сессии:
-  // клиентская настройка, которую бэкенд не соблюдает, — не настройка.
   allowSessionInvites InviteScope @default(friends)
 
-  // Настройки, общие для всех устройств: уведомления и оформление.
-  //
-  // Одна колонка, а не колонка на переключатель: набор меняется вместе с
-  // интерфейсом, и каждая новая галочка не должна стоить миграции. Всё, что
-  // влияет на доступ к данным, по-прежнему живёт отдельными колонками —
-  // по ним ходят запросы и строятся индексы.
   preferences      Json      @default("{}")
 
   friendsCount    Int @default(0)
   sessionsCount   Int @default(0)
 
-  // Связи с каскадным удалением
   receivedRequests Friendship[]    @relation("receiver")
   sentRequests     Friendship[]    @relation("sender")
   hostedSessions   Session[]       @relation("host")
@@ -71,7 +61,7 @@ model SpotifyUser {
   refreshToken String?
   createdAt    DateTime @default(now())
 
-  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([displayName])
 }
@@ -92,16 +82,12 @@ model Friendship {
   id         String           @id @default(uuid())
   senderId   String
   receiverId String
-  // Отсортированная "senderId:receiverId" — @@unique([senderId, receiverId])
-  // ниже не защищает от встречной пары (A→B и B→A — разные комбинации для
-  // упорядоченного уникального индекса), а pairKey защищает независимо от
-  // направления. Заполняется в приложении при создании (см. sendRequest).
   pairKey    String
   status     FriendshipStatus @default(pending)
   createdAt  DateTime         @default(now())
 
-  receiver   User             @relation("receiver", fields: [receiverId], references: [id], onDelete: Cascade) // cascade
-  sender     User             @relation("sender", fields: [senderId], references: [id], onDelete: Cascade) // cascade
+  receiver   User             @relation("receiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  sender     User             @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([receiverId, status])
   @@index([senderId, status])
@@ -121,12 +107,9 @@ model Playlist {
   updatedAt   DateTime @updatedAt
   playlistTracks PlaylistTrack[]
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  // NULL в spotifyId не конфликтует сам с собой в Postgres, так что кастомные
-  // плейлисты (spotifyId: null) этим ограничением не затрагиваются — защищает
-  // только повторный импорт одного и того же Spotify-плейлиста одним юзером.
   @@unique([userId, spotifyId])
 }
 
@@ -141,7 +124,7 @@ model PlaylistTrack {
   position    Int      @default(0)
   addedAt     DateTime @default(now())
 
-  playlist    Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade) // already cascade
+  playlist    Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
 
   @@unique([playlistId, spotifyUri])
   @@index([playlistId, position])
@@ -153,12 +136,10 @@ model LikedTrack {
   spotifyUri  String
   trackName   String
   artistName  String
-  // Обложка. Nullable, потому что у записей, сделанных до этой колонки, её
-  // нет — они дозаполняются из Spotify при первом чтении списка.
   imageUrl    String?
   likedAt     DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, spotifyUri])
 }
@@ -170,7 +151,7 @@ model Session {
   isActive  Boolean         @default(true)
   createdAt DateTime        @default(now())
 
-  host      User            @relation("host", fields: [hostId], references: [id], onDelete: Cascade) // cascade
+  host      User            @relation("host", fields: [hostId], references: [id], onDelete: Cascade)
   members   SessionMember[]
   tracks    SessionTrack[]
 
@@ -191,8 +172,8 @@ model SessionMember {
   status    SessionMemberStatus @default(pending)
   joinedAt  DateTime            @default(now())
 
-  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade) // cascade
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([userId])
@@ -202,7 +183,7 @@ model SessionMember {
 model SessionTrack {
   id         String        @id @default(uuid())
   sessionId  String
-  addedById  String?       // Кто добавил трек
+  addedById  String?
   spotifyUri String
   trackName  String
   artistName String
@@ -210,8 +191,8 @@ model SessionTrack {
   durationMs Int?
   addedAt    DateTime      @default(now())
 
-  session    Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade) // cascade
-  addedBy    User?         @relation("trackAdder", fields: [addedById], references: [id], onDelete: SetNull) // если пользователь удалён, оставляем трек, но обнуляем автора
+  session    Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  addedBy    User?         @relation("trackAdder", fields: [addedById], references: [id], onDelete: SetNull)
   ratings    TrackRating[]
 
   @@index([sessionId, addedAt])
@@ -238,11 +219,10 @@ model PlayHistory {
   spotifyUri String
   trackName  String
   artistName String
-  // См. LikedTrack.imageUrl — та же история и то же дозаполнение.
   imageUrl   String?
   playedAt   DateTime @default(now())
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, playedAt])
 }
@@ -251,11 +231,11 @@ model TrackRating {
   id        String       @id @default(uuid())
   trackId   String
   userId    String
-  rating    Int          @default(1) // 1 = лайк, -1 = дизлайк
+  rating    Int          @default(1)
   createdAt DateTime     @default(now())
 
-  track     SessionTrack @relation(fields: [trackId], references: [id], onDelete: Cascade) // cascade
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade) // cascade
+  track     SessionTrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([trackId, userId])
 }
@@ -271,7 +251,6 @@ model EmailVerification {
   @@index([expiresAt])
 }
 
-// Системная таблица для express-session
 model SessionStore {
   sid    String   @id @db.VarChar
   sess   Json     @db.Json

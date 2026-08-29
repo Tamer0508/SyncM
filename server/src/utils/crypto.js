@@ -8,13 +8,13 @@ const randomBytes = promisify(crypto.randomBytes);
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
-const PREFIX = 'enc:v2:'; // Новая версия схемы шифрования с поддержкой KDF и AAD
+const PREFIX = 'enc:v2:';
 const KEY_LENGTH = 32;
 
 const SCRYPT_OPTIONS = {
-  N: 16384, // CPU/Memory cost
-  r: 8,     // Block size
-  p: 1      // Parallelization
+  N: 16384,
+  r: 8,
+  p: 1
 };
 
 let cachedKeyPromise = null;
@@ -106,7 +106,7 @@ async function decrypt(payload, options = {}) {
     if (strict) {
       throw new Error('Недопустимый формат данных: отсутствует префикс шифрования');
     }
-    return payload; // legacy mode — только при явном strict: false
+    return payload;
   }
 
   try {

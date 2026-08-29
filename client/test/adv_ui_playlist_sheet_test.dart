@@ -1,10 +1,3 @@
-// Враждебные проверки створки «Добавить в плейлист».
-//
-// Атака: пользователь нажимает быстрее, чем отвечает сеть. Обработчик
-// _AddToPlaylistBody._addTo сохраняет NavigatorState ДО await и зовёт
-// navigator.pop() ПОСЛЕ него — ничем не проверяя, что закрывать всё ещё
-// нужно именно створку.
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -16,13 +9,11 @@ import 'package:syncm/providers/playlists_provider.dart';
 import 'package:syncm/theme.dart';
 import 'package:syncm/widgets/add_to_playlist_sheet.dart';
 
-/// Провайдер, у которого добавление трека завершается только по команде теста.
 class _SlowPlaylists extends PlaylistsProvider {
   _SlowPlaylists(this._items);
 
   final List<Map<String, dynamic>> _items;
 
-  /// Каждый вызов addTracks кладёт сюда свой Completer.
   final List<Completer<({int added, int skipped})>> pending = [];
 
   int addCalls = 0;
@@ -55,7 +46,6 @@ const _track = {
   'durationMs': 200000,
 };
 
-/// Экран, который лежит под створкой. Если он исчезнет — навигацию сорвало.
 const _underlyingMarker = 'ЭКРАН-ПОД-СТВОРКОЙ';
 
 Future<_SlowPlaylists> _openSheet(WidgetTester tester) async {
@@ -130,20 +120,16 @@ void main() {
       (tester) async {
     final provider = await _openSheet(tester);
 
-    // Выбрали плейлист. Запрос ушёл, ответа ещё нет.
     await tester.tap(find.text('Мой плейлист'));
     await tester.pump();
     expect(provider.addCalls, 1);
 
-    // Пока запрос в пути, человек закрывает створку сам — свайпом или
-    // касанием мимо. Так делают, когда «и так понятно, что добавилось».
-    await tester.tapAt(const Offset(200, 40)); // по затемнению над створкой
+    await tester.tapAt(const Offset(200, 40));
     await tester.pumpAndSettle();
     expect(find.text('Мой плейлист'), findsNothing,
         reason: 'створка должна была закрыться от касания мимо');
     expect(find.text(_underlyingMarker), findsOneWidget);
 
-    // Сеть ответила.
     provider.pending.first.complete((added: 1, skipped: 0));
     await tester.pumpAndSettle();
 
@@ -155,7 +141,6 @@ void main() {
       (tester) async {
     final provider = await _openSheet(tester);
 
-    // Двойное касание: створка не гасит повторное нажатие, пока идёт запрос.
     await tester.tap(find.text('Мой плейлист'));
     await tester.pump(const Duration(milliseconds: 16));
     if (find.text('Мой плейлист').evaluate().isNotEmpty) {

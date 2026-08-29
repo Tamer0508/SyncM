@@ -18,7 +18,7 @@ class SocketService {
 
   int get rttMs => _lastCalculatedRtt;
 
-  int _lastCalculatedRtt = 100; // Храним последний RTT для отправки на бэк
+  int _lastCalculatedRtt = 100;
   bool _isSyncing = false;
   Timer? _heartbeatTimer;
   int? _lastTickTime;
@@ -26,15 +26,9 @@ class SocketService {
   final StreamController<Map<String, dynamic>> _friendRequestController = StreamController.broadcast();
   Stream<Map<String, dynamic>> get onFriendRequest => _friendRequestController.stream;
 
-  // ─── Фаза 6: реконнект и ресинк сессии ───────────────────────────────────
-  // Активная сессия, которую нужно ресинкнуть после переподключения.
-  // Провайдер выставляет её при входе в сессию и очищает при выходе.
   String? _activeSessionId;
   void setActiveSession(String? sessionId) => _activeSessionId = sessionId;
 
-  // Принудительный ресинк активной сессии сейчас (например при возврате
-  // приложения из фона). Если соединение живо — сразу просим состояние;
-  // заодно освежаем offset часов, т.к. во сне они могли уплыть.
   Future<void> resyncNow() async {
     if (_socket == null || !_socket!.connected) return;
     await measureMasterOffset();
@@ -43,13 +37,9 @@ class SocketService {
     }
   }
 
-  // Уведомление о том, что соединение восстановилось после разрыва (не
-  // первичное подключение). Провайдер слушает и обновляет UI / состояние.
   final StreamController<void> _reconnectController = StreamController.broadcast();
   Stream<void> get onReconnect => _reconnectController.stream;
 
-  // Был ли уже установлен коннект хотя бы раз — чтобы отличить первичное
-  // подключение от переподключения.
   bool _hasConnectedOnce = false;
   bool get isConnected => _socket?.connected ?? false;
 
@@ -57,8 +47,6 @@ class SocketService {
     return DateTime.now().add(Duration(milliseconds: _masterOffset));
   }
 
-  // Текущее серверное время в миллисекундах (Unix epoch). Используется для
-  // вычисления визуальной позиции трека по серверному времени (Фаза 4.3).
   int serverNow() {
     return DateTime.now().millisecondsSinceEpoch + _masterOffset;
   }
@@ -78,7 +66,6 @@ class SocketService {
     return utcTime.toLocal();
   }
 
-  // Сверяем часы с твоим сервером через 'ping_time' / 'pong_time'
   Future<void> measureMasterOffset() async {
     if (_socket == null || !_socket!.connected || _isSyncing) return;
     _isSyncing = true;
@@ -115,18 +102,12 @@ class SocketService {
         }
       });
 
-      // Шлем структуру, которую ждет твой бэк, докидывая прошлый RTT
       _socket!.emit('ping_time', {
         'clientTime': t1,
         'rtt': _lastCalculatedRtt,
       });
 
       try {
-        // Таймаут должен быть заведомо больше реального RTT. Раньше было 100мс,
-        // и при RTT>100мс (обычный мобильный интернет или удалённый сервер на
-        // Railway) КАЖДЫЙ замер отваливался, offset не обновлялся вовсе, и
-        // устройство стартовало треки по несинхронизированным часам — это и
-        // давало сильный рассинхрон. 600мс покрывает практически любой RTT.
         final result = await completer.future.timeout(const Duration(milliseconds: 600));
         attempts.add(result);
       } catch (err) {
@@ -140,7 +121,7 @@ class SocketService {
 
     List<int> rtts = attempts.map((e) => e['rtt']!).toList()..sort();
     int medianRtt = rtts[rtts.length ~/ 2];
-    _lastCalculatedRtt = medianRtt; // Сохраняем медианный RTT
+    _lastCalculatedRtt = medianRtt;
 
     List<Map<String, int>> validAttempts = attempts
         .where((attempt) => attempt['rtt']! <= medianRtt * 2)
@@ -149,15 +130,11 @@ class SocketService {
     if (validAttempts.isEmpty) validAttempts = attempts;
 
     validAttempts.sort((a, b) => a['rtt']!.compareTo(b['rtt']!));
-    // Берём лучшую половину замеров (с наименьшим RTT — они точнее), но не
-    // меньше 3. По ним считаем МЕДИАНУ offset, а не среднее: медиана
-    // устойчива к одиночным выбросам (случайный лаг в одном замере не
-    // утянет весь offset).
     final int takeN = validAttempts.length >= 6 ? (validAttempts.length ~/ 2) : validAttempts.length.clamp(1, 3);
     List<Map<String, int>> bestAttempts = validAttempts.take(takeN).toList();
 
     List<int> offsets = bestAttempts.map((e) => e['offset']!).toList()..sort();
-    _masterOffset = offsets[offsets.length ~/ 2]; // медиана
+    _masterOffset = offsets[offsets.length ~/ 2];
     debugPrint('[SyncTime] Офсет: $_masterOffset мс, RTT: $_lastCalculatedRtt мс, замеров: ${attempts.length}/$targetCycles');
   }
 
@@ -196,10 +173,6 @@ class SocketService {
       if (data is Map && data['clientTime'] == t1 && data['serverTime'] != null) {
         int rtt = t2 - t1;
         _lastCalculatedRtt = rtt; 
-        // Порог RTT для принятия замера. Раньше 300мс — при более высоком
-        // пинге (мобильный интернет) heartbeat вообще не корректировал offset
-        // между полными калибровками, и часы медленно уплывали. 600мс покрывает
-        // реальные условия. EMA-сглаживание ниже гасит случайные выбросы.
         if (rtt < 600) {
           int newOffset = (data['serverTime'] as int) - (t1 + (rtt ~/ 2));
           _masterOffset = ((_masterOffset * 4) + newOffset) ~/ 5;
@@ -216,20 +189,12 @@ class SocketService {
   }
 
   void init(String baseUrl, String token) {
-    // Уже есть сокет с теми же параметрами (подключён ИЛИ подключается) — не
-    // трогаем. Раньше проверялось только _socket?.connected == true, но между
-    // созданием и реальным подключением есть окно, и повторный init в этом
-    // окне (у нас теперь два пути: initState и build) убивал первый сокет
-    // через disconnect() до того, как он подключался — onConnect не срабатывал.
     if (_socket != null && _baseUrl == baseUrl && _token == token) return;
     _baseUrl = baseUrl;
     _token = token;
     _socket?.disconnect();
     
     _socket = io.io(baseUrl, <String, dynamic>{
-      // Только websocket. polling на Railway (за прокси, без sticky sessions)
-      // не завершает хендшейк и даёт timeout — раньше всё работало именно на
-      // чистом websocket, возвращаем его.
       'transports': ['websocket'],
       'auth': {'token': token},
       'autoConnect': true,
@@ -251,16 +216,10 @@ class SocketService {
     _socket!.onConnect((_) async {
       debugPrint('[Socket] ПОДКЛЮЧЁН');
 
-      // Фаза 6: после ЛЮБОГО подключения заново измеряем offset часов.
-      // Ускоренная процедура сама по себе быстрая (несколько ping/pong).
       await measureMasterOffset();
       _startHeartbeat();
 
-      // Отличаем первичное подключение от переподключения.
       if (_hasConnectedOnce) {
-        // Это реконнект после разрыва. Если мы в сессии — просим у сервера
-        // полное состояние (session_state), чтобы мгновенно вернуться в
-        // синхру, и уведомляем подписчиков.
         if (_activeSessionId != null) {
           _socket!.emit('resync', {'sessionId': _activeSessionId});
         }
@@ -283,7 +242,6 @@ class SocketService {
   final Map<String, List<_Subscriber>> _subscribers = {};
   final Set<String> _boundEvents = {};
 
-  /// Подписывается на событие. Возвращает токен — отписываться нужно им.
   SocketSubscription on(String event, void Function(dynamic data) handler) {
     final subscriber = _Subscriber(event, handler);
     _subscribers.putIfAbsent(event, () => <_Subscriber>[]).add(subscriber);
@@ -308,8 +266,6 @@ class SocketService {
   void _dispatch(String event, dynamic data) {
     final list = _subscribers[event];
     if (list == null || list.isEmpty) return;
-    // Копия списка: обработчик вправе отписаться прямо во время вызова —
-    // так делает PlaybackProvider.stop() внутри session_ended.
     for (final subscriber in List<_Subscriber>.of(list)) {
       if (subscriber.cancelled) continue;
       try {

@@ -7,14 +7,6 @@ import 'package:syncm/screens/profile/profile_sections.dart';
 import 'package:syncm/theme.dart';
 import 'package:syncm/widgets/skeleton.dart';
 
-/// Новые разделы профиля и их заглушки обязаны занимать одну и ту же
-/// коробку: списки треков идут следом, и любое расхождение сдвигает их
-/// в момент, когда данные доедут.
-///
-/// Сравнивается содержимое разделов, а не их полная высота: под тестовым
-/// шрифтом (Onest здесь не загружается) заголовки переносятся не так, как
-/// в приложении, и высота шапки к делу не относится — её задаёт один и тот
-/// же `ProfileSectionHeader` и там, и там.
 Widget _wrap(Widget child, {double scale = 1.0}) => MaterialApp(
       localizationsDelegates: L.localizationsDelegates,
       supportedLocales: L.supportedLocales,
@@ -28,7 +20,6 @@ Widget _wrap(Widget child, {double scale = 1.0}) => MaterialApp(
       home: Scaffold(
         body: MediaQuery(
           data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-          // Высота не ограничена — как у sliver'а в профиле.
           child: SingleChildScrollView(child: child),
         ),
       ),
@@ -56,8 +47,6 @@ void main() {
       await tester.pumpWidget(_wrap(ProfileArtistsSection(artists: artists)));
       await tester.pump();
 
-      // Карусель — это то, что заглушка обязана повторить: её высоту
-      // задаёт содержимое, а не число в коде.
       final realStrip = tester.getSize(find.byType(SingleChildScrollView).last);
       final realAvatar = tester.getSize(find.byType(ClipOval).first);
 

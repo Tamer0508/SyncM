@@ -7,15 +7,14 @@ const offlineTimers = new Map();
 const OFFLINE_DELAY_MS = 5000;
 
 const sessionDropTimers = new Map();
-const SESSION_DROP_DELAY_MS = 120000; // 2 мин на переподключение (сон/фон), потом исключаем
+const SESSION_DROP_DELAY_MS = 120000;
 
-// Фаза 1-6: Состояние сессий
-const sessionStates = new Map();  // sessionId -> state
-const readyClients = new Map();   // sessionId -> Set(socketId)
-const clientRtt = new Map();      // socketId -> rttMs
-const syncIntervals = new Map();  // sessionId -> intervalId
-const autoResyncTimers = new Map(); // sessionId -> timeoutId
-const _presenceDebounce = new Map(); // sessionId -> timeoutId
+const sessionStates = new Map();
+const readyClients = new Map();
+const clientRtt = new Map();
+const syncIntervals = new Map();
+const autoResyncTimers = new Map();
+const _presenceDebounce = new Map();
 
 let ioInstance;
 
@@ -38,7 +37,7 @@ function getOnlineSessionUsers(sessionId) {
 
 function broadcastSessionPresence(sessionId) {
   if (!ioInstance) return;
-  if (_presenceDebounce.has(sessionId)) return; // уже запланировано
+  if (_presenceDebounce.has(sessionId)) return;
   const t = setTimeout(() => {
     _presenceDebounce.delete(sessionId);
     if (!ioInstance) return;
@@ -155,7 +154,7 @@ function cancelAutoResync(sessionId) {
   if (autoResyncTimers.has(sessionId)) {
     const t = autoResyncTimers.get(sessionId);
     clearTimeout(t);
-    clearInterval(t); // может быть setInterval; clearTimeout/clearInterval взаимозаменяемы в Node
+    clearInterval(t);
     autoResyncTimers.delete(sessionId);
   }
 }
@@ -224,7 +223,6 @@ function forgetMembership(sessionId, userId) {
     membershipCache.delete(membershipKey(sessionId, userId));
     return;
   }
-  // Сессия целиком — например, завершилась.
   const prefix = `${sessionId}:`;
   for (const key of membershipCache.keys()) {
     if (key.startsWith(prefix)) membershipCache.delete(key);
@@ -255,8 +253,6 @@ function forgetSessionRuntime(sessionId) {
   }
 }
 
-// Подчистка протухших записей: сами по себе они не удаляются, а карта
-// живёт столько же, сколько процесс.
 const membershipSweep = setInterval(() => {
   const now = Date.now();
   for (const [key, expiresAt] of membershipCache) {
@@ -550,7 +546,7 @@ const setupSocket = (io) => {
         }
 
       } else if (action === 'next') {
-        const nextTrackId = seekPos; // используем поле как trackId
+        const nextTrackId = seekPos;
         if (nextTrackId) {
           io.to(sessionId).emit('session_prepare', { trackId: nextTrackId });
           readyClients.set(sessionId, new Set());

@@ -1,17 +1,8 @@
-// Переводит ответы вида { error: 'текст' } на ключи словаря.
-//
-//   node tool/i18n_apply.js
-//
-// Замена буквальная и только там, где рядом есть req: словарь принимает
-// запрос, чтобы выбрать язык. Места без req (общие обработчики) правятся
-// руками — их единицы.
-
 const fs = require('fs');
 const path = require('path');
 
 const { MESSAGES } = require('../src/infrastructure/i18n');
 
-// ключ словаря -> русский текст, как он записан в коде
 const BY_TEXT = new Map(
   Object.entries(MESSAGES).map(([key, value]) => [value.ru, key])
 );

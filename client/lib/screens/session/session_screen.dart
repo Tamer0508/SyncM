@@ -26,10 +26,6 @@ class SessionScreen extends StatefulWidget {
   final Map<String, dynamic>? sessionData;
   final VoidCallback? onBack;
 
-  /// Сессия завершена — главный экран покажет итоги в центральной части.
-  ///
-  /// Во встроенном режиме переход отдельным маршрутом закрывал бы боковые
-  /// панели, поэтому решение о показе принимает тот, кто нас встроил.
   final void Function(Map<String, dynamic> results)? onSessionEnded;
 
   const SessionScreen({
@@ -101,8 +97,6 @@ class _SessionScreenState extends State<SessionScreen> {
   void _setupPlaybackCallbacks() {
     _playback = Provider.of<PlaybackProvider>(context, listen: false);
     final pb = _playback!;
-    // Методы, а не литералы замыканий: dispose должен уметь отличить свои
-    // колбэки от чужих, а у tear-off метода это сравнение работает.
     pb.onTracksAdded = _onTracksAdded;
     pb.onSessionPlaybackStarted = _openPlayerIfMobile;
     pb.onPrepareError = _onPrepareError;
@@ -115,7 +109,6 @@ class _SessionScreenState extends State<SessionScreen> {
     final uri = track['uri'] as String?;
     if (uri == null || uri.isEmpty) return;
 
-    // История не должна задерживать старт трека.
     unawaited(auth.api.logPlay(
       uri,
       track['title'] as String? ?? '',
@@ -179,18 +172,9 @@ class _SessionScreenState extends State<SessionScreen> {
 
   StreamSubscription<void>? _reconnectSub;
 
-  /// Свои подписки на события сокета.
   final List<SocketSubscription> _subscriptions = [];
 
   void _setupSessionSocketListeners(SocketService socket) {
-    // session_ended здесь НЕ обрабатывается — намеренно.
-    //
-    // Обработчик живёт в SessionProvider: он переживает пересоздание экрана и
-    // знает, показать ли итоги встроенно или маршрутом. Дублирующий
-    // обработчик здесь вёл к гонке (кто первым перейдёт — зависело от порядка
-    // подписки) и переставал работать сразу после выхода из сессии, оставляя
-    // участников в закрытой сессии.
-
     _subscriptions.addAll([
       socket.on('user_joined', (_) {
         if (mounted) _refreshSession();
@@ -250,9 +234,6 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   Future<void> _refreshSession() async {
-    // Индикатора загрузки на этом экране нет, поэтому и состояния «идёт
-    // обновление» тоже: прежние setState вокруг него перестраивали экран,
-    // ничего на нём не меняя.
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).api;
       final sessions = await api.getMySessions();
@@ -266,11 +247,6 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   Future<void> _endSession() async {
-    // Подтверждение можно отключить в настройках.
-    //
-    // Завершение необратимо и затрагивает второго участника, поэтому по
-    // умолчанию спрашиваем. Но тем, кто закрывает сессии часто, лишний шаг
-    // мешает — и это их выбор, а не наш.
     if (!LocalStore.readBool(StoreKeys.confirmEndSession, defaultValue: true)) {
       await _doEndSession();
       return;
@@ -288,10 +264,6 @@ class _SessionScreenState extends State<SessionScreen> {
     await _doEndSession();
   }
 
-  /// Собственно завершение — без подтверждения.
-  ///
-  /// Выделено отдельно, чтобы вызываться и после диалога, и напрямую, когда
-  /// подтверждение отключено в настройках.
   Future<void> _doEndSession() async {
 
     try {
@@ -303,20 +275,9 @@ class _SessionScreenState extends State<SessionScreen> {
       }
 
       if (mounted) {
-        // Итоги показываем ВСЕГДА, в том числе во встроенном режиме.
-        //
-        // Раньше на широком экране хост просто закрывал панель через onBack
-        // и на экран результатов не попадал вовсе: совпавшие треки, ради
-        // которых сессия и затевалась, он не видел.
-        //
-        // Порядок важен: сначала закрываем встроенную панель, иначе после
-        // возврата с результатов пользователь снова окажется в закрытой
-        // сессии.
         final args = result ?? const <String, dynamic>{};
 
         if (widget.embedded && widget.onBack != null) {
-          // Итоги показывает тот, кто нас встроил, — в центральной части,
-          // с сохранением боковых панелей. Отдельный маршрут закрывал бы их.
           if (widget.onSessionEnded != null) {
             widget.onSessionEnded!(args);
           } else {
@@ -360,9 +321,6 @@ class _SessionScreenState extends State<SessionScreen> {
               members: members,
               onlineUserIds: _onlineUserIds,
               trackCount: tracks.length,
-              // Ждём второго, пока он не в сети: провайдер про состав сессии
-              // не знает, а экран знает — и вправе показать ожидание по
-              // своей причине.
               waitingForOthers: members
                   .where((m) => m['status'] == 'accepted')
                   .any((m) => !_onlineUserIds.contains(m['userId'])),
@@ -515,9 +473,6 @@ class _SessionHeader extends StatelessWidget {
 
     final accepted = members.where((m) => m['status'] == 'accepted').toList();
 
-    // Фазу считает провайдер — он один видит и режим сессии, и паузу, и
-    // подстройку. Экран лишь добавляет то, чего провайдер знать не может:
-    // что второй участник ещё не в сети.
     final phase = context.select<PlaybackProvider, SyncPhase>((pb) => pb.syncPhase);
     final shown = waitingForOthers && phase == SyncPhase.synced
         ? SyncPhase.waiting
@@ -533,9 +488,6 @@ class _SessionHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Знак и подпись под ним — единственное место экрана, где состояние
-          // синхронизации видно целиком. Раньше о нём можно было догадываться
-          // только по тому, совпадает ли музыка в наушниках.
           Center(
             child: Column(
               children: [
@@ -582,10 +534,6 @@ class _SessionHeader extends StatelessWidget {
     );
   }
 
-  /// Подпись под знаком.
-  ///
-  /// Называет то, что человек видит, а не то, как устроен механизм: не
-  /// «якорь установлен», а «звучит одновременно».
   static String _labelFor(BuildContext context, SyncPhase phase) => switch (phase) {
         SyncPhase.idle => L.of(context).sessionNotStarted,
         SyncPhase.waiting => L.of(context).sessionWaitingForSecond,
@@ -690,7 +638,6 @@ class _SessionTrackTile extends StatelessWidget {
     return null;
   }
 
-  /// Оценил ли трек кто-то ещё, кроме нас.
   bool get _ratedByOther {
     final ratings = (track['ratings'] as List?)?.whereType<Map>() ?? const <Map>[];
     return ratings.any((r) => r['userId'] != myUserId);

@@ -75,8 +75,6 @@ List<AppMenuEntry<PlaylistAction>> playlistMenuEntries(
         icon: Icons.copy_all_outlined,
         label: L.of(context).playlistDuplicate,
       ),
-      // Дальше — необратимое. Черта здесь не украшение: очистка и удаление
-      // отличаются от переименования последствиями, а не оттенком текста.
       if (hasTracks)
         AppMenuEntry(
           value: PlaylistAction.clear,
@@ -397,7 +395,7 @@ Future<void> _pickAndUploadCover(
 ) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.image,
-    withData: true, // получаем bytes сразу (работает и на мобильных)
+    withData: true,
     allowMultiple: false,
   );
 

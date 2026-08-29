@@ -8,8 +8,6 @@ import 'package:syncm/providers/auth_provider.dart';
 import 'package:syncm/utils/artwork_color_store.dart';
 import 'package:syncm/utils/local_store.dart';
 
-/// Проверяем ровно то, ради чего эти слои существуют: данные, известные с
-/// прошлого запуска, доступны синхронно — до первого кадра и без сети.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -85,8 +83,6 @@ void main() {
 
       expect(auth.isLoggedIn, isTrue);
       expect(auth.user?.displayName, 'Аня');
-      // Токен обязан подняться вместе с профилем: иначе первый экран уйдёт
-      // в сеть без авторизации и получит 401.
       expect(auth.cookie, 'token-123');
     });
 

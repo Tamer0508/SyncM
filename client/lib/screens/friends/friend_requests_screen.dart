@@ -91,10 +91,6 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
         }
 
         if (prov.incomingRequests.isEmpty) {
-          // ListView, а не Center: пустое состояние тоже должно тянуться вниз,
-          // иначе жест обновления на нём не срабатывает. Раньше для этого
-          // задавалась высота через MediaQuery минус kToolbarHeight — расчёт
-          // ломался во встроенном режиме, где панели сверху нет вовсе.
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: const [

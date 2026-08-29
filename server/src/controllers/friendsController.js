@@ -140,9 +140,6 @@ const sendRequest = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: t(req, 'cannotAddSelf') });
   }
 
-  // Существование получателя проверяем здесь, как это делает blockUser.
-  // Без проверки заявка несуществующему пользователю падала на внешнем ключе,
-  // а у общего обработчика ветки под P2003 нет — клиент получал 500.
   const receiver = await prisma.user.findUnique({
     where: { id: receiverId },
     select: { id: true },
@@ -493,7 +490,6 @@ const deleteFriendByUserId = asyncHandler(async (req, res) => {
       await prisma.$transaction(async (tx) => {
         await tx.friendship.delete({ where: { id: friendship.id } });
 
-        // Пересчитываем friendsCount для обоих
         const [senderCount, receiverCount] = await Promise.all([
           tx.friendship.count({
             where: {
@@ -564,7 +560,6 @@ const blockUser = asyncHandler(async (req, res) => {
       where: { ...between, status: 'accepted' },
     });
 
-    // Дружба и заявки в обе стороны.
     await tx.friendship.deleteMany({ where: between });
 
     if (acceptedCount > 0) {
@@ -678,7 +673,6 @@ const getUserActivity = asyncHandler(async (req, res) => {
     prisma.likedTrack.count({ where: { userId: targetId } }),
   ]);
 
-  // Схлопываем повторы: одна песня встречается в истории десятки раз подряд.
   const seen = new Set();
   const history = [];
   for (const row of rows) {

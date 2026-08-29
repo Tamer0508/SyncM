@@ -7,34 +7,22 @@ import 'package:syncm/models/user.dart';
 import 'package:syncm/providers/auth_provider.dart';
 import 'package:syncm/services/api_service.dart';
 
-/// Гонка при быстром переключении настроек приватности.
-///
-/// Раньше каждое нажатие слало свой PATCH, и все они уходили с одним ключом
-/// идемпотентности: сервер отвечал второму запросу закэшированным ответом
-/// первого, клиент применял устаревшее состояние — кнопка «отскакивала».
 void main() {
-  // flutter_test по умолчанию подменяет HttpClient заглушкой — снимаем её,
-  // иначе до локального сервера запросы не дойдут.
   setUpAll(() => HttpOverrides.global = null);
 
   late HttpServer server;
   late ApiService api;
   late AuthProvider auth;
 
-  /// Состояние «в базе».
   late Map<String, bool> stored;
 
-  /// Тела и ключи идемпотентности всех дошедших PATCH-запросов.
   late List<Map<String, dynamic>> patches;
   late List<String?> keys;
 
-  /// Насколько сервер задумывается перед ответом.
   late Duration delay;
 
-  /// Ответить ошибкой: 0 — отвечать нормально, N — завалить N ближайших.
   late int failNext;
 
-  /// Код ошибки. 500 не повторяется клиентом, 503 повторяется.
   late int failStatus;
 
   const open = {
@@ -131,25 +119,20 @@ void main() {
     unawaited(auth.updateSettings(friendsOnly));
     unawaited(auth.updateSettings(hidden));
 
-    // Экран реагирует мгновенно, не дожидаясь сервера.
     expect(auth.user!.isOnlineHidden, isTrue);
     expect(auth.user!.isFriendsHidden, isTrue);
 
     await flush;
 
-    // В базе — то, что человек выбрал последним.
     expect(stored, hidden);
     expect(auth.user!.isFriendsHidden, isTrue);
     expect(auth.user!.isActivityHidden, isTrue);
     expect(auth.user!.isOnlineHidden, isTrue);
     expect(auth.user!.isSearchHidden, isTrue);
 
-    // Запросов два, а не три: нажатия во время отправки слились в один.
     expect(patches, hasLength(2));
     expect(patches.last, containsPair('isFriendsHidden', true));
 
-    // Ключи идемпотентности разные — иначе второй запрос получил бы
-    // закэшированный ответ первого.
     expect(keys.whereType<String>(), hasLength(2));
     expect(keys.toSet(), hasLength(2));
   });
@@ -164,7 +147,6 @@ void main() {
     }
     await flush;
 
-    // Последним был i == 9 — «Скрытый».
     expect(stored, hidden);
     expect(auth.user!.isOnlineHidden, isTrue);
     expect(patches.length, lessThanOrEqualTo(2));
@@ -174,7 +156,7 @@ void main() {
   test('ошибка сервера: экран откатывается и ошибка доходит до вызова',
       () async {
     failNext = 1;
-    failStatus = 500; // не повторяется клиентом
+    failStatus = 500;
 
     await expectLater(
       auth.updateSettings(const {'isOnlineHidden': true}),
@@ -187,12 +169,12 @@ void main() {
 
   test('повтор после сбоя уходит с тем же ключом идемпотентности', () async {
     failNext = 1;
-    failStatus = 503; // повторяемая ошибка
+    failStatus = 503;
 
     await auth.updateSettings(const {'isOnlineHidden': true});
 
-    expect(patches, hasLength(2)); // сбой и повтор
-    expect(keys.toSet(), hasLength(1)); // один логический запрос — один ключ
+    expect(patches, hasLength(2));
+    expect(keys.toSet(), hasLength(1));
     expect(stored['isOnlineHidden'], isTrue);
     expect(auth.user!.isOnlineHidden, isTrue);
   });
@@ -203,7 +185,6 @@ void main() {
 
     final flush = auth.updateSettings(const {'isSearchHidden': true});
 
-    // /auth/me ещё отдаёт старое значение — оно не должно вернуть тумблер.
     await auth.fetchMe();
     expect(auth.user!.isSearchHidden, isTrue);
 
