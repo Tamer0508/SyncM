@@ -1,14 +1,11 @@
 // android/build.gradle.kts
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath("com.android.tools.build:gradle:8.4.0")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22")
-    }
-}
+//
+// Версии Android Gradle Plugin и Kotlin объявлены ровно в одном месте —
+// в settings.gradle.kts (AGP 8.11.1 / Kotlin 2.2.20 через plugins-блок settings).
+// Легаси-блока `buildscript { classpath("com.android.tools.build:gradle:...") }`
+// здесь быть не должно: он подмешивал в classpath корневого проекта вторую,
+// более старую копию AGP (8.4.0) и Kotlin (1.9.22), которую наследовали все
+// подпроекты Flutter-плагинов из Pub Cache.
 
 allprojects {
     repositories {
